@@ -8,7 +8,7 @@ Usage: ren [OPTIONS]
 
 Options:
   --renderer <NAME>  Slint renderer: software, femtovg or skia
-                     (default: Slint's choice, or $SLINT_BACKEND)
+                     (default: $SLINT_BACKEND, else software)
   --items <N>        Number of dummy items (default: 10000)
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
