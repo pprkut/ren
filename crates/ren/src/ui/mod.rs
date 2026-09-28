@@ -15,6 +15,10 @@ use crate::feed_tree::{FeedTree, Node};
 
 slint::include_modules!();
 
+/// The renderer with the smallest footprint, see
+/// `docs/decisions/0001-ui-toolkit.md`.
+const DEFAULT_RENDERER: &str = "software";
+
 /// Scroll speed of `--autoscroll`, in logical pixels per second.
 const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
@@ -163,8 +167,15 @@ fn show_placeholder(window: &MainWindow) {
     window.set_article_body(SharedString::new());
 }
 
+/// Uses the given renderer, else the one from `$SLINT_BACKEND`, else
+/// `DEFAULT_RENDERER`.
 fn select_backend(renderer: Option<&str>) -> Result<(), slint::PlatformError> {
     let mut selector = slint::BackendSelector::new().backend_name("winit".to_owned());
+    let renderer = renderer.or_else(|| {
+        std::env::var_os("SLINT_BACKEND")
+            .is_none()
+            .then_some(DEFAULT_RENDERER)
+    });
     if let Some(renderer) = renderer {
         selector = selector.renderer_name(renderer.to_owned());
     }

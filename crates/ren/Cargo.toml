@@ -9,7 +9,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["renderer-femtovg", "renderer-software"]
+default = ["renderer-software"]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
