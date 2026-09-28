@@ -29,7 +29,7 @@ with a spike; if one fails, we pivot and record why in `docs/decisions/`.
 
 | Concern        | Choice                               | Why |
 |----------------|--------------------------------------|-----|
-| UI toolkit     | **Slint** (to be confirmed)          | Designed for low-resource targets; software, FemtoVG and Skia renderers; virtualised `ListView`; maintained Servo embedding (`examples/servo` in the Slint repo, GPU texture sharing on Linux via Vulkan external memory). Published on crates.io. |
+| UI toolkit     | **Slint** (confirmed in S1, software renderer by default: [0001](decisions/0001-ui-toolkit.md)) | Designed for low-resource targets; software, FemtoVG and Skia renderers; virtualised `ListView`; maintained Servo embedding (`examples/servo` in the Slint repo, GPU texture sharing on Linux via Vulkan external memory). Published on crates.io. |
 | Article view   | **Blitz** (`blitz-dom`, `blitz-html`, `blitz-paint`) | HTML/CSS engine built on Servo's Stylo, without a JS engine or networking stack. Painted on the CPU (`anyrender_vello_cpu`) into a Slint image, so no GPU stack is needed for reading articles. Feed bodies are already sanitised and must not run JS anyway. |
 | Full-page tabs | **Servo** (`servo` crate)            | Opening the original page of an article in an in-app tab. Created on demand, torn down when the last tab closes. |
 | HTTP           | **ureq 3** (blocking, rustls)        | No async runtime needed for a single background sync thread; small dependency tree. |
@@ -215,8 +215,9 @@ Measurements that need a display or the real Nextcloud server are run
 locally by the user; the code and `scripts/` for them are prepared so that
 this is a single command.
 
-- **S1 — Slint window.** Main window with the three-pane layout as
-  placeholders: feed tree, item list backed by ~10k dummy rows (virtualised
+- **S1 — Slint window.** *(done: Slint yes, software renderer by default
+  until S4; see `docs/decisions/0001-ui-toolkit.md`)* Main window with the
+  three-pane layout as placeholders: feed tree, item list backed by ~10k dummy rows (virtualised
   `ListView`), article pane showing plain text. Add `scripts/measure.sh`
   (RSS, CPU over time from `/proc`). Update CI along with the first real
   dependency: install the system libraries Slint builds against, add
