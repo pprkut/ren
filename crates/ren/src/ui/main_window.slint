@@ -1,0 +1,225 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ListView, Palette, ScrollView } from "std-widgets.slint";
+
+export struct FeedRow {
+    title: string,
+    depth: int,
+    unread: int,
+    is-folder: bool,
+    expanded: bool,
+}
+
+export struct ItemRow {
+    title: string,
+    feed: string,
+    date: string,
+    unread: bool,
+    starred: bool,
+}
+
+component FeedTreeRow inherits Rectangle {
+    in property <FeedRow> entry;
+    in property <bool> selected;
+    callback clicked();
+
+    property <brush> text-color: root.selected ? Palette.selection-foreground : Palette.foreground;
+
+    height: 28px;
+    background: root.selected ? Palette.selection-background : touch.has-hover ? Palette.alternate-background : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px + root.entry.depth * 16px;
+        padding-right: 8px;
+        spacing: 4px;
+
+        Text {
+            width: 12px;
+            text: !root.entry.is-folder ? "" : root.entry.expanded ? "▾" : "▸";
+            vertical-alignment: center;
+            color: root.text-color;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.title;
+            overflow: elide;
+            vertical-alignment: center;
+            font-weight: root.entry.unread > 0 ? 700 : 400;
+            color: root.text-color;
+        }
+
+        Text {
+            text: root.entry.unread > 0 ? "\{root.entry.unread}" : "";
+            vertical-alignment: center;
+            color: root.text-color;
+        }
+    }
+}
+
+component ItemListRow inherits Rectangle {
+    in property <ItemRow> entry;
+    in property <bool> selected;
+    callback clicked();
+
+    property <brush> text-color: root.selected ? Palette.selection-foreground : Palette.foreground;
+
+    height: 48px;
+    background: root.selected ? Palette.selection-background : touch.has-hover ? Palette.alternate-background : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        alignment: center;
+        spacing: 2px;
+
+        HorizontalLayout {
+            spacing: 4px;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.entry.title;
+                overflow: elide;
+                font-weight: root.entry.unread ? 700 : 400;
+                color: root.text-color;
+            }
+
+            Text {
+                text: root.entry.starred ? "★" : "";
+                color: root.text-color;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.entry.feed;
+                overflow: elide;
+                font-size: 0.85rem;
+                color: root.text-color;
+                opacity: 0.7;
+            }
+
+            Text {
+                text: root.entry.date;
+                font-size: 0.85rem;
+                color: root.text-color;
+                opacity: 0.7;
+            }
+        }
+    }
+
+    Rectangle {
+        y: root.height - self.height;
+        height: 1px;
+        background: Palette.border;
+    }
+}
+
+export component MainWindow inherits Window {
+    in property <[FeedRow]> feeds;
+    in property <[ItemRow]> items;
+    in-out property <int> current-feed: 0;
+    in-out property <int> current-item: -1;
+    in property <string> article-title;
+    in property <string> article-meta;
+    in property <string> article-body;
+    in-out property <length> article-content-y <=> article.content-y;
+
+    // For the autoscroll measurement.
+    in-out property <length> item-list-content-y <=> item-list.content-y;
+    out property <length> item-list-scroll-range: max(0px, item-list.content-height - item-list.visible-height);
+
+    callback feed-clicked(row: int);
+    callback item-clicked(row: int);
+
+    title: "ren";
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: Palette.background;
+
+    HorizontalLayout {
+        ListView {
+            width: 240px;
+
+            for row[i] in root.feeds: FeedTreeRow {
+                entry: row;
+                selected: i == root.current-feed;
+                clicked => {
+                    root.feed-clicked(i);
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Palette.border;
+        }
+
+        item-list := ListView {
+            width: 420px;
+
+            for row[i] in root.items: ItemListRow {
+                entry: row;
+                selected: i == root.current-item;
+                clicked => {
+                    root.item-clicked(i);
+                }
+            }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Palette.border;
+        }
+
+        article := ScrollView {
+            horizontal-stretch: 1;
+            content-width: self.visible-width;
+            content-height: article-layout.preferred-height;
+
+            article-layout := VerticalLayout {
+                width: article.visible-width;
+                padding: 16px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: root.article-title;
+                    wrap: word-wrap;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+
+                Text {
+                    text: root.article-meta;
+                    wrap: word-wrap;
+                    color: Palette.foreground;
+                    opacity: 0.7;
+                }
+
+                Text {
+                    text: root.article-body;
+                    wrap: word-wrap;
+                    color: Palette.foreground;
+                }
+            }
+        }
+    }
+}

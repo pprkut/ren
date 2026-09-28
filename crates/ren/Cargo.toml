@@ -8,4 +8,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["renderer-femtovg", "renderer-software"]
+renderer-femtovg = ["slint/renderer-femtovg"]
+renderer-skia = ["slint/renderer-skia"]
+renderer-software = ["slint/renderer-software"]
+
 [dependencies]
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
+
+[build-dependencies]
+slint-build = "1.18"
