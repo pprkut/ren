@@ -225,6 +225,44 @@ this is a single command.
   *Done when:* idle RSS, startup time and idle CPU are recorded for the
   software, FemtoVG and Skia renderers, and scrolling the 10k list is smooth.
   *Decides:* Slint yes/no, default renderer.
+- **S1b — UI capabilities.** Before building on Slint, check that it can
+  carry the desktop UI we want, using akregator as the reference. Still on
+  dummy data; keep presentation in `ui/` and the logic in plain-Rust view
+  models (tree guides, sorting, column state) so it survives into M5.
+  - *Feed tree:* real tree visualisation (branch lines, expand/collapse
+    chevrons, folder and feed icons as placeholders for favicons),
+    keyboard navigation (up/down, left/right to collapse/expand).
+  - *Item list as a table:* header with Title, Author and Date columns,
+    resizable columns, sorting by clicking a header; alternating row
+    backgrounds; text colour by state: new (arrived in the latest sync),
+    unread, read. The dummy data gets authors and a "new" flag.
+  - *Selection:* closer to a native (Breeze) look: highlight with the accent
+    colour, a different look when the list doesn't have focus, hover
+    feedback; keyboard navigation in the item list.
+  - *Panes:* draggable splitters between the panes. Two arrangements, the
+    current one (list beside the article) and akregator's (list above the
+    article), switchable at runtime from the View menu. Persisting the
+    choice is M8.
+  - *Menu bar, tool bar, context menus:* a skeleton menu bar (File, Edit,
+    View, Go, Feed, Article, Settings, Help) with keyboard shortcuts, a tool
+    bar with icon buttons, context menus on feeds and items, and a search
+    field above the item list (filtering the dummy titles is enough). Icons
+    come from the system icon theme (freedesktop lookup) with a small
+    bundled fallback set; check how both look in light and dark mode.
+  - *Article pane text:* text can be selected and copied (read-only
+    `TextInput` for the plain-text body), and links can be clicked (in a
+    `StyledText` header line, e.g. the article URL). The real article view
+    is Blitz (S3), so additionally confirm the primitives S3 needs from the
+    Slint side: pointer move/press/release/drag with coordinates on an
+    image, changing the mouse cursor (pointer over links, I-beam over text),
+    keyboard shortcuts (Ctrl+C), and writing to the clipboard from Rust
+    (Slint has no public clipboard API; try `arboard`).
+  - Re-run `just measure` to see what the richer UI costs.
+  *Done when:* screenshots of both arrangements in light and dark mode, a
+  list of what worked, what needed workarounds and what didn't, and the
+  measurements are in `docs/decisions/0002-ui-capabilities.md`.
+  *Decides:* whether Slint stays (or what to pivot to), and which custom
+  widgets (tree, table, splitter) we maintain ourselves.
 - **S2 — Talk to Nextcloud.** Minimal `nextcloud-news` types and client
   (version, folders, feeds, paged items, updated items). `ren --check`
   prints server version, folder/feed/unread counts; `ren --dump-items <dir>`
@@ -261,7 +299,9 @@ From here on every milestone ships with tests for what it adds.
   HTTP server.
 - **M2 — Store.** `ren-store`: schema and migrations (folders, feeds, items,
   pending_changes, sync_state, per-feed settings), indices for the list
-  queries, upserts, paged queries, purge. Tests on an in-memory database.
+  queries, upserts, paged queries, purge, and a "new" marker for items
+  that arrived in the latest sync (cleared when the next sync starts), for
+  the item list colours. Tests on an in-memory database.
 - **M3 — Sync engine.** `ren-sync`: initial and incremental sync and the
   pending-change queue as described above. Unit tests with a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
@@ -282,7 +322,9 @@ From here on every milestone ships with tests for what it adds.
   full page instead of article" setting.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), first-run
-  account setup UI.
+  account setup UI, settings for the pane arrangement (list beside or above
+  the article) and the item state colours, persisted column widths and
+  sort order.
 
 ### Phase 4 — Hardening
 
