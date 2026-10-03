@@ -16,6 +16,11 @@ on-demand Servo tabs for full pages).
   (including measurements and open issues) and stop for review. Don't start
   the next milestone without the go-ahead.
 - Keep semantically different changes in separate commits.
+- Open a draft pull request for the milestone's branch with the first
+  push, so CI's full job (with `html-view`, later `servo`) runs on it, and
+  mark it ready for review when the milestone is done. The full job only
+  runs for pull requests, `master` and weekly; a branch without a pull
+  request is only checked without the rendering engines.
 - Before committing: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`,
   and `cargo test` once tests exist. Tests are optional in phase 1 (spikes),
   mandatory from phase 2 on — but follow "Designing for testability" in the
