@@ -249,20 +249,31 @@ this is a single command.
     field above the item list (filtering the dummy titles is enough). Icons
     come from the system icon theme (freedesktop lookup) with a small
     bundled fallback set; check how both look in light and dark mode.
-  - *Article pane text:* text can be selected and copied (read-only
-    `TextInput` for the plain-text body), and links can be clicked (in a
-    `StyledText` header line, e.g. the article URL). The real article view
-    is Blitz (S3), so additionally confirm the primitives S3 needs from the
-    Slint side: pointer move/press/release/drag with coordinates on an
-    image, changing the mouse cursor (pointer over links, I-beam over text),
-    keyboard shortcuts (Ctrl+C), and writing to the clipboard from Rust
-    (Slint has no public clipboard API; try `arboard`).
+  - *Native Qt style:* build a variant with Slint's `qt` style (behind a
+    cargo feature, e.g. `style-qt`, so the default build and CI don't need
+    Qt). It draws the standard widgets (scroll bars, line edits, buttons,
+    table headers, tabs) and takes the palette through Qt's `QStyle`, so on
+    KDE it looks like Breeze; our custom tree and table rows are still drawn
+    by us, with the native palette. Find out: whether it needs Slint's Qt
+    backend (Qt drawing the window instead of winit + our renderer), how the
+    menu bar looks with it, what it costs (RSS, but especially PSS: on a KDE
+    desktop the Qt libraries are already shared with other processes;
+    startup, idle and scrolling CPU) compared to the software renderer, the
+    build-time requirements (Qt 6 development files), and what it means for
+    S3 (a Blitz image works with any backend) and S4 (no wgpu texture
+    sharing with the Qt backend, so Servo would need CPU readback).
   - Re-run `just measure` to see what the richer UI costs.
-  *Done when:* screenshots of both arrangements in light and dark mode, a
-  list of what worked, what needed workarounds and what didn't, and the
-  measurements are in `docs/decisions/0002-ui-capabilities.md`.
-  *Decides:* whether Slint stays (or what to pivot to), and which custom
-  widgets (tree, table, splitter) we maintain ourselves.
+  Text selection and links in the article pane are not part of S1b: Blitz
+  handles both itself (selection with copy through a clipboard hook the app
+  implements, link clicks through a navigation hook, cursor changes), and S3
+  verifies that.
+  *Done when:* screenshots of both arrangements in light and dark mode, with
+  the default and the Qt style, a list of what worked, what needed
+  workarounds and what didn't, and the measurements are in
+  `docs/decisions/0002-ui-capabilities.md`.
+  *Decides:* whether Slint stays (or what to pivot to), which custom widgets
+  (tree, table, splitter) we maintain ourselves, and whether the Qt style
+  becomes an option (or the default on KDE).
 - **S2 — Talk to Nextcloud.** Minimal `nextcloud-news` types and client
   (version, folders, feeds, paged items, updated items). `ren --check`
   prints server version, folder/feed/unread counts; `ren --dump-items <dir>`
@@ -272,9 +283,14 @@ this is a single command.
   *Decides:* ureq + serde approach, batch size.
 - **S3 — Article view with Blitz.** Render the items dumped in S2 into the
   article pane of the S1 window: scrolling, link clicks (just logged),
-  images, light/dark stylesheet.
-  *Done when:* RSS delta, render time per item, CSS coverage and text
-  selection are recorded on a varied set of real items.
+  text selection with copy to the clipboard (Blitz's clipboard hook,
+  implemented e.g. with `arboard`, since Slint has no public clipboard API),
+  mouse cursor changes over links and text, images, light/dark stylesheet.
+  Use the released Blitz version; selection support is recent, so note
+  if it needs a newer, unreleased one.
+  *Done when:* selecting and copying text and clicking links work on a
+  varied set of real items, and RSS delta, render time per item and CSS
+  coverage are recorded.
   *Decides:* Blitz vs. litehtml vs. native rich text.
 - **S4 — Full page in a Servo tab.** A button opens an item's URL in a tab;
   closing the last tab drops Servo. Try both frame paths (wgpu texture
