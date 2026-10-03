@@ -1,11 +1,20 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ListView, Palette, ScrollView } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { FeedTree, FeedRow } from "feed_tree.slint";
 import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
+import { Splitter } from "splitter.slint";
 
 export { FeedRow, ItemRow, ItemStatus }
+
+// Where the item list goes relative to the article.
+export enum Arrangement {
+    // Item list left of the article, with compact two-line rows.
+    beside,
+    // Item list above the article, as a table (akregator's default).
+    above,
+}
 
 export component MainWindow inherits Window {
     in property <[FeedRow]> feeds;
@@ -16,6 +25,12 @@ export component MainWindow inherits Window {
     in property <string> article-meta;
     in property <string> article-body;
     in-out property <length> article-content-y <=> article.content-y;
+
+    in-out property <Arrangement> arrangement: Arrangement.beside;
+    // Pane sizes, changed by the splitters.
+    in-out property <length> tree-width: 240px;
+    in-out property <length> list-width: 420px;
+    in-out property <length> list-height: 300px;
 
     // For the autoscroll measurement.
     in-out property <length> item-list-content-y <=> item-list.content-y;
@@ -37,7 +52,7 @@ export component MainWindow inherits Window {
 
     HorizontalLayout {
         FeedTree {
-            width: 240px;
+            width: root.tree-width;
             rows: root.feeds;
             current: root.current-feed;
             select(row) => {
@@ -51,63 +66,99 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle {
-            width: 1px;
-            background: Palette.border;
+        Splitter {
+            width: 5px;
+            size <=> root.tree-width;
+            min-size: 150px;
+            max-size: 600px;
         }
 
-        item-list := ItemTable {
-            width: 640px;
-            rows: root.items;
-            current: root.current-item;
-            sort-column: root.sort-column;
-            sort-ascending: root.sort-ascending;
-            select(row) => {
-                root.item-clicked(row);
-            }
-            navigate(key, page) => {
-                root.item-key(key, page);
-            }
-            sort(column) => {
-                root.sort-clicked(column);
-            }
-        }
-
-        Rectangle {
-            width: 1px;
-            background: Palette.border;
-        }
-
-        article := ScrollView {
+        // The item list and the article, arranged by hand so that both
+        // arrangements share the same element instances (and with them
+        // selection, focus and scroll positions).
+        content := Rectangle {
             horizontal-stretch: 1;
-            content-width: self.visible-width;
-            content-height: article-layout.preferred-height;
 
-            article-layout := VerticalLayout {
-                width: article.visible-width;
-                padding: 16px;
-                spacing: 8px;
-                alignment: start;
+            property <bool> beside: root.arrangement == Arrangement.beside;
+            property <length> bar: 5px;
 
-                Text {
-                    text: root.article-title;
-                    wrap: word-wrap;
-                    font-size: 1.5rem;
-                    font-weight: 700;
-                    color: Palette.foreground;
+            item-list := ItemTable {
+                x: 0px;
+                y: 0px;
+                width: content.beside ? root.list-width : content.width;
+                height: content.beside ? content.height : root.list-height;
+                compact: content.beside;
+                rows: root.items;
+                current: root.current-item;
+                sort-column: root.sort-column;
+                sort-ascending: root.sort-ascending;
+                select(row) => {
+                    root.item-clicked(row);
                 }
-
-                Text {
-                    text: root.article-meta;
-                    wrap: word-wrap;
-                    color: Palette.foreground;
-                    opacity: 0.7;
+                navigate(key, page) => {
+                    root.item-key(key, page);
                 }
+                sort(column) => {
+                    root.sort-clicked(column);
+                }
+            }
 
-                Text {
-                    text: root.article-body;
-                    wrap: word-wrap;
-                    color: Palette.foreground;
+            Splitter {
+                visible: content.beside;
+                vertical: true;
+                x: root.list-width;
+                width: content.bar;
+                height: content.height;
+                size <=> root.list-width;
+                min-size: 250px;
+                max-size: content.width - 250px;
+            }
+
+            Splitter {
+                visible: !content.beside;
+                vertical: false;
+                y: root.list-height;
+                width: content.width;
+                height: content.bar;
+                size <=> root.list-height;
+                min-size: 100px;
+                max-size: content.height - 100px;
+            }
+
+            article := ScrollView {
+                x: content.beside ? root.list-width + content.bar : 0px;
+                y: content.beside ? 0px : root.list-height + content.bar;
+                width: content.width - self.x;
+                height: content.height - self.y;
+                content-width: self.visible-width;
+                content-height: article-layout.preferred-height;
+
+                article-layout := VerticalLayout {
+                    width: article.visible-width;
+                    padding: 16px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: root.article-title;
+                        wrap: word-wrap;
+                        font-size: 1.5rem;
+                        font-weight: 700;
+                        color: Palette.foreground;
+                    }
+
+                    Text {
+                        text: root.article-meta;
+                        wrap: word-wrap;
+                        color: Palette.foreground;
+                        opacity: 0.7;
+                    }
+
+                    Text {
+                        text: root.article-body;
+                        wrap: word-wrap;
+                        color: Palette.foreground;
+                    }
                 }
             }
         }

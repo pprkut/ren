@@ -10,15 +10,25 @@ Options:
   --renderer <NAME>  Slint renderer: software, femtovg or skia
                      (default: $SLINT_BACKEND, else software)
   --items <N>        Number of dummy items (default: 10000)
+  --arrangement <A>  Item list beside or above the article (default: beside)
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
   -h, --help         Show this help";
 
+/// Where the item list goes relative to the article.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Arrangement {
+    #[default]
+    Beside,
+    Above,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
     pub renderer: Option<String>,
     pub items: usize,
+    pub arrangement: Arrangement,
     pub measure: bool,
     pub autoscroll: bool,
 }
@@ -28,6 +38,7 @@ impl Default for Options {
         Self {
             renderer: None,
             items: 10_000,
+            arrangement: Arrangement::default(),
             measure: false,
             autoscroll: false,
         }
@@ -51,6 +62,13 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--items" => {
                 let n = value("--items")?;
                 options.items = n.parse().map_err(|_| format!("invalid item count: {n}"))?;
+            }
+            "--arrangement" => {
+                options.arrangement = match value("--arrangement")?.as_str() {
+                    "beside" => Arrangement::Beside,
+                    "above" => Arrangement::Above,
+                    other => return Err(format!("invalid arrangement: {other}")),
+                }
             }
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
@@ -79,6 +97,7 @@ mod tests {
         let expected = Options {
             renderer: Some("skia".to_owned()),
             items: 500,
+            arrangement: Arrangement::Above,
             measure: true,
             autoscroll: true,
         };
@@ -88,6 +107,8 @@ mod tests {
                 "skia",
                 "--items",
                 "500",
+                "--arrangement",
+                "above",
                 "--measure",
                 "--autoscroll"
             ]),
@@ -100,6 +121,7 @@ mod tests {
         assert!(parse_args(&["--renderer"]).is_err());
         assert!(parse_args(&["--items", "many"]).is_err());
         assert!(parse_args(&["--bogus"]).is_err());
+        assert!(parse_args(&["--arrangement", "below"]).is_err());
         assert_eq!(parse_args(&["--help", "--bogus"]), Ok(Command::Help));
     }
 }
