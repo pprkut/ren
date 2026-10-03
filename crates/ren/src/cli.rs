@@ -41,6 +41,14 @@ Window options:
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
+
+Web page tabs (with the servo feature):
+  --tabs <MODE>      Where Servo runs: helper (a helper process, started
+                     with the first tab and ended with the last), in-process
+                     (can't be restarted after the last tab closed), or
+                     wgpu (in-process, frames shared as GPU textures; needs
+                     the servo-wgpu feature and the femtovg-wgpu renderer)
+                     (default: helper)
   -h, --help         Show this help";
 
 /// A colour scheme forced instead of the desktop's.
@@ -56,6 +64,15 @@ pub enum Arrangement {
     #[default]
     Beside,
     Above,
+}
+
+/// Where Servo runs, see `docs/decisions/0005-web-tabs.md`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TabMode {
+    #[default]
+    Helper,
+    InProcess,
+    Wgpu,
 }
 
 /// What ren does.
@@ -90,6 +107,7 @@ pub struct Options {
     pub color_scheme: Option<ColorScheme>,
     pub measure: bool,
     pub autoscroll: bool,
+    pub tabs: TabMode,
 }
 
 impl Default for Options {
@@ -110,6 +128,7 @@ impl Default for Options {
             color_scheme: None,
             measure: false,
             autoscroll: false,
+            tabs: TabMode::default(),
         }
     }
 }
@@ -183,6 +202,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             }
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
+            "--tabs" => {
+                options.tabs = match value("--tabs")?.as_str() {
+                    "helper" => TabMode::Helper,
+                    "in-process" => TabMode::InProcess,
+                    "wgpu" => TabMode::Wgpu,
+                    other => return Err(format!("invalid tab mode: {other}")),
+                }
+            }
             "-h" | "--help" => return Ok(Command::Help),
             _ => return Err(format!("unknown argument: {arg}")),
         }
@@ -221,6 +248,7 @@ mod tests {
             color_scheme: Some(ColorScheme::Light),
             measure: true,
             autoscroll: true,
+            tabs: TabMode::InProcess,
         };
         assert_eq!(
             parse_args(&[
@@ -242,7 +270,9 @@ mod tests {
                 "--color-scheme",
                 "light",
                 "--measure",
-                "--autoscroll"
+                "--autoscroll",
+                "--tabs",
+                "in-process"
             ]),
             Ok(Command::Run(expected))
         );
@@ -255,6 +285,7 @@ mod tests {
         assert!(parse_args(&["--bogus"]).is_err());
         assert!(parse_args(&["--arrangement", "below"]).is_err());
         assert!(parse_args(&["--color-scheme", "blue"]).is_err());
+        assert!(parse_args(&["--tabs", "thread"]).is_err());
         assert_eq!(parse_args(&["--help", "--bogus"]), Ok(Command::Help));
         assert!(parse_args(&["--batch-size", "0"]).is_err());
         assert!(parse_args(&["--batch-size", "-1"]).is_err());

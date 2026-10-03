@@ -6,10 +6,11 @@ import { FeedTree, FeedRow } from "feed_tree.slint";
 import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
 import { Splitter } from "splitter.slint";
 import { StatusBar, ToolBar, ToolButton } from "toolbar.slint";
+import { TabBar, TabRow } from "tab_bar.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 
-export { FeedRow, ItemRow, ItemStatus, Icons }
+export { FeedRow, ItemRow, ItemStatus, Icons, TabRow }
 
 // Where the item list goes relative to the article.
 export enum Arrangement {
@@ -55,7 +56,29 @@ export component MainWindow inherits Window {
 
     changed dark => {
         root.article-theme-changed();
+        root.page-theme-changed();
     }
+
+    // Web pages in tabs next to the article (Servo); current-tab -1 shows
+    // the article. The page is an image of the visible part, with input
+    // forwarded to Servo, like the HTML article view.
+    in property <[TabRow]> tabs;
+    in-out property <int> current-tab: -1;
+    in property <image> page-image;
+    // 0 default, 1 pointer, 2 text.
+    in property <int> page-cursor;
+    out property <length> page-width: page-pane.width;
+    out property <length> page-height: page-pane.height;
+    callback tab-selected(index: int);
+    callback tab-closed(index: int);
+    // As for the article; positions are relative to the page.
+    callback page-pointer(kind: int, button: int, x: length, y: length, mods: int);
+    callback page-scroll(dx: length, dy: length, x: length, y: length);
+    callback page-key(text: string, mods: int, down: bool);
+    callback page-resized();
+    callback page-theme-changed();
+    // Called when Servo has work for the UI thread (from a wake-up).
+    callback page-pump();
 
     in-out property <Arrangement> arrangement: Arrangement.beside;
     // Pane sizes, changed by the splitters.
@@ -389,6 +412,7 @@ export component MainWindow inherits Window {
             property <bool> beside: root.arrangement == Arrangement.beside;
             property <length> bar: 5px;
             property <length> search-height: 34px;
+            property <length> tabs-height: root.tabs.length > 0 ? 30px : 0px;
 
             search-box := Rectangle {
                 x: 0px;
@@ -462,10 +486,26 @@ export component MainWindow inherits Window {
                 max-size: content.height - 100px;
             }
 
+            TabBar {
+                visible: root.tabs.length > 0;
+                x: article.x;
+                y: article.y - content.tabs-height;
+                width: article.width;
+                height: content.tabs-height;
+                tabs: root.tabs;
+                current: root.current-tab;
+                select(index) => {
+                    root.tab-selected(index);
+                }
+                close(index) => {
+                    root.tab-closed(index);
+                }
+            }
+
             article := ScrollView {
-                visible: !root.html-view;
+                visible: !root.html-view && root.current-tab < 0;
                 x: content.beside ? root.list-width + content.bar : 0px;
-                y: content.beside ? 0px : root.list-height + content.bar;
+                y: (content.beside ? 0px : root.list-height + content.bar) + content.tabs-height;
                 width: content.width - self.x;
                 height: content.height - self.y;
                 content-width: self.visible-width;
@@ -501,7 +541,7 @@ export component MainWindow inherits Window {
             }
 
             html-pane := Rectangle {
-                visible: root.html-view;
+                visible: root.html-view && root.current-tab < 0;
                 x: article.x;
                 y: article.y;
                 width: article.width;
@@ -598,6 +638,72 @@ export component MainWindow inherits Window {
 
                 pure function mods(m: KeyboardModifiers) -> int {
                     return (m.control ? 1 : 0) + (m.shift ? 2 : 0) + (m.alt ? 4 : 0) + (m.meta ? 8 : 0);
+                }
+            }
+
+            page-pane := Rectangle {
+                visible: root.current-tab >= 0;
+                x: article.x;
+                y: article.y;
+                width: article.width;
+                height: article.height;
+                background: Palette.background;
+                clip: true;
+
+                changed width => {
+                    root.page-resized();
+                }
+                changed height => {
+                    root.page-resized();
+                }
+                changed visible => {
+                    if self.visible {
+                        page-focus.focus();
+                    }
+                }
+
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.page-image;
+                    image-fit: fill;
+                }
+
+                page-focus := FocusScope {
+                    // All keys go to the page; with modifiers they also
+                    // stay available as the window's shortcuts.
+                    key-pressed(event) => {
+                        root.page-key(event.text, html-pane.mods(event.modifiers), true);
+                        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                            return reject;
+                        }
+                        accept
+                    }
+                    key-released(event) => {
+                        root.page-key(event.text, html-pane.mods(event.modifiers), false);
+                        accept
+                    }
+                }
+
+                TouchArea {
+                    mouse-cursor: root.page-cursor == 1 ? MouseCursor.pointer : root.page-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            page-focus.focus();
+                        }
+                        if event.kind != PointerEventKind.cancel {
+                            root.page-pointer(
+                                event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
+                                self.mouse-x,
+                                self.mouse-y,
+                                html-pane.mods(event.modifiers));
+                        }
+                    }
+                    scroll-event(event) => {
+                        root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                        accept
+                    }
                 }
             }
         }

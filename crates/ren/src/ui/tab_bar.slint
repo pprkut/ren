@@ -1,0 +1,122 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct TabRow {
+    title: string,
+    loading: bool,
+}
+
+component Tab inherits Rectangle {
+    in property <string> title;
+    in property <bool> selected;
+    in property <bool> closable;
+    callback select();
+    callback close();
+
+    min-width: 80px;
+    max-width: 220px;
+    horizontal-stretch: 1;
+    background: root.selected ? Palette.background : touch.has-hover ? Theme.hover : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.select();
+        }
+        pointer-event(event) => {
+            if root.closable && event.button == PointerEventButton.middle && event.kind == PointerEventKind.up {
+                root.close();
+            }
+        }
+    }
+
+    // Accent line on the selected tab.
+    Rectangle {
+        y: 0px;
+        height: 2px;
+        background: root.selected ? Palette.accent-background : transparent;
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 4px;
+        spacing: 4px;
+
+        Text {
+            text: root.title;
+            overflow: elide;
+            vertical-alignment: center;
+            color: Palette.foreground;
+        }
+
+        if root.closable: close-button := Rectangle {
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 9px;
+            background: close-touch.has-hover ? Theme.hover : transparent;
+
+            Text {
+                text: "×";
+                color: Palette.foreground;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            close-touch := TouchArea {
+                clicked => {
+                    root.close();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.separator;
+    }
+}
+
+// The article and the open web pages. Index -1 is the article.
+export component TabBar inherits Rectangle {
+    in property <[TabRow]> tabs;
+    in property <int> current: -1;
+    callback select(index: int);
+    callback close(index: int);
+
+    background: Palette.alternate-background;
+
+    HorizontalLayout {
+        alignment: start;
+
+        Tab {
+            title: "Article";
+            selected: root.current < 0;
+            closable: false;
+            select => {
+                root.select(-1);
+            }
+        }
+
+        for tab[index] in root.tabs: Tab {
+            title: (tab.loading ? "⟳ " : "") + (tab.title == "" ? "Loading…" : tab.title);
+            selected: root.current == index;
+            closable: true;
+            select => {
+                root.select(index);
+            }
+            close => {
+                root.close(index);
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.separator;
+    }
+}

@@ -310,6 +310,12 @@ impl DummyData {
         }
     }
 
+    /// The link to the item's web page, if it has one.
+    #[cfg_attr(not(feature = "servo"), allow(dead_code))]
+    pub fn url(&self, id: u32) -> Option<String> {
+        self.dump.as_ref()?.items.get(id as usize)?.url.clone()
+    }
+
     /// The article pane's content for an item.
     pub fn article(&self, id: u32) -> Article {
         let item = self.item(id);
