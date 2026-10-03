@@ -4,6 +4,7 @@
 mod cli;
 mod dummy;
 mod feed_tree;
+mod item_list;
 mod ui;
 
 use std::process::ExitCode;
