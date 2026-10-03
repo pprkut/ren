@@ -459,6 +459,6 @@ mod tests {
         assert!(inbox.frame_time.unwrap() >= Duration::from_micros(1500));
         assert_eq!(*wakes.lock().unwrap(), 2);
 
-        assert!(read_messages([b'X'].as_slice(), &Mutex::default(), &waker).is_err());
+        assert!(read_messages(b"X".as_slice(), &Mutex::default(), &waker).is_err());
     }
 }
