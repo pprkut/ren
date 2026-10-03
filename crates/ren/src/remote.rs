@@ -23,7 +23,7 @@ pub fn run(options: &Options) -> Result<(), String> {
         None => settings::default_path(|name| std::env::var(name).ok())
             .ok_or("cannot find the settings file: neither XDG_CONFIG_HOME nor HOME is set")?,
     };
-    let account = settings::load_account(&path)?;
+    let account = settings::load_account(&path, options.settings.is_some())?;
     let password = settings::password(&account, std::env::var(settings::PASSWORD_VAR).ok())?;
     let credentials = Credentials {
         user: account.user.clone(),
