@@ -20,6 +20,9 @@ slint::include_modules!();
 /// `docs/decisions/0001-ui-toolkit.md`.
 const DEFAULT_RENDERER: &str = "software";
 
+/// How long a message stays in the status bar.
+const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Scroll speed of `--autoscroll`, in logical pixels per second.
 const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
@@ -73,6 +76,8 @@ struct App {
     items: Rc<ItemListModel>,
     /// The item shown in the article pane.
     current_item: Cell<Option<u32>>,
+    /// Clears the status bar message after `STATUS_TIMEOUT`.
+    status_timer: slint::Timer,
 }
 
 impl App {
@@ -100,8 +105,153 @@ impl App {
                 })
                 .collect::<Vec<_>>(),
         );
-        self.window()
-            .set_current_feed(current.map_or(-1, |i| i as i32));
+        let window = self.window();
+        window.set_current_feed(current.map_or(-1, |i| i as i32));
+        let total = self.tree.borrow().rows().first().map_or(0, |r| r.unread);
+        window.set_unread_text(format!("{total} unread articles").into());
+    }
+
+    /// Shows a message in the status bar for a few seconds.
+    fn status(&self, text: impl Into<SharedString>) {
+        self.window().set_status_text(text.into());
+        let weak = self.window.clone();
+        self.status_timer
+            .start(slint::TimerMode::SingleShot, STATUS_TIMEOUT, move || {
+                if let Some(window) = weak.upgrade() {
+                    window.set_status_text(SharedString::new());
+                }
+            });
+    }
+
+    fn not_implemented(&self, action: &str) {
+        self.status(format!(
+            "Not implemented in the spike: {}",
+            action.replace('-', " ")
+        ));
+    }
+
+    /// Recounts the unread items of all feeds.
+    fn refresh_counts(&self) {
+        {
+            let data = self.data.borrow();
+            let mut tree = self.tree.borrow_mut();
+            for feed in data.feeds() {
+                tree.set_unread(feed.id, data.unread_count(feed.id));
+            }
+        }
+        self.refresh_tree();
+    }
+
+    /// Marks an item read or unread and updates its row and the counts.
+    fn set_read(&self, id: u32, read: bool) {
+        let changed = {
+            let mut data = self.data.borrow_mut();
+            if read {
+                data.mark_read(id)
+            } else {
+                data.mark_unread(id)
+            }
+        };
+        if !changed {
+            return;
+        }
+        if let Some(row) = self.list.borrow().row_of(id) {
+            self.items.notify.row_changed(row);
+        }
+        let feed_id = self.data.borrow().feed_of(id);
+        let unread = self.data.borrow().unread_count(feed_id);
+        self.tree.borrow_mut().set_unread(feed_id, unread);
+        self.refresh_tree();
+    }
+
+    /// Marks all items of a node read.
+    fn mark_node_read(&self, node: Node) {
+        let feeds = self.tree.borrow().feeds_of(node);
+        let count = {
+            let mut data = self.data.borrow_mut();
+            let ids = data.item_ids(feeds.as_deref());
+            ids.into_iter().filter(|&id| data.mark_read(id)).count()
+        };
+        self.items.notify.reset();
+        self.refresh_counts();
+        self.status(format!("Marked {count} articles as read"));
+    }
+
+    /// Selects the next unread item after the current one.
+    fn next_unread(&self) {
+        let start = usize::try_from(self.window().get_current_item()).map_or(0, |r| r + 1);
+        let next = {
+            let data = self.data.borrow();
+            let list = self.list.borrow();
+            list.ids()
+                .iter()
+                .skip(start)
+                .position(|&id| data.item(id).status != Status::Read)
+                .map(|offset| start + offset)
+        };
+        match next {
+            Some(row) => self.item_clicked(row),
+            None => self.status("No more unread articles"),
+        }
+    }
+
+    fn action(&self, name: &str) {
+        match name {
+            "quit" => {
+                let _ = slint::quit_event_loop();
+            }
+            "sort-title" => self.sort_by(Column::Title),
+            "sort-feed" => self.sort_by(Column::Feed),
+            "sort-author" => self.sort_by(Column::Author),
+            "sort-date" => self.sort_by(Column::Date),
+            "previous-article" => self.item_key("up", 1),
+            "next-article" => self.item_key("down", 1),
+            "next-unread" => self.next_unread(),
+            "mark-feed-read" => self.mark_node_read(self.selected_node.get()),
+            "mark-read" | "mark-unread" => {
+                if let Some(id) = self.current_item.get() {
+                    self.set_read(id, name == "mark-read");
+                }
+            }
+            "about" => self.status("ren: a native Nextcloud News reader (spike S1b)"),
+            _ => self.not_implemented(name),
+        }
+    }
+
+    fn feed_menu(&self, row: usize, action: &str) {
+        match (action, self.node(row)) {
+            ("mark-feed-read", Some(node)) => self.mark_node_read(node),
+            _ => self.not_implemented(action),
+        }
+    }
+
+    fn item_menu(&self, row: usize, action: &str) {
+        let Some(id) = self.list.borrow().id(row) else {
+            return;
+        };
+        match action {
+            "mark-read" | "mark-unread" => self.set_read(id, action == "mark-read"),
+            _ => self.not_implemented(action),
+        }
+    }
+
+    fn search_edited(&self, text: &str) {
+        {
+            let data = self.data.borrow();
+            self.list.borrow_mut().set_search(text, |id| data.item(id));
+        }
+        self.items.notify.reset();
+        self.keep_current_item();
+    }
+
+    /// Selects the current item's row again after the list changed, or
+    /// nothing if it is no longer shown.
+    fn keep_current_item(&self) {
+        let row = self
+            .current_item
+            .get()
+            .and_then(|id| self.list.borrow().row_of(id));
+        self.window().set_current_item(row.map_or(-1, |r| r as i32));
     }
 
     fn node(&self, row: usize) -> Option<Node> {
@@ -162,9 +312,12 @@ impl App {
     }
 
     fn sort_clicked(&self, column: usize) {
-        let Some(column) = Column::from_index(column) else {
-            return;
-        };
+        if let Some(column) = Column::from_index(column) {
+            self.sort_by(column);
+        }
+    }
+
+    fn sort_by(&self, column: Column) {
         {
             let data = self.data.borrow();
             self.list.borrow_mut().sort_by(column, |id| data.item(id));
@@ -175,11 +328,7 @@ impl App {
         window.set_sort_column(sort.column.index() as i32);
         window.set_sort_ascending(sort.ascending);
         // Keep the current item selected, wherever it moved.
-        let row = self
-            .current_item
-            .get()
-            .and_then(|id| self.list.borrow().row_of(id));
-        window.set_current_item(row.map_or(-1, |r| r as i32));
+        self.keep_current_item();
     }
 
     fn item_key(&self, key: &str, page: usize) {
@@ -369,6 +518,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         list,
         items,
         current_item: Cell::new(None),
+        status_timer: slint::Timer::default(),
     });
     app.refresh_tree();
 
@@ -407,6 +557,31 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     window.on_sort_clicked(move |column| {
         if let Some(app) = weak.upgrade() {
             app.sort_clicked(column as usize);
+        }
+    });
+
+    let weak = Rc::downgrade(&app);
+    window.on_action(move |name| {
+        if let Some(app) = weak.upgrade() {
+            app.action(&name);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_feed_menu(move |row, action| {
+        if let Some(app) = weak.upgrade() {
+            app.feed_menu(row as usize, &action);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_item_menu(move |row, action| {
+        if let Some(app) = weak.upgrade() {
+            app.item_menu(row as usize, &action);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_search_edited(move |text| {
+        if let Some(app) = weak.upgrade() {
+            app.search_edited(&text);
         }
     });
 

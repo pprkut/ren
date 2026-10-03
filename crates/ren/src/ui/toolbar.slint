@@ -1,0 +1,98 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// A flat tool bar button with an icon and a label, like KDE's tool bars.
+export component ToolButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    border-radius: Theme.selection-radius;
+    background: !root.enabled ? transparent : touch.pressed ? Theme.selection(true) : touch.has-hover ? Theme.hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: 6px;
+
+        if root.icon.width > 0: Image {
+            width: Theme.toolbar-icon-size;
+            height: Theme.toolbar-icon-size;
+            y: (parent.height - self.height) / 2;
+            source: root.icon;
+            colorize: Theme.monochrome-icons ? Palette.foreground : transparent;
+        }
+
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            color: Palette.foreground;
+        }
+    }
+}
+
+export component ToolBar inherits Rectangle {
+    background: Palette.background;
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 2px;
+        alignment: start;
+
+        @children
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.separator;
+    }
+}
+
+export component StatusBar inherits Rectangle {
+    in property <string> text;
+    in property <string> right-text;
+
+    height: 24px;
+    background: Palette.background;
+
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        background: Theme.separator;
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            overflow: elide;
+            vertical-alignment: center;
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: root.right-text;
+            vertical-alignment: center;
+            color: Palette.foreground;
+            opacity: 0.75;
+        }
+    }
+}

@@ -1,10 +1,24 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Palette, ScrollView } from "std-widgets.slint";
+import { LineEdit, Palette, ScrollView } from "std-widgets.slint";
 import { FeedTree, FeedRow } from "feed_tree.slint";
 import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
 import { Splitter } from "splitter.slint";
+import { StatusBar, ToolBar, ToolButton } from "toolbar.slint";
+import { Theme } from "theme.slint";
+
+// Icons for the tool bar and menus, set from Rust.
+export global Icons {
+    in property <image> add-feed;
+    in property <image> fetch-feed;
+    in property <image> fetch-all;
+    in property <image> cancel;
+    in property <image> mark-read;
+    in property <image> quit;
+    in property <image> find;
+    in property <image> configure;
+}
 
 export { FeedRow, ItemRow, ItemStatus }
 
@@ -38,6 +52,17 @@ export component MainWindow inherits Window {
     in property <int> sort-column: 3;
     in property <bool> sort-ascending: false;
 
+    in property <string> status-text;
+    in property <string> unread-text;
+    in-out property <bool> show-toolbar: true;
+
+    // A menu, tool bar or shortcut action, by name.
+    callback action(name: string);
+    // An action from the context menu of a feed tree row or an item.
+    callback feed-menu(row: int, action: string);
+    callback item-menu(row: int, action: string);
+    callback search-edited(text: string);
+
     callback feed-clicked(row: int);
     callback feed-toggled(row: int);
     callback feed-key(key: string);
@@ -49,6 +74,262 @@ export component MainWindow inherits Window {
     preferred-width: 1280px;
     preferred-height: 800px;
     background: Palette.background;
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem {
+                title: "Import Feeds…";
+                activated => {
+                    root.action("import");
+                }
+            }
+            MenuItem {
+                title: "Export Feeds…";
+                activated => {
+                    root.action("export");
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Quit";
+                icon: Icons.quit;
+                shortcut: @keys(Control + Q);
+                activated => {
+                    root.action("quit");
+                }
+            }
+        }
+
+        Menu {
+            title: "Edit";
+            MenuItem {
+                title: "Find Articles…";
+                icon: Icons.find;
+                shortcut: @keys(Control + F);
+                activated => {
+                    search.focus();
+                    search.select-all();
+                }
+            }
+        }
+
+        Menu {
+            title: "View";
+            beside-item := MenuItem {
+                title: "Article List Beside Article";
+                checkable: true;
+                checked: root.arrangement == Arrangement.beside;
+                activated => {
+                    root.arrangement = Arrangement.beside;
+                    beside-item.checked = true;
+                    above-item.checked = false;
+                }
+            }
+            above-item := MenuItem {
+                title: "Article List Above Article";
+                checkable: true;
+                checked: root.arrangement == Arrangement.above;
+                activated => {
+                    root.arrangement = Arrangement.above;
+                    beside-item.checked = false;
+                    above-item.checked = true;
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "Sort Articles By";
+                MenuItem {
+                    title: "Title";
+                    activated => {
+                        root.action("sort-title");
+                    }
+                }
+                MenuItem {
+                    title: "Feed";
+                    activated => {
+                        root.action("sort-feed");
+                    }
+                }
+                MenuItem {
+                    title: "Author";
+                    activated => {
+                        root.action("sort-author");
+                    }
+                }
+                MenuItem {
+                    title: "Date";
+                    activated => {
+                        root.action("sort-date");
+                    }
+                }
+            }
+        }
+
+        Menu {
+            title: "Go";
+            MenuItem {
+                title: "Previous Article";
+                shortcut: @keys(Control + Shift + UpArrow);
+                activated => {
+                    root.action("previous-article");
+                }
+            }
+            MenuItem {
+                title: "Next Article";
+                shortcut: @keys(Control + Shift + DownArrow);
+                activated => {
+                    root.action("next-article");
+                }
+            }
+            MenuItem {
+                title: "Next Unread Article";
+                shortcut: @keys(Control + Shift + N);
+                activated => {
+                    root.action("next-unread");
+                }
+            }
+        }
+
+        Menu {
+            title: "Feed";
+            MenuItem {
+                title: "Add Feed…";
+                icon: Icons.add-feed;
+                shortcut: @keys(Control + Shift + A);
+                activated => {
+                    root.action("add-feed");
+                }
+            }
+            MenuItem {
+                title: "Fetch Feed";
+                icon: Icons.fetch-feed;
+                shortcut: @keys(F5);
+                activated => {
+                    root.action("fetch-feed");
+                }
+            }
+            MenuItem {
+                title: "Fetch All Feeds";
+                icon: Icons.fetch-all;
+                shortcut: @keys(Control + L);
+                activated => {
+                    root.action("fetch-all");
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Mark Feed as Read";
+                icon: Icons.mark-read;
+                shortcut: @keys(Control + R);
+                activated => {
+                    root.action("mark-feed-read");
+                }
+            }
+        }
+
+        Menu {
+            title: "Article";
+            MenuItem {
+                title: "Open Link in Tab";
+                shortcut: @keys(Control + Return);
+                activated => {
+                    root.action("open-tab");
+                }
+            }
+            MenuItem {
+                title: "Open Link in External Browser";
+                activated => {
+                    root.action("open-browser");
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Mark as Read";
+                activated => {
+                    root.action("mark-read");
+                }
+            }
+            MenuItem {
+                title: "Mark as Unread";
+                shortcut: @keys(Control + U);
+                activated => {
+                    root.action("mark-unread");
+                }
+            }
+        }
+
+        Menu {
+            title: "Settings";
+            toolbar-item := MenuItem {
+                title: "Show Toolbar";
+                checkable: true;
+                checked: root.show-toolbar;
+                activated => {
+                    root.show-toolbar = toolbar-item.checked;
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Configure ren…";
+                icon: Icons.configure;
+                activated => {
+                    root.action("configure");
+                }
+            }
+        }
+
+        Menu {
+            title: "Help";
+            MenuItem {
+                title: "About ren";
+                activated => {
+                    root.action("about");
+                }
+            }
+        }
+    }
+
+    VerticalLayout {
+        if root.show-toolbar: ToolBar {
+            ToolButton {
+                icon: Icons.add-feed;
+                text: "Add Feed";
+                clicked => {
+                    root.action("add-feed");
+                }
+            }
+
+            ToolButton {
+                icon: Icons.fetch-feed;
+                text: "Fetch Feed";
+                clicked => {
+                    root.action("fetch-feed");
+                }
+            }
+
+            ToolButton {
+                icon: Icons.fetch-all;
+                text: "Fetch All Feeds";
+                clicked => {
+                    root.action("fetch-all");
+                }
+            }
+
+            ToolButton {
+                icon: Icons.cancel;
+                text: "Cancel Feed Fetches";
+                enabled: false;
+            }
+
+            ToolButton {
+                icon: Icons.mark-read;
+                text: "Mark Feed as Read";
+                clicked => {
+                    root.action("mark-feed-read");
+                }
+            }
+        }
 
     HorizontalLayout {
         FeedTree {
@@ -63,6 +344,9 @@ export component MainWindow inherits Window {
             }
             navigate(key) => {
                 root.feed-key(key);
+            }
+            menu(row, action) => {
+                root.feed-menu(row, action);
             }
         }
 
@@ -81,12 +365,39 @@ export component MainWindow inherits Window {
 
             property <bool> beside: root.arrangement == Arrangement.beside;
             property <length> bar: 5px;
+            property <length> search-height: 34px;
+
+            search-box := Rectangle {
+                x: 0px;
+                y: 0px;
+                width: item-list.width;
+                height: content.search-height;
+
+                search := LineEdit {
+                    x: 4px;
+                    y: 3px;
+                    width: parent.width - 8px;
+                    height: parent.height - 6px;
+                    placeholder-text: "Search articles…";
+                    edited(text) => {
+                        root.search-edited(text);
+                    }
+                    key-pressed(event) => {
+                        // Down moves on to the list.
+                        if event.text == Key.DownArrow || event.text == Key.Return {
+                            item-list.focus();
+                            return accept;
+                        }
+                        reject
+                    }
+                }
+            }
 
             item-list := ItemTable {
                 x: 0px;
-                y: 0px;
+                y: content.search-height;
                 width: content.beside ? root.list-width : content.width;
-                height: content.beside ? content.height : root.list-height;
+                height: (content.beside ? content.height : root.list-height) - content.search-height;
                 compact: content.beside;
                 rows: root.items;
                 current: root.current-item;
@@ -100,6 +411,9 @@ export component MainWindow inherits Window {
                 }
                 sort(column) => {
                     root.sort-clicked(column);
+                }
+                menu(row, action) => {
+                    root.item-menu(row, action);
                 }
             }
 
@@ -161,6 +475,12 @@ export component MainWindow inherits Window {
                     }
                 }
             }
+        }
+    }
+
+        StatusBar {
+            text: root.status-text;
+            right-text: root.unread-text;
         }
     }
 }

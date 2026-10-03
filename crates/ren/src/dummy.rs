@@ -297,6 +297,12 @@ impl DummyData {
     pub fn mark_read(&mut self, id: u32) -> bool {
         !std::mem::replace(&mut self.read[id as usize], true)
     }
+
+    /// Marks an item unread. Returns whether it was read before. An item
+    /// from the latest sync is new again.
+    pub fn mark_unread(&mut self, id: u32) -> bool {
+        std::mem::replace(&mut self.read[id as usize], false)
+    }
 }
 
 /// Formats unix seconds as `YYYY-MM-DD HH:MM` (UTC).
@@ -368,6 +374,10 @@ mod tests {
         assert!(!data.mark_read(id));
         assert_eq!(data.item(id).status, Status::Read);
         assert_eq!(data.unread_count(feed), before - 1);
+        assert!(data.mark_unread(id));
+        assert!(!data.mark_unread(id));
+        assert_ne!(data.item(id).status, Status::Read);
+        assert_eq!(data.unread_count(feed), before);
     }
 
     #[test]
