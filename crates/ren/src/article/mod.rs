@@ -1,9 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The article shown in the article pane.
+//! The article shown in the article pane, as an HTML document for the
+//! Blitz view or as plain text without it.
 
+#[cfg_attr(not(feature = "html-view"), allow(dead_code))]
+mod document;
+#[cfg(feature = "html-view")]
+pub mod html;
 pub mod text;
+
+#[cfg_attr(not(feature = "html-view"), allow(unused_imports))]
+pub use document::{Rgb, Style};
 
 /// An item body.
 #[derive(Debug, Clone, PartialEq, Eq)]

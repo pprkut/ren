@@ -525,7 +525,18 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     let feeds = Rc::new(VecModel::default());
     window.set_items(ModelRc::from(items.clone()));
     window.set_feeds(ModelRc::from(feeds.clone()));
-    let article = article::ArticlePane::new(&window);
+    let weak = window.as_weak();
+    let article = article::ArticlePane::new(
+        &window,
+        !options.plain_text,
+        !options.no_images,
+        options.measure,
+        move |url| {
+            if let Some(window) = weak.upgrade() {
+                window.set_status_text(format!("Link: {url}").into());
+            }
+        },
+    );
 
     let app = Rc::new(App {
         window: window.as_weak(),
