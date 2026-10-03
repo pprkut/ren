@@ -117,6 +117,9 @@ impl Pages {
             TabMode::InProcess => {
                 Box::new(crate::tabs::inprocess::InProcess::new(waker, size, dark)?)
             }
+            #[cfg(feature = "servo-wgpu")]
+            TabMode::Wgpu => Box::new(crate::tabs::wgpu::Wgpu::new(waker, size, dark)?),
+            #[cfg(not(feature = "servo-wgpu"))]
             TabMode::Wgpu => return Err("built without the servo-wgpu feature".to_owned()),
         };
         self.servo_used = true;

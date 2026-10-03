@@ -65,7 +65,16 @@ impl HeadlessContext {
         })
     }
 
-    fn framebuffer(&self) -> u32 {
+    /// The address of an OpenGL function of this context.
+    #[cfg_attr(not(feature = "servo-wgpu"), allow(dead_code))]
+    pub fn proc_address(&self, name: &str) -> *const std::ffi::c_void {
+        self.device
+            .borrow()
+            .get_proc_address(&self.context.borrow(), name)
+    }
+
+    /// The framebuffer Servo renders into.
+    pub fn framebuffer(&self) -> u32 {
         self.device
             .borrow()
             .context_surface_info(&self.context.borrow())

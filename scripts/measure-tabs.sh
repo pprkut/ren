@@ -6,8 +6,10 @@
 # and with three tabs, after closing them all, and (where Servo can be
 # started again) with one tab again and after closing it; frames while
 # scrolling and the time from a painted frame to the UI. Compares Servo in
-# a helper process with Servo in the UI process. Needs a graphical session
-# and network access; don't touch the window while it runs.
+# a helper process and in the UI process, with frames read back from the
+# GPU (software renderer), and in the UI process with frames shared as
+# Vulkan textures (femtovg-wgpu renderer). Needs a graphical session, a
+# Vulkan driver and network access; don't touch the window while it runs.
 #
 # Usage: scripts/measure-tabs.sh DUMP_DIR [URL...]
 #   DUMP_DIR: a `ren --dump-items` directory; the pages are the links of
@@ -23,7 +25,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,17p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,19p' >&2
     exit 1
 fi
 DUMP=$1
@@ -47,11 +49,14 @@ cargo build --release --locked
 cp target/release/ren "$OUT_DIR/ren"
 cargo build --release --locked --features servo
 cp target/release/ren "$OUT_DIR/ren-servo"
+cargo build --release --locked --features servo-wgpu
+cp target/release/ren "$OUT_DIR/ren-servo-wgpu"
 
 # name|binary|arguments
 variants=(
     "helper process, readback|ren-servo|--tabs helper"
     "in-process, readback|ren-servo|--tabs in-process"
+    "in-process, wgpu texture|ren-servo-wgpu|--tabs wgpu"
 )
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
@@ -102,7 +107,7 @@ summary=$OUT_DIR/summary.md
     else
         echo "- pages: the links of the first three items"
     fi
-    echo "- binary size: without servo $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB, with $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB"
+    echo "- binary size: without servo $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB, with $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB, with servo-wgpu $(mib $(($(stat -c %s "$OUT_DIR/ren-servo-wgpu") / 1024))) MiB"
     echo
     echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | scrolling frames in 3 s | frame to UI ms (mean / max) | Servo start / stop ms |"
     echo "|---|---|---|---|---|---|---|---|---|---|---|"
@@ -136,8 +141,11 @@ done
     echo "process's anonymous memory, which shows what stays behind after Servo is dropped."
     echo "Servo can't be started again in the UI process, so the in-process variant ends after"
     echo "closing all tabs. Frame to UI: reading a painted frame back from the GPU, plus the"
-    echo "transfer from the helper process. Servo start: until the first tab can be opened; for"
-    echo "the helper that is starting the process, Servo itself then starts in the helper."
+    echo "transfer from the helper process; for wgpu textures: the blit into the shared image."
+    echo "The wgpu variant renders the whole window with femtovg-wgpu, the others with the"
+    echo "software renderer, so \"before tabs\" differs. Servo start: until the first tab can"
+    echo "be opened; for the helper that is starting the process, Servo itself then starts in"
+    echo "the helper."
     echo
     echo "Logs: \`$OUT_DIR\`"
 } >>"$summary"

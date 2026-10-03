@@ -18,7 +18,8 @@ check:
 # Run the checks of CI's Servo job (a long build)
 check-servo:
     cargo clippy --all-targets --locked --features servo -- -D warnings
-    cargo test --locked --features servo
+    cargo clippy --all-targets --locked --features servo-wgpu -- -D warnings
+    cargo test --locked --features servo-wgpu
 
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:

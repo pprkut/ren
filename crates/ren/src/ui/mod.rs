@@ -436,6 +436,19 @@ fn select_backend(
     selector.select()
 }
 
+/// Slint's femtovg renderer on wgpu's Vulkan backend, whose textures Servo's
+/// frames can be shared as.
+#[cfg(feature = "servo-wgpu")]
+fn select_wgpu_backend() -> Result<(), slint::PlatformError> {
+    use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
+    let mut settings = WGPUSettings::default();
+    settings.backends = wgpu::Backends::VULKAN;
+    slint::BackendSelector::new()
+        .backend_name("winit".to_owned())
+        .require_wgpu_30(WGPUConfiguration::Automatic(settings))
+        .select()
+}
+
 fn log_elapsed(started: Instant, what: &str) {
     eprintln!(
         "ren: {what} after {:.1} ms",
@@ -556,9 +569,35 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
 }
 
 pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformError> {
-    select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
+    #[cfg(feature = "servo-wgpu")]
+    let wgpu_tabs = options.tabs == cli::TabMode::Wgpu;
+    #[cfg(not(feature = "servo-wgpu"))]
+    let wgpu_tabs = false;
+    if wgpu_tabs {
+        #[cfg(feature = "servo-wgpu")]
+        select_wgpu_backend()?;
+    } else {
+        select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
+    }
 
     let window = MainWindow::new()?;
+    #[cfg(feature = "servo-wgpu")]
+    if wgpu_tabs {
+        // Before report_startup, which can only set the notifier if this
+        // didn't.
+        window
+            .window()
+            .set_rendering_notifier(|state, api| {
+                if let (
+                    slint::RenderingState::RenderingSetup,
+                    slint::GraphicsAPI::WGPU30 { device, .. },
+                ) = (state, api)
+                {
+                    crate::tabs::wgpu::set_device(device.clone());
+                }
+            })
+            .map_err(|err| slint::PlatformError::Other(err.to_string()))?;
+    }
     let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
     if let Some(dark) = dark {
         window.set_forced_color_scheme(if dark {
