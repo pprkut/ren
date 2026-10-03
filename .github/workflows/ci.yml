@@ -36,7 +36,7 @@ jobs:
         with:
           command: check licenses
 
-  # Without the heavy engines (Blitz; later Servo), so it stays fast.
+  # Without the heavy engines (Blitz, Servo), so it stays fast.
   rust:
     name: Format, lint, test
     runs-on: ubuntu-latest
@@ -73,3 +73,29 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  # Servo's web page tabs, as `full`, but in a job of its own: Servo is
+  # big (SpiderMonkey, WebRender, about 430 more crates). Without debug
+  # info the target directory fits the runner's disk; the cache is only
+  # saved on master, so pull requests don't push out the other caches.
+  servo:
+    name: Lint and test with Servo
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfontconfig-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - run: cargo clippy --all-targets --locked --features servo -- -D warnings
+      - run: cargo test --locked --features servo

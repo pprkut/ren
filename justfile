@@ -15,6 +15,11 @@ check:
     cargo test --locked
     cargo deny check licenses
 
+# Run the checks of CI's Servo job (a long build)
+check-servo:
+    cargo clippy --all-targets --locked --features servo -- -D warnings
+    cargo test --locked --features servo
+
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
     scripts/measure.sh {{variants}}
