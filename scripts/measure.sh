@@ -2,13 +2,16 @@
 # SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Measures the ren window for each Slint renderer: startup time, memory and
-# CPU while idle, and CPU/frame rate while scrolling the item list. Needs a
+# Measures the ren window for each variant: startup time, memory and CPU
+# while idle, and CPU/frame rate while scrolling the item list. Needs a
 # graphical session (X11 or Wayland); don't touch the window while it runs.
 #
-# Usage: scripts/measure.sh [RENDERER...]
-#   RENDERER: software, femtovg, skia (default: all three), or a specific
-#   Skia variant: skia-opengl, skia-wgpu or skia-software
+# Usage: scripts/measure.sh [VARIANT...]
+#   VARIANT: a Slint renderer with the default style and the winit backend:
+#   software, femtovg, skia, or a specific Skia variant: skia-opengl,
+#   skia-wgpu or skia-software; or the native Qt style (needs the Qt 6
+#   development files): qt (Qt backend) or qt-software (winit backend with
+#   the software renderer). Default: software femtovg skia.
 #
 # Environment:
 #   STARTUP_RUNS  number of startup measurements per renderer (default 5)
@@ -34,12 +37,14 @@ if [[ ${#renderers[@]} -eq 0 ]]; then
 fi
 
 features=renderer-software,renderer-femtovg
+need_qt=false
 for r in "${renderers[@]}"; do
     case $r in
         software | femtovg) ;;
         skia*) features+=,renderer-skia ;;
+        qt | qt-software) need_qt=true ;;
         *)
-            echo "unknown renderer: $r" >&2
+            echo "unknown variant: $r" >&2
             exit 1
             ;;
     esac
@@ -50,9 +55,27 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
     exit 1
 fi
 
-cargo build --release --locked --features "$features"
-bin=target/release/ren
 mkdir -p "$OUT_DIR"
+# Each variant's binary is copied, as the builds overwrite each other.
+cargo build --release --locked --features "$features"
+cp target/release/ren "$OUT_DIR/ren"
+if $need_qt; then
+    # qttypes looks for qmake; distributions often only ship qmake6.
+    if ! command -v qmake >/dev/null && command -v qmake6 >/dev/null; then
+        export QMAKE=${QMAKE:-$(command -v qmake6)}
+    fi
+    cargo build --release --locked --features renderer-software,style-qt
+    cp target/release/ren "$OUT_DIR/ren-qt"
+fi
+
+# Binary and arguments of a variant.
+variant() {
+    case $1 in
+        qt) echo "$OUT_DIR/ren-qt --backend qt" ;;
+        qt-software) echo "$OUT_DIR/ren-qt --backend winit --renderer software" ;;
+        *) echo "$OUT_DIR/ren --renderer $1" ;;
+    esac
+}
 clk_tck=$(getconf CLK_TCK)
 
 log() { echo "$*" >&2; }
@@ -144,7 +167,7 @@ median() {
 
 summary=$OUT_DIR/summary.md
 {
-    echo "## ren S1 measurements, $(date -u +'%Y-%m-%d %H:%M UTC')"
+    echo "## ren measurements, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
     echo "- ren: $(git describe --always --dirty), $ITEMS items"
     echo "- slint: $(awk '/^name = "slint"$/ { getline; print $3 }' Cargo.lock | tr -d '"')"
@@ -156,17 +179,18 @@ summary=$OUT_DIR/summary.md
     fi
     echo "- idle: ${IDLE_SECS} s after ${SETTLE_SECS} s settling; startup: median of ${STARTUP_RUNS} runs"
     echo
-    echo "| renderer | startup ms (window / first frame) | idle RSS MiB | idle PSS MiB | anon / file / shmem MiB | threads | idle CPU % | peak RSS MiB | scroll CPU % | scroll fps (median / min) | RSS after scroll MiB |"
+    echo "| variant | startup ms (window / first frame) | idle RSS MiB | idle PSS MiB | anon / file / shmem MiB | threads | idle CPU % | peak RSS MiB | scroll CPU % | scroll fps (median / min) | RSS after scroll MiB |"
     echo "|---|---|---|---|---|---|---|---|---|---|---|"
 } >"$summary"
 
 backends=()
 for r in "${renderers[@]}"; do
+    read -r -a run <<<"$(variant "$r")"
     log "== $r: startup"
     created=() first=() first_note=""
     for ((i = 1; i <= STARTUP_RUNS; i++)); do
         slog=$OUT_DIR/$r-startup-$i.log
-        "$bin" --renderer "$r" --items "$ITEMS" --measure 2>"$slog" &
+        "${run[@]}" --items "$ITEMS" --measure 2>"$slog" &
         pid=$!
         wait_for_line "$slog" "event loop running" || log "no startup line in $slog"
         # Not every renderer reports frames; give it some time.
@@ -179,7 +203,7 @@ for r in "${renderers[@]}"; do
 
     log "== $r: idle"
     ilog=$OUT_DIR/$r-idle.log
-    "$bin" --renderer "$r" --items "$ITEMS" 2>"$ilog" &
+    "${run[@]}" --items "$ITEMS" 2>"$ilog" &
     pid=$!
     sleep "$SETTLE_SECS"
     read -r idle_cpu rss anon file shmem pss threads < <(sample "$pid" "$OUT_DIR/$r-idle.csv" 1 "$IDLE_SECS")
@@ -189,7 +213,7 @@ for r in "${renderers[@]}"; do
     log "== $r: scroll"
     clog=$OUT_DIR/$r-scroll.log
     SLINT_DEBUG_PERFORMANCE=refresh_lazy,console \
-        "$bin" --renderer "$r" --items "$ITEMS" --autoscroll 2>"$clog" &
+        "${run[@]}" --items "$ITEMS" --autoscroll 2>"$clog" &
     pid=$!
     wait_for_line "$clog" "autoscroll started" || log "autoscroll did not start, see $clog"
     read -r scroll_cpu scroll_rss _ < <(sample "$pid" "$OUT_DIR/$r-scroll.csv" 0.5 0)
@@ -202,7 +226,7 @@ for r in "${renderers[@]}"; do
     fps_median=$(median "${fps[@]}")
     fps_min=$(median "$(printf '%s\n' "${fps[@]}" | sort -n | head -1)")
 
-    backends+=("$r: $(sed -n 's/^Slint: Build config: [a-z]*; Backend: //p' "$clog" | head -1)")
+    backends+=("$r: $(sed -n 's/^Slint: Build config: [a-z]*; Backend: //p' "$clog" | head -1 | grep . || echo "${run[*]:1}")")
 
     printf '| %s | %s / %s%s | %s | %s | %s / %s / %s | %s | %s | %s | %s | %s / %s | %s |\n' \
         "$r" "$(median "${created[@]}")" "$(median "${first[@]}")" "$first_note" \
