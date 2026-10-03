@@ -16,3 +16,7 @@ check:
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
     scripts/measure.sh {{variants}}
+
+# Measure fetching all unread items per batch size (needs the real server)
+measure-fetch *batch_sizes:
+    scripts/measure-fetch.sh {{batch_sizes}}
