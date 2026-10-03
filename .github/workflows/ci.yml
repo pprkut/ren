@@ -3,9 +3,9 @@
 
 name: CI
 
+# Every pushed branch, so work on feature branches is checked before review.
 on:
   push:
-    branches: [master]
   pull_request:
 
 permissions:
