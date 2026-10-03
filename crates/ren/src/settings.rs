@@ -14,8 +14,7 @@ use serde::Deserialize;
 /// `password-command`.
 pub const PASSWORD_VAR: &str = "REN_APP_PASSWORD";
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Account {
     /// The Nextcloud URL, e.g. `https://cloud.example.org`.
     pub server: String,
@@ -24,9 +23,19 @@ pub struct Account {
     pub password_command: Option<String>,
 }
 
-#[derive(Deserialize)]
+/// `[account]` as written in the file; every key may be missing.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct AccountTable {
+    server: Option<String>,
+    user: Option<String>,
+    password_command: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
 struct SettingsFile {
-    account: Option<Account>,
+    #[serde(default)]
+    account: AccountTable,
 }
 
 /// `$XDG_CONFIG_HOME/ren/settings.toml`, falling back to `~/.config`.
@@ -42,14 +51,47 @@ pub fn default_path(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// Reads the `[account]` table from the text of a settings file.
 pub fn parse_account(text: &str) -> Result<Account, String> {
     let file: SettingsFile = toml::from_str(text).map_err(|err| err.to_string())?;
-    let account = file.account.ok_or("no [account] table")?;
-    check_server(&account.server)?;
-    Ok(account)
+    account(file.account)
 }
 
-pub fn load_account(path: &Path) -> Result<Account, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|err| format!("cannot read {}: {err}", path.display()))?;
+/// Checks that the account has everything needed to connect.
+fn account(table: AccountTable) -> Result<Account, String> {
+    let (server, user) = match (table.server, table.user) {
+        (Some(server), Some(user)) => (server, user),
+        (server, user) => {
+            let missing: Vec<_> = [("server", server.is_none()), ("user", user.is_none())]
+                .into_iter()
+                .filter_map(|(key, missing)| missing.then_some(key))
+                .collect();
+            return Err(format!(
+                "{} not set in [account], e.g.\n\n{ACCOUNT_EXAMPLE}",
+                missing.join(" and ")
+            ));
+        }
+    };
+    check_server(&server)?;
+    Ok(Account {
+        server,
+        user,
+        password_command: table.password_command,
+    })
+}
+
+const ACCOUNT_EXAMPLE: &str = "\
+[account]
+server = \"https://cloud.example.org\"
+user = \"name\"
+password-command = \"pass show nextcloud/ren\"  # or set REN_APP_PASSWORD";
+
+/// Reads the account from a settings file. A missing file counts as empty
+/// unless it was named explicitly (`--settings`), so the error says which
+/// values are missing rather than that the file is.
+pub fn load_account(path: &Path, explicit: bool) -> Result<Account, String> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound && !explicit => String::new(),
+        Err(err) => return Err(format!("cannot read {}: {err}", path.display())),
+    };
     parse_account(&text).map_err(|err| format!("{}: {err}", path.display()))
 }
 
@@ -131,11 +173,25 @@ mod tests {
 
     #[test]
     fn parse_errors() {
-        assert!(parse_account("").unwrap_err().contains("[account]"));
-        assert!(parse_account("[account]\nserver = \"https://x\"").is_err());
+        let err = parse_account("").unwrap_err();
+        assert!(
+            err.starts_with("server and user not set in [account]"),
+            "{err}"
+        );
+        let err = parse_account("[account]\nserver = \"https://x\"").unwrap_err();
+        assert!(err.starts_with("user not set"), "{err}");
         assert!(parse_account("[account").is_err());
         let http = "[account]\nserver = \"http://cloud.example.org\"\nuser = \"u\"";
         assert!(parse_account(http).unwrap_err().contains("https"));
+    }
+
+    #[test]
+    fn missing_file() {
+        let path = Path::new("/nonexistent/ren/settings.toml");
+        let err = load_account(path, false).unwrap_err();
+        assert!(err.contains("server and user not set"), "{err}");
+        let err = load_account(path, true).unwrap_err();
+        assert!(err.starts_with("cannot read"), "{err}");
     }
 
     #[test]
