@@ -13,6 +13,6 @@ check:
     cargo test --locked
     cargo deny check licenses
 
-# Measure startup, memory, idle and scrolling CPU per Slint renderer (needs a display)
-measure *renderers:
-    scripts/measure.sh {{renderers}}
+# Measure startup, memory, idle and scrolling CPU per variant (needs a display)
+measure *variants:
+    scripts/measure.sh {{variants}}
