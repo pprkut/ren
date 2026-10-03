@@ -15,6 +15,7 @@ use crate::dummy::{DummyData, Status, format_date};
 use crate::feed_tree::{self, FeedTree, Node};
 use crate::item_list::{self, Column, ItemList};
 
+mod article;
 mod icons;
 
 slint::include_modules!();
@@ -79,6 +80,7 @@ struct App {
     items: Rc<ItemListModel>,
     /// The item shown in the article pane.
     current_item: Cell<Option<u32>>,
+    article: Rc<RefCell<article::ArticlePane>>,
     /// Clears the status bar message after `STATUS_TIMEOUT`.
     status_timer: slint::Timer,
 }
@@ -311,7 +313,7 @@ impl App {
         let window = self.window();
         window.set_item_list_content_y(0.0);
         window.set_current_item(-1);
-        show_placeholder(&window);
+        self.article.borrow_mut().clear();
     }
 
     fn sort_clicked(&self, column: usize) {
@@ -359,22 +361,12 @@ impl App {
         window.set_current_item(row as i32);
         self.current_item.set(Some(id));
 
-        let (item, body, newly_read) = {
+        let (item, article, newly_read) = {
             let mut data = self.data.borrow_mut();
             let newly_read = data.mark_read(id);
-            (data.item(id), data.body(id), newly_read)
+            (data.item(id), data.article(id), newly_read)
         };
-        window.set_article_title(item.title.into());
-        window.set_article_meta(
-            format!(
-                "{} · {}",
-                self.items.feed_titles[item.feed_id as usize],
-                format_date(item.pub_date)
-            )
-            .into(),
-        );
-        window.set_article_body(body.into());
-        window.set_article_content_y(0.0);
+        self.article.borrow_mut().show(article);
 
         if newly_read {
             self.items.notify.row_changed(row);
@@ -383,12 +375,6 @@ impl App {
             self.refresh_tree();
         }
     }
-}
-
-fn show_placeholder(window: &MainWindow) {
-    window.set_article_title("No article selected".into());
-    window.set_article_meta(SharedString::new());
-    window.set_article_body(SharedString::new());
 }
 
 /// The backend when none is given: Qt draws the Qt style's native widgets.
@@ -504,7 +490,13 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         report_startup(&window, started);
     }
 
-    let data = Rc::new(RefCell::new(DummyData::new(options.items)));
+    let data = match &options.dump {
+        Some(dir) => DummyData::from_dump(
+            crate::dump::Dump::load(dir, options.items).map_err(slint::PlatformError::Other)?,
+        ),
+        None => DummyData::new(options.items),
+    };
+    let data = Rc::new(RefCell::new(data));
     let list = Rc::new(RefCell::new(ItemList::default()));
     let (tree, feed_titles) = {
         let data = data.borrow();
@@ -533,7 +525,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     let feeds = Rc::new(VecModel::default());
     window.set_items(ModelRc::from(items.clone()));
     window.set_feeds(ModelRc::from(feeds.clone()));
-    show_placeholder(&window);
+    let article = article::ArticlePane::new(&window);
 
     let app = Rc::new(App {
         window: window.as_weak(),
@@ -545,6 +537,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         list,
         items,
         current_item: Cell::new(None),
+        article,
         status_timer: slint::Timer::default(),
     });
     app.refresh_tree();

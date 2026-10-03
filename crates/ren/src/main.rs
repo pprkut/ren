@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod article;
 mod cli;
 mod dummy;
+mod dump;
 mod feed_tree;
 mod item_list;
 mod procstat;
