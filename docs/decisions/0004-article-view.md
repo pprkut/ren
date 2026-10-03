@@ -163,13 +163,24 @@ below): 100 articles opened 300 ms apart, RSS in MiB.
 
 Binary size: 20.1 MiB without `html-view`, 31.0 MiB with it.
 
+Again at 649cdba, after the fixes below (the image cache cleared on every
+article switch and capped at 16 MiB):
+
+| variant | RSS before | after 1st | after last | peak | anon / file after last | first frame ms (median / p90 / max) | parse ms | style+layout ms | paint ms |
+|---|---|---|---|---|---|---|---|---|---|
+| build without html-view | 42.1 | 42.8 | 45.9 | 49.5 | 8.3 / 21.9 | - | - | - | - |
+| plain text | 44.3 | 45.1 | 48.0 | 51.7 | 8.9 / 23.6 | - | - | - | - |
+| Blitz, no images | 44.8 | 61.4 | 81.1 | 81.1 | 36.1 / 29.5 | 3.7 / 7.7 / 28.8 | 0.7 / 0.8 / 13.5 | 1.4 / 2.8 / 8.9 | 1.6 / 4.6 / 8.3 |
+| Blitz, with images | 44.9 | 61.3 | 108.4 | 122.9 | 61.2 / 31.6 | 4.0 / 7.9 / 16.4 | 0.7 / 0.8 / 2.7 | 1.5 / 2.7 / 7.4 | 1.8 / 4.6 / 8.3 |
+
 ### Manual check
 
 Selecting text and copying it with Ctrl+C, links, the cursor, images,
 keyboard and wheel scrolling work on real articles. Two problems, both
-fixed afterwards (see below): the right-click menu didn't open, and with
-a high-resolution wheel (Logitech MX Master 4) scrolling felt choppy; a
-fast flick didn't scroll at first and then jumped.
+fixed afterwards (see below) and confirmed fixed: the right-click menu
+didn't open, and with a high-resolution wheel (Logitech MX Master 4)
+scrolling felt choppy; a fast flick didn't scroll at first and then
+jumped.
 
 ### Reading the numbers
 
@@ -181,10 +192,15 @@ fast flick didn't scroll at first and then jumped.
   above plain text without images (27 MiB of it heap, levelling off, as
   seen with synthetic articles) and 62 MiB above with images, with a peak
   of 124 MiB. That is above the goal of staying well below 100 MiB while
-  reading. Images account for about half: Blitz keeps them decoded at
-  full resolution (a 4000×3000 photo is 46 MiB as RGBA), and vello_cpu
-  kept converted copies of the images of earlier articles in a cache of up
-  to 64 MiB that it only prunes while painting.
+  reading. Images account for about half. vello_cpu's image cache (up to
+  64 MiB, pruned only while painting) looked like the cause, but clearing
+  and capping it changed little (108.4 instead of 109.8 MiB after 100
+  articles, peak 122.9 instead of 124.0). What remains is not explained
+  yet. Likely: Blitz decodes images at full resolution (a 4000×3000 photo
+  is 46 MiB as RGBA), and glibc's malloc keeps freed memory of that size
+  in the heap instead of returning it (its mmap threshold grows after
+  large frees), so RSS stays at the high-water mark of the largest images
+  seen.
 - **CSS coverage is good for what feeds use.** The common elements,
   inline styles, floats with `clear`, tables and figures render; real
   articles looked right. What doesn't fit the view: `<video>`/`<audio>`
@@ -203,7 +219,7 @@ fast flick didn't scroll at first and then jumped.
   still applied at once, but the frame is rendered after the queued
   events, once per event-loop pass.
 - Images: vello_cpu's image cache is cleared when another article is shown
-  and capped at 16 MiB.
+  and capped at 16 MiB. It saved only about 1 MiB (see the second table).
 
 ## Decision
 
@@ -226,11 +242,15 @@ For M6:
 - **Images at display size:** decode (or downscale after decoding) to at
   most the pane width × scale factor, instead of keeping full-resolution
   RGBA; together with the on-disk image cache from the plan.
-- **Find the heap growth without images** (27 MiB after 100 articles,
-  levelling off) with a heap profiler: Stylo, Parley and vello_cpu caches
-  are the suspects; trim or cap what can be.
-- **Re-measure** with `just measure-articles` after the image-cache fix of
-  this spike and after the above.
+- **Find where the memory goes**, with a heap profiler (e.g. heaptrack):
+  the heap growth without images (27 MiB after 100 articles, levelling off;
+  Stylo, Parley and vello_cpu caches are the suspects) and the 28 MiB more
+  with images. First check how much is freed memory glibc keeps: run
+  `just measure-articles` with
+  `GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072` (large blocks always
+  from mmap, returned when freed), and try `malloc_trim` after an article
+  switch.
+- **Re-measure** with `just measure-articles` after each of these.
 - **Dark mode:** neutralise author colours (`color`, `background-color`,
   `bgcolor`) in dark mode, or invert only where contrast is too low.
 - **Scroll position:** Blitz draws no scrollbar for the viewport; add an
