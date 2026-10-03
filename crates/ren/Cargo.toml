@@ -42,6 +42,9 @@ servo = [
     "dep:surfman",
     "dep:url",
 ]
+# Servo's frames shared with Slint as GPU textures instead of read back:
+# Slint's femtovg-wgpu renderer on Vulkan (spike S4).
+servo-wgpu = ["servo", "dep:ash", "slint/unstable-wgpu-30", "slint/renderer-femtovg-wgpu"]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
@@ -72,6 +75,7 @@ nextcloud-news = { path = "../nextcloud-news" }
 # 0.5: the last release on the stylo version Blitz 0.3.0-beta.2 uses.
 servo = { version = "=0.5.0", optional = true }
 # Types in Servo's RenderingContext API, at the versions it uses.
+ash = { version = "0.38", optional = true }
 dpi = { version = "0.1", optional = true }
 euclid = { version = "0.22", optional = true }
 gleam = { version = "0.15", optional = true }

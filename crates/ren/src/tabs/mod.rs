@@ -18,6 +18,8 @@ mod browser;
 mod headless;
 pub mod helper;
 pub mod inprocess;
+#[cfg(feature = "servo-wgpu")]
+pub mod wgpu;
 
 /// Identifies a tab for the lifetime of its engine.
 pub type TabId = u32;

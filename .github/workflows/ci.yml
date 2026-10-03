@@ -98,4 +98,5 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/master' }}
       - run: cargo clippy --all-targets --locked --features servo -- -D warnings
-      - run: cargo test --locked --features servo
+      - run: cargo clippy --all-targets --locked --features servo-wgpu -- -D warnings
+      - run: cargo test --locked --features servo-wgpu
