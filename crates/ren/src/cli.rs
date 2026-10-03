@@ -15,7 +15,7 @@ Server commands (instead of opening the window):
                        print time, size and peak memory
   --dump-items <DIR>   Store the raw responses (folders, feeds, unread and
                        starred items) in DIR, outside the repository
-  --batch-size <N>     Items per request, or \"all\" (default: 200)
+  --batch-size <N>     Items per request, or \"all\" (default: 1000)
   --settings <FILE>    Settings file (default:
                        $XDG_CONFIG_HOME/ren/settings.toml)
   The app password comes from $REN_APP_PASSWORD or from password-command
@@ -61,7 +61,9 @@ pub enum Mode {
 }
 
 /// Items per request of the server commands.
-pub const DEFAULT_BATCH_SIZE: u32 = 200;
+/// Items per request of the server commands, see
+/// `docs/decisions/0003-nextcloud-client.md`.
+pub const DEFAULT_BATCH_SIZE: u32 = 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
