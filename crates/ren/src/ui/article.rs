@@ -49,6 +49,8 @@ struct HtmlPane {
     measure: bool,
     /// Parse time and start of the article not rendered yet.
     pending_timing: Option<(Duration, Instant)>,
+    /// A render is scheduled for after the pending input events.
+    render_scheduled: bool,
 }
 
 impl ArticlePane {
@@ -153,6 +155,7 @@ impl ArticlePane {
             cursor: Cursor::Default,
             measure,
             pending_timing: None,
+            render_scheduled: false,
         }
     }
 
@@ -179,12 +182,32 @@ impl ArticlePane {
         self.render();
     }
 
+    /// Renders after the input events already queued are handled, so a
+    /// burst of events (a high-resolution wheel, fast pointer moves) costs
+    /// one frame, not one per event.
+    fn schedule_render(&mut self) {
+        let Some(html) = &mut self.html else {
+            return;
+        };
+        if html.render_scheduled {
+            return;
+        }
+        html.render_scheduled = true;
+        let weak = self.window.clone();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(window) = weak.upgrade() {
+                window.invoke_article_render();
+            }
+        });
+    }
+
     /// Renders the HTML view if anything changed.
     fn render(&mut self) {
         let window = self.window();
         let Some(html) = &mut self.html else {
             return;
         };
+        html.render_scheduled = false;
         let scale = window.window().scale_factor();
         let width = (window.get_article_width() * scale).round().max(1.0) as u32;
         let height = (window.get_article_height() * scale).round().max(1.0) as u32;
@@ -246,7 +269,7 @@ impl ArticlePane {
             _ => PointerKind::Move,
         };
         html.view.pointer(kind, x, y, decode_mods(mods));
-        self.render();
+        self.schedule_render();
     }
 
     fn scroll(&mut self, dx: f32, dy: f32, mods: i32) {
@@ -254,7 +277,7 @@ impl ArticlePane {
             return;
         };
         html.view.wheel(dx, dy, decode_mods(mods));
-        self.render();
+        self.schedule_render();
     }
 
     fn key(&mut self, text: &str, mods: i32) -> bool {
@@ -262,7 +285,7 @@ impl ArticlePane {
             return false;
         };
         let handled = html.view.key(text, decode_mods(mods));
-        self.render();
+        self.schedule_render();
         handled
     }
 
