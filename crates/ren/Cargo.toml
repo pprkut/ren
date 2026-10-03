@@ -22,7 +22,7 @@ html-view = [
     "dep:blitz-html",
     "dep:blitz-paint",
     "dep:blitz-traits",
-        "dep:cursor-icon",
+    "dep:cursor-icon",
     "dep:keyboard-types",
     "dep:parley",
     "dep:percent-encoding",
