@@ -30,6 +30,18 @@ html-view = [
     "dep:ureq",
     "dep:url",
 ]
+# Full web pages in tabs, rendered by Servo (spike S4). Servo is only
+# instantiated when the first tab opens.
+servo = [
+    "dep:dpi",
+    "dep:euclid",
+    "dep:gleam",
+    "dep:glow",
+    "dep:rustls",
+    "dep:servo",
+    "dep:surfman",
+    "dep:url",
+]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
@@ -57,6 +69,14 @@ percent-encoding = { version = "2", optional = true }
 url = { version = "2.5", optional = true }
 freedesktop-icons = "0.4"
 nextcloud-news = { path = "../nextcloud-news" }
+# 0.5: the last release on the stylo version Blitz 0.3.0-beta.2 uses.
+servo = { version = "=0.5.0", optional = true }
+# Types in Servo's RenderingContext API, at the versions it uses.
+dpi = { version = "0.1", optional = true }
+euclid = { version = "0.22", optional = true }
+gleam = { version = "0.15", optional = true }
+glow = { version = "0.17", optional = true }
+surfman = { version = "0.13", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
