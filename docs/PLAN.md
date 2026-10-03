@@ -404,7 +404,10 @@ From here on every milestone ships with tests for what it adds.
   queries, upserts, paged queries, purge, and a "new" marker for items
   that arrived in the latest sync (cleared when the next sync starts), for
   the item list colours. A feed `folderId` of 0 (older News versions)
-  is stored as no folder. Tests on an in-memory database.
+  is stored as no folder. Single-line fields (folder names, feed titles,
+  item titles and authors) are stored with whitespace collapsed: real
+  feeds put line breaks into authors and spaces around titles (S3).
+  Tests on an in-memory database.
 - **M3 — Sync engine.** `ren-sync`: initial and incremental sync and the
   pending-change queue as described above. Items from the streaming
   decode are written in chunks (one transaction per chunk), so neither a
@@ -435,7 +438,16 @@ From here on every milestone ships with tests for what it adds.
   many articles found and capped, reading with images under the memory
   goal (re-measured with `just measure-articles`), author colours in dark
   mode, a scroll position indicator, media elements as poster or link, and
-  a setting to load remote images only on request.
+  a setting to load remote images only on request. From the S3 review:
+  - A pixel limit for images, checked from the image header before
+    decoding (refuse or downscale above it): the 20 MiB download limit
+    doesn't stop a small file that decodes to gigabytes. Find out which
+    limits Blitz passes to the `image` crate.
+  - Link clicks open only `http`, `https` and `mailto` URLs; anything
+    else (`javascript:`, `file:`, …) is ignored.
+  - A selection colour derived from the accent, readable in dark mode
+    (`::selection`, if Blitz supports it).
+  - Free the two frame buffers while no article is shown.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting.
@@ -470,7 +482,10 @@ From here on every milestone ships with tests for what it adds.
   `cargo clippy -D warnings` and `cargo test` on every push and pull request.
   Keep it green. Default CI builds must stay fast: once Blitz and Servo
   arrive (S3/S4), the default job builds without the `html-view`/`servo`
-  features and full builds get a separate, less frequent job. If
+  features and full builds get a separate, less frequent job, which runs
+  for pull requests. So that it also checks work on feature branches,
+  each milestone is developed on a branch with a draft pull request,
+  opened with the first push and marked ready when the milestone is done. If
   `-D warnings` gets in the way of rough spike code, it may be relaxed for
   phase 1 only.
 - Task automation, when needed, uses [`just`](https://just.systems/) with a
