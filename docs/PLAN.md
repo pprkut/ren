@@ -123,7 +123,8 @@ Reference: `docs/development/api/api-v1-3.md` in `nextcloud/news`.
 - `GET /folders`, `GET /feeds` (`feeds`, `starredCount`, `newestItemId`)
 - `GET /items?type=&id=&getRead=&batchSize=&offset=&oldestFirst=`
   - type: 0 feed, 1 folder, 2 starred, 3 all; `offset` = item id, returns
-    items with lower ids (paging).
+    items with lower ids (paging; exclusive in practice, although the
+    documentation says "lower than equal").
 - `GET /items/updated?lastModified=<unix seconds>&type=3&id=0` — items with
   `lastModified >=` the given value, including read/star state changes.
   No paging on this endpoint, so the response size limit must be generous.
@@ -138,9 +139,10 @@ Reference: `docs/development/api/api-v1-3.md` in `nextcloud/news`.
 
 Initial sync:
 1. `GET /folders`, `GET /feeds`.
-2. Page unread items (`type=3, getRead=false, batchSize=200, offset=<lowest id>`)
+2. Page unread items (`type=3, getRead=false, batchSize=1000, offset=<lowest id>`)
    until a page comes back short; then starred items the same way.
-   Each page is written in one transaction.
+   Each page is written in one transaction. Never `batchSize=-1`: the
+   server fails on large accounts (S2).
 3. Store `max(lastModified)` as the sync cursor.
 
 Incremental sync:
@@ -149,6 +151,8 @@ Incremental sync:
 2. `GET /folders`, `GET /feeds` — upsert, delete what disappeared.
 3. `GET /items/updated?lastModified=<cursor>` — upsert, but do not overwrite
    read/starred state for items that still have a pending local change.
+   This endpoint is not paged; if it fails or the cursor is very old, fall
+   back to a paged resync of unread and starred items.
 4. Advance the cursor to the max `lastModified` seen. Re-fetching items
    from the same second is harmless because upserts are idempotent.
 5. Purge locally: read, unstarred items older than N days.
@@ -339,8 +343,9 @@ this is a single command.
   *Decides:* whether Slint stays (or what to pivot to), which custom widgets
   (tree, table, splitter) we maintain ourselves, and whether the Qt style
   becomes an option (or the default on KDE).
-- **S2 — Talk to Nextcloud.** Minimal `nextcloud-news` types and client
-  (version, folders, feeds, paged items, updated items). `ren --check`
+- **S2 — Talk to Nextcloud.** *(done: ureq + serde, batch size 1000; see
+  `docs/decisions/0003-nextcloud-client.md`)* Minimal `nextcloud-news`
+  types and client (version, folders, feeds, paged items, updated items). `ren --check`
   prints server version, folder/feed/unread counts; `ren --dump-items <dir>`
   stores raw responses outside the repo for later spikes and fixtures.
   Server and user come from `[account]` in the settings file (parsed
