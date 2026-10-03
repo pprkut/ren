@@ -35,8 +35,8 @@ with a spike; if one fails, we pivot and record why in `docs/decisions/`.
 | HTTP           | **ureq 3** (blocking, rustls)        | No async runtime needed for a single background sync thread; small dependency tree. |
 | JSON           | serde / serde_json                   | Streaming deserialisation from the response reader. |
 | Storage        | **SQLite** via rusqlite (`bundled`)  | Paged queries for the list views, so only visible rows are ever in memory. |
-| Credentials    | Secret Service via `keyring` crate    | No plaintext passwords in the config file. Nextcloud app passwords (login flow v2) preferred over the account password. |
-| Config         | TOML in `$XDG_CONFIG_HOME/ren/`       | |
+| Credentials    | Secret Service via `keyring` crate    | No passwords in files. A Nextcloud app password from Login Flow v2, never the account password. See "Settings, state and credentials". |
+| Settings       | TOML in `$XDG_CONFIG_HOME/ren/`, edited in place with `toml_edit` | Hand-editable file as the source of truth, plus a Zed-style settings dialog on top of it. |
 
 Alternatives considered:
 
@@ -160,6 +160,67 @@ Resource rules for the sync thread:
   displayed (and cache a short plain-text excerpt only if the list needs it).
 - Timer-based (default 15 min) plus manual refresh; skip if one is running.
 
+### Settings, state and credentials
+
+Three kinds of data, kept apart:
+
+- **Settings**: `$XDG_CONFIG_HOME/ren/settings.toml`, curated by the user,
+  by hand or through the settings dialog. Only overrides are written;
+  defaults live in the code. Resetting a setting removes its key.
+- **UI state**: `$XDG_STATE_HOME/ren/state.toml`, written by ren alone:
+  pane sizes, arrangement-specific column widths, sort order, expanded
+  folders, last selection. Never mixed into the settings file.
+- **Secrets**: the app password, in the Secret Service (GNOME Keyring,
+  KWallet) through the `keyring` crate. Never in a file.
+
+```toml
+# settings.toml
+[account]
+server = "https://cloud.example.org"
+user = "heinz"
+
+[sync]
+interval-minutes = 15
+```
+
+**Settings model.** One table of setting descriptors in Rust (key, title,
+description, category, control kind: switch, choice, number, text, colour;
+default, validation) drives loading, validation, the settings dialog and,
+optionally, a generated JSON Schema that TOML editors (Taplo, Tombi) can use
+for completion. The dialog renders rows generically from the descriptors;
+only special pages (the account) are hand-made.
+
+**Writing.** `toml_edit` changes single values in the parsed document, so
+comments, ordering and formatting of a hand-edited file survive. The
+settings model never serialises the whole file through serde.
+
+**Reloading.** The settings file is watched (inotify, or a modification
+time check when the window gains focus). If it doesn't parse or a value is
+invalid, ren keeps the last good settings and shows the error with line and
+column.
+
+**Account and login.** The server URL is stored bare; the API base is
+built as `<server>/index.php/apps/news/api/v1-3/`, which works with and
+without pretty URLs.
+
+- Login uses Nextcloud's **Login Flow v2**: `POST /index.php/login/v2`,
+  open the returned login URL in the browser, poll the returned endpoint
+  with the token until it returns `server`, `loginName` and `appPassword`
+  (the token is valid for 20 minutes). 2FA and SSO work because the browser
+  handles them. The app password is listed as its own device in the
+  user's Nextcloud security settings and can be revoked there.
+- Fallback: entering an app password created in Nextcloud by hand.
+- Logging out revokes the app password on the server
+  (`DELETE /ocs/v2.php/core/apppassword`, with `OCS-APIRequest: true`) and
+  removes it from the Secret Service.
+- Without a Secret Service: a `password-command` setting (e.g.
+  `pass show nextcloud/ren`), else asking at every start. Never a plaintext
+  password file.
+
+**Testability.** Settings are parsed from and written to strings; file
+paths are passed in. The secret store is a small trait with an in-memory
+fake. The login flow is plain HTTP and is covered by the mock server.
+
 ## Designing for testability
 
 Tests are deliberately light until the technology choices are locked down
@@ -246,7 +307,7 @@ this is a single command.
   - *Panes:* draggable splitters between the panes. Two arrangements, the
     current one (list beside the article) and akregator's (list above the
     article), switchable at runtime from the View menu. Persisting the
-    choice is M8.
+    choice is M8b.
   - *Menu bar, tool bar, context menus:* a skeleton menu bar (File, Edit,
     View, Go, Feed, Article, Settings, Help) with keyboard shortcuts, a tool
     bar with icon buttons, context menus on feeds and items, and a search
@@ -282,6 +343,10 @@ this is a single command.
   (version, folders, feeds, paged items, updated items). `ren --check`
   prints server version, folder/feed/unread counts; `ren --dump-items <dir>`
   stores raw responses outside the repo for later spikes and fixtures.
+  Server and user come from `[account]` in the settings file (parsed
+  minimally); the app password from `password-command` or the
+  `REN_APP_PASSWORD` environment variable, so S2 doesn't wait for the
+  Secret Service and login work of M4/M8b.
   *Done when:* works against the real server; time, peak RSS and CPU of
   fetching all unread items are recorded for a few batch sizes.
   *Decides:* ureq + serde approach, batch size.
@@ -326,8 +391,15 @@ From here on every milestone ships with tests for what it adds.
   pending-change queue as described above. Unit tests with a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
   integration test with the real client against the mock server.
-- **M4 — Config & credentials.** Config file, keyring storage, account
-  setup data model. Tests for config parsing and defaults.
+- **M4 — Settings & credentials.** As described in "Settings, state and
+  credentials": the setting descriptor table, loading with defaults and
+  validation, writing single values with `toml_edit` (comments and order
+  preserved), the state file, reloading on change with error reporting,
+  the `SecretStore` trait with the Secret Service implementation, and
+  `password-command`. Check which `keyring` backend reuses the zbus that
+  Slint already brings, and that KWallet answers the Secret Service API on
+  Plasma. Tests for parsing, defaults, validation, round-trips that keep
+  comments, and the secret store fake.
 
 ### Phase 3 — The application
 
@@ -341,10 +413,16 @@ From here on every milestone ships with tests for what it adds.
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
-  periodic sync, purge settings, favicons (cached on disk), first-run
-  account setup UI, settings for the pane arrangement (list beside or above
-  the article) and the item state colours, persisted column widths and
-  sort order.
+  periodic sync, purge settings, favicons (cached on disk), persisted pane
+  sizes, column widths and sort order (state file).
+- **M8b — Settings dialog and account setup.** A Zed-style settings
+  dialog in ren's own style: search field, category list, rows of title,
+  description and control generated from the setting descriptors, live
+  apply, an "Open settings file" action, and reset to default per setting.
+  Settings for the pane arrangement and the item status colours. The
+  account page: Login Flow v2 with a "waiting for the browser" state, the
+  manual app password fallback, and log out (revoking the app password).
+  First run opens the account page.
 
 ### Phase 4 — Hardening
 
