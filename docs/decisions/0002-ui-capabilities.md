@@ -5,8 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0002 — UI capabilities of Slint (spike S1b)
 
-**Status:** proposed (2026-10-03), pending review of the Qt style
-decision.
+**Status:** accepted (2026-10-03).
 
 ## Context
 
@@ -199,11 +198,11 @@ CPU % is of one core. `qt` is the Qt style on Slint's Qt backend,
   bar and status bar components ourselves**, kept presentation-only on top
   of plain-Rust view models.
 - **The default stays the default style with the software renderer.**
-- **The Qt style remains an opt-in build option, not the default on KDE**
-  (proposed; to be confirmed in review). It looks closer to akregator and
-  costs little memory on KDE, but it needs Qt at build time, roughly
-  doubles startup, and makes scrolling 60 % more expensive (winit) or
-  noticeably less smooth (Qt backend). If it is used, it should be with
+- **The Qt style remains an opt-in build option, not the default on KDE.**
+  It looks closer to akregator and costs little memory on KDE, but it
+  needs Qt at build time, roughly doubles startup, and makes scrolling
+  60 % more expensive (winit) or noticeably less smooth (Qt backend). In
+  review, the default style was also preferred visually. If it is used, it should be with
   winit and the software renderer (`qt-software`): the Qt backend scrolls
   worse and would also rule out the GPU frame path for Servo in S4.
 
