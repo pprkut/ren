@@ -6,6 +6,10 @@
 //! Stands in for the store until phase 2: folders, feeds and items are
 //! derived from their index, so nothing but the read flags is kept in memory
 //! and item rows and bodies are generated only when the UI asks for them.
+//! Alternatively, real items come from a `--dump-items` directory (S3).
+
+use crate::article::{Article, Body};
+use crate::dump::Dump;
 
 /// A folder in the feed tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +169,8 @@ pub struct DummyData {
     read: Vec<bool>,
     /// Items with a lower id arrived in the latest sync.
     new_below: u32,
+    /// Real items instead of generated ones; item ids index its items.
+    dump: Option<Dump>,
 }
 
 impl DummyData {
@@ -207,6 +213,18 @@ impl DummyData {
             feeds,
             read,
             new_below,
+            dump: None,
+        }
+    }
+
+    /// The folders, feeds and items of a dump.
+    pub fn from_dump(mut dump: Dump) -> Self {
+        Self {
+            folders: std::mem::take(&mut dump.folders),
+            feeds: std::mem::take(&mut dump.feeds),
+            read: dump.items.iter().map(|item| !item.unread).collect(),
+            new_below: 0,
+            dump: Some(dump),
         }
     }
 
@@ -223,6 +241,9 @@ impl DummyData {
     }
 
     pub fn feed_of(&self, item_id: u32) -> u32 {
+        if let Some(dump) = &self.dump {
+            return dump.items[item_id as usize].feed_id;
+        }
         (mix(u64::from(item_id) ^ 0xfeed) % self.feeds.len() as u64) as u32
     }
 
@@ -240,6 +261,22 @@ impl DummyData {
     }
 
     pub fn item(&self, id: u32) -> ItemSummary {
+        if let Some(dump) = &self.dump {
+            let item = &dump.items[id as usize];
+            return ItemSummary {
+                id,
+                feed_id: item.feed_id,
+                title: item.title.clone(),
+                author: item.author.clone(),
+                pub_date: item.pub_date,
+                status: if self.read[id as usize] {
+                    Status::Read
+                } else {
+                    Status::Unread
+                },
+                starred: item.starred,
+            };
+        }
         let seed = mix(u64::from(id));
         let words = 4 + (seed % 7) as usize;
         let mut title = String::new();
@@ -273,8 +310,35 @@ impl DummyData {
         }
     }
 
+    /// The article pane's content for an item.
+    pub fn article(&self, id: u32) -> Article {
+        let item = self.item(id);
+        let feed = &self.feeds[item.feed_id as usize].title;
+        let mut meta = feed.clone();
+        if !item.author.is_empty() {
+            meta.push_str(" · ");
+            meta.push_str(&item.author);
+        }
+        meta.push_str(" · ");
+        meta.push_str(&format_date(item.pub_date));
+        let (url, body) = match &self.dump {
+            Some(dump) => {
+                let dumped = &dump.items[id as usize];
+                let body = dump.body(dumped).unwrap_or_default();
+                (dumped.url.clone(), Body::Html(body))
+            }
+            None => (None, Body::Text(self.body(id))),
+        };
+        Article {
+            title: item.title,
+            meta,
+            url,
+            body,
+        }
+    }
+
     /// Plain-text article body, 3 to 12 paragraphs.
-    pub fn body(&self, id: u32) -> String {
+    fn body(&self, id: u32) -> String {
         let seed = mix(u64::from(id) ^ 0xb0d7);
         let paragraphs = 3 + (seed % 10) as usize;
         let mut body = String::new();

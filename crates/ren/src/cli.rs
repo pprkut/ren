@@ -26,7 +26,10 @@ Window options:
                      with the Qt style, else winit)
   --renderer <NAME>  Slint renderer for winit: software, femtovg or skia
                      (default: $SLINT_BACKEND, else software)
-  --items <N>        Number of dummy items (default: 10000)
+  --items <N>        Number of dummy items, or the most items loaded with
+                     --dump (default: 10000)
+  --dump <DIR>       Show the items of a --dump-items directory instead
+                     of dummy data
   --arrangement <A>  Item list beside or above the article (default: beside)
   --bundled-icons    Use the bundled icons instead of the icon theme
   --color-scheme <S> light or dark instead of the desktop's
@@ -73,6 +76,7 @@ pub struct Options {
     pub backend: Option<String>,
     pub renderer: Option<String>,
     pub items: usize,
+    pub dump: Option<PathBuf>,
     pub arrangement: Arrangement,
     pub bundled_icons: bool,
     pub color_scheme: Option<ColorScheme>,
@@ -89,6 +93,7 @@ impl Default for Options {
             backend: None,
             renderer: None,
             items: 10_000,
+            dump: None,
             arrangement: Arrangement::default(),
             bundled_icons: false,
             color_scheme: None,
@@ -147,6 +152,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                     other => return Err(format!("invalid arrangement: {other}")),
                 }
             }
+            "--dump" => options.dump = Some(value("--dump")?.into()),
             "--bundled-icons" => options.bundled_icons = true,
             "--color-scheme" => {
                 options.color_scheme = match value("--color-scheme")?.as_str() {
@@ -186,6 +192,7 @@ mod tests {
             backend: Some("winit".to_owned()),
             renderer: Some("skia".to_owned()),
             items: 500,
+            dump: Some("/tmp/dump".into()),
             arrangement: Arrangement::Above,
             bundled_icons: true,
             color_scheme: Some(ColorScheme::Light),
@@ -200,6 +207,8 @@ mod tests {
                 "skia",
                 "--items",
                 "500",
+                "--dump",
+                "/tmp/dump",
                 "--arrangement",
                 "above",
                 "--bundled-icons",
