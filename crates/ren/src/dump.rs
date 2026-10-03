@@ -40,6 +40,13 @@ pub struct Dump {
     cache: RefCell<Option<(u16, Vec<Option<String>>)>>,
 }
 
+/// Text for a single line: leading and trailing whitespace removed, runs
+/// of whitespace (including line breaks) collapsed to one space. Feeds put
+/// line breaks into authors and spaces around titles.
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
     let file = std::fs::File::open(path).map_err(|err| format!("{}: {err}", path.display()))?;
     serde_json::from_reader(std::io::BufReader::new(file))
@@ -74,7 +81,7 @@ impl Dump {
                 folder_index.insert(folder.id, i as u32);
                 Folder {
                     id: i as u32,
-                    name: folder.name.clone(),
+                    name: one_line(&folder.name),
                 }
             })
             .collect();
@@ -90,7 +97,12 @@ impl Dump {
                     id: i as u32,
                     // 0 is "no folder" in older News versions.
                     folder_id: feed.folder_id.and_then(|id| folder_index.get(&id).copied()),
-                    title: feed.title.clone().unwrap_or_else(|| feed.url.clone()),
+                    title: feed
+                        .title
+                        .as_deref()
+                        .map(one_line)
+                        .filter(|title| !title.is_empty())
+                        .unwrap_or_else(|| feed.url.clone()),
                 }
             })
             .collect();
@@ -112,8 +124,8 @@ impl Dump {
                 }
                 items.push(DumpItem {
                     feed_id,
-                    title: item.title.unwrap_or_default(),
-                    author: item.author.unwrap_or_default(),
+                    title: item.title.as_deref().map(one_line).unwrap_or_default(),
+                    author: item.author.as_deref().map(one_line).unwrap_or_default(),
                     url: item.url,
                     pub_date: item.pub_date.unwrap_or_default(),
                     unread: item.unread,
@@ -233,6 +245,36 @@ mod tests {
         assert_eq!(dump.body(&dump.items[1]).as_deref(), Some("<p>Body 4</p>"));
         assert_eq!(dump.body(&dump.items[2]).as_deref(), Some("<p>Body 1</p>"));
         assert_eq!(dump.body(&dump.items[0]).as_deref(), Some("<p>Body 5</p>"));
+    }
+
+    #[test]
+    fn single_line_fields() {
+        assert_eq!(one_line("  A\n  B\t C \r\n"), "A B C");
+        assert_eq!(one_line(" \n "), "");
+
+        let dir = dump("lines");
+        dir.write(
+            "folders.json",
+            r#"{"folders": [{"id": 7, "name": " Tech\n"}]}"#,
+        );
+        dir.write(
+            "feeds.json",
+            r#"{"feeds": [{"id": 10, "url": "https://a/feed", "title": " A ", "folderId": 7},
+                          {"id": 11, "url": "https://b/feed", "title": " ", "folderId": 0}]}"#,
+        );
+        dir.write(
+            "unread-0001.json",
+            r#"{"items": [{"id": 1, "feedId": 10, "title": "Two\n lines",
+                           "author": "Someone,\n Someone Else"}]}"#,
+        );
+        dir.write("unread-0002.json", r#"{"items": []}"#);
+        dir.write("starred-0001.json", r#"{"items": []}"#);
+        let dump = Dump::load(&dir.0, 10).unwrap();
+        assert_eq!(dump.folders[0].name, "Tech");
+        assert_eq!(dump.feeds[0].title, "A");
+        assert_eq!(dump.feeds[1].title, "https://b/feed");
+        assert_eq!(dump.items[0].title, "Two lines");
+        assert_eq!(dump.items[0].author, "Someone, Someone Else");
     }
 
     #[test]
