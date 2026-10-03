@@ -22,16 +22,32 @@ pub struct Feed {
     pub title: String,
 }
 
+/// Read state of an item, as shown in the item list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Status {
+    /// Unread, and arrived in the latest sync.
+    New,
+    Unread,
+    Read,
+}
+
 /// The fields shown in the item list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemSummary {
     pub id: u32,
     pub feed_id: u32,
     pub title: String,
+    pub author: String,
     /// Publication date, unix seconds.
     pub pub_date: i64,
-    pub unread: bool,
+    pub status: Status,
     pub starred: bool,
+}
+
+impl ItemSummary {
+    pub fn unread(&self) -> bool {
+        self.status != Status::Read
+    }
 }
 
 const FOLDERS: &[&str] = &["Technology", "Science", "News", "Comics"];
@@ -61,6 +77,21 @@ const FEEDS: &[&str] = &[
 ];
 
 const FOLDER_SIZES: &[usize] = &[6, 3, 5, 2];
+
+const AUTHORS: &[&str] = &[
+    "Ada Lovelace",
+    "Alan Turing",
+    "Barbara Liskov",
+    "Dennis Ritchie",
+    "Edsger Dijkstra",
+    "Frances Allen",
+    "Grace Hopper",
+    "Hedy Lamarr",
+    "Ken Thompson",
+    "Margaret Hamilton",
+    "Radia Perlman",
+    "Sophie Wilson",
+];
 
 const WORDS: &[&str] = &[
     "release",
@@ -129,12 +160,17 @@ fn pick<T: Copy>(list: &[T], seed: u64) -> T {
     list[(seed % list.len() as u64) as usize]
 }
 
+/// Share of the items that arrived in the "latest sync": the newest 2 %.
+const NEW_SHARE: usize = 50;
+
 /// Placeholder data source with `item_count` items spread over all feeds.
 pub struct DummyData {
     folders: Vec<Folder>,
     feeds: Vec<Feed>,
     /// Per-item read flag, indexed by item id. The only mutable state.
     read: Vec<bool>,
+    /// Items with a lower id arrived in the latest sync.
+    new_below: u32,
 }
 
 impl DummyData {
@@ -165,15 +201,18 @@ impl DummyData {
             })
             .collect();
 
-        // Roughly a third of the items is unread.
+        // Roughly a third of the older items is unread, the new ones all
+        // are.
+        let new_below = item_count.div_ceil(NEW_SHARE) as u32;
         let read = (0..item_count as u64)
-            .map(|i| !mix(i).is_multiple_of(3))
+            .map(|i| i >= u64::from(new_below) && !mix(i).is_multiple_of(3))
             .collect();
 
         Self {
             folders,
             feeds,
             read,
+            new_below,
         }
     }
 
@@ -220,13 +259,22 @@ impl DummyData {
             first.make_ascii_uppercase();
         }
 
+        let status = if self.read[id as usize] {
+            Status::Read
+        } else if id < self.new_below {
+            Status::New
+        } else {
+            Status::Unread
+        };
+
         ItemSummary {
             id,
             feed_id: self.feed_of(id),
             title,
+            author: pick(AUTHORS, mix(seed ^ 0xa07)).to_owned(),
             // Items are between 5 and 60 minutes apart, id 0 is the newest.
             pub_date: NEWEST - i64::from(id) * 1_950 - (seed % 600) as i64,
-            unread: !self.read[id as usize],
+            status,
             starred: seed.is_multiple_of(50),
         }
     }
@@ -317,13 +365,23 @@ mod tests {
     #[test]
     fn mark_read() {
         let mut data = DummyData::new(100);
-        let id = (0..100).find(|&id| data.item(id).unread).unwrap();
+        let id = (0..100).find(|&id| data.item(id).unread()).unwrap();
         let feed = data.feed_of(id);
         let before = data.unread_count(feed);
         assert!(data.mark_read(id));
         assert!(!data.mark_read(id));
-        assert!(!data.item(id).unread);
+        assert_eq!(data.item(id).status, Status::Read);
         assert_eq!(data.unread_count(feed), before - 1);
+    }
+
+    #[test]
+    fn newest_items_are_new() {
+        let mut data = DummyData::new(1_000);
+        let statuses: Vec<_> = (0..30).map(|id| data.item(id).status).collect();
+        assert!(statuses[..20].iter().all(|&s| s == Status::New));
+        assert!(statuses[20..].iter().all(|&s| s != Status::New));
+        assert!(data.mark_read(0));
+        assert_eq!(data.item(0).status, Status::Read);
     }
 
     #[test]
