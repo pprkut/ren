@@ -60,7 +60,6 @@ pub enum Mode {
     DumpItems(PathBuf),
 }
 
-/// Items per request of the server commands.
 /// Items per request of the server commands, see
 /// `docs/decisions/0003-nextcloud-client.md`.
 pub const DEFAULT_BATCH_SIZE: u32 = 1000;
