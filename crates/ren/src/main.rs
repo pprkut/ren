@@ -5,6 +5,7 @@ mod cli;
 mod dummy;
 mod feed_tree;
 mod item_list;
+mod procstat;
 mod remote;
 mod settings;
 mod ui;
