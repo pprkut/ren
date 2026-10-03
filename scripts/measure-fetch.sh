@@ -7,7 +7,9 @@
 # Uses the account from the settings file (see `ren --help`).
 #
 # Usage: scripts/measure-fetch.sh [BATCH_SIZE...]
-#   BATCH_SIZE: items per request, or "all" (default: 50 200 1000 all)
+#   BATCH_SIZE: items per request, or "all" (default: 200 500 1000 2000).
+#   A batch size whose fetch fails (e.g. the server gives up on a large
+#   response) is reported in the summary and not run again.
 #
 # Environment:
 #   RUNS      runs per batch size, interleaved, after one warm-up (default 3)
@@ -29,7 +31,7 @@ OUT_DIR=${OUT_DIR:-target/measure/fetch-$(date +%Y%m%d-%H%M%S)}
 
 batch_sizes=("$@")
 if [[ ${#batch_sizes[@]} -eq 0 ]]; then
-    batch_sizes=(50 200 1000 all)
+    batch_sizes=(200 500 1000 2000)
 fi
 
 cargo build --release --locked
@@ -59,13 +61,21 @@ log "== check"
 log "== warm-up"
 "$bin" "${args[@]}" --fetch-unread >/dev/null
 
-declare -A lines
+declare -A lines errors
 for ((run = 1; run <= RUNS; run++)); do
     for b in "${batch_sizes[@]}"; do
+        [[ -n ${errors[$b]:-} ]] && continue
         log "== run $run, batch size $b"
-        line=$("$bin" "${args[@]}" --fetch-unread --batch-size "$b" | grep '^fetch:')
-        echo "$line" >>"$OUT_DIR/fetch.log"
-        lines[$b]+="$line"$'\n'
+        if out=$("$bin" "${args[@]}" --fetch-unread --batch-size "$b" 2>&1); then
+            line=$(grep '^fetch:' <<<"$out")
+            echo "$line" >>"$OUT_DIR/fetch.log"
+            lines[$b]+="$line"$'\n'
+        else
+            # Keep the error, without the server URL ren puts in front of it.
+            errors[$b]=$(tail -n 1 <<<"$out" | sed 's/^ren: [^ ]*: //')
+            log "failed: ${errors[$b]}"
+            echo "batch_size=$b failed: ${errors[$b]}" >>"$OUT_DIR/fetch.log"
+        fi
     done
 done
 
@@ -79,9 +89,13 @@ summary=$OUT_DIR/summary.md
     echo "- server: $(grep -v '^Server:' "$OUT_DIR/check.txt" | paste -sd ';' | sed 's/;/; /g')"
     echo "- median of $RUNS runs after one warm-up; CPU is ren's own user + system time while fetching"
     echo
-    echo "| batch size | requests | items | repeated | JSON MiB | bodies MiB | wall s | CPU s (user + sys) | CPU % of wall | RSS before MiB | peak RSS MiB |"
-    echo "|---|---|---|---|---|---|---|---|---|---|---|"
+    echo "| batch size | requests | items | repeated | JSON MiB | bodies MiB | wall s | ms per request | CPU s (user + sys) | CPU % of wall | RSS before MiB | peak RSS MiB |"
+    echo "|---|---|---|---|---|---|---|---|---|---|---|---|"
     for b in "${batch_sizes[@]}"; do
+        if [[ -n ${errors[$b]:-} ]]; then
+            printf '| %s | failed: %s |||||||||||\n' "$b" "${errors[$b]}"
+            continue
+        fi
         mapfile -t runs < <(printf '%s' "${lines[$b]}")
         walls=() cpus=() peaks=()
         for line in "${runs[@]}"; do
@@ -93,10 +107,11 @@ summary=$OUT_DIR/summary.md
         first=${runs[0]}
         wall=$(median "${walls[@]}")
         cpu=$(median "${cpus[@]}")
-        printf '| %s | %s | %s | %s | %s | %s | %.3f | %.2f | %s | %s | %s |\n' \
-            "$b" "$(field "$first" pages)" "$(field "$first" items)" "$(field "$first" repeated)" \
+        pages=$(field "$first" pages)
+        printf '| %s | %s | %s | %s | %s | %s | %.3f | %.0f | %.2f | %s | %s | %s |\n' \
+            "$b" "$pages" "$(field "$first" items)" "$(field "$first" repeated)" \
             "$(mib "$(field "$first" json_bytes)" 1048576)" "$(mib "$(field "$first" body_bytes)" 1048576)" \
-            "$wall" "$cpu" "$(awk -v c="$cpu" -v w="$wall" 'BEGIN { printf "%.0f", (w > 0) ? c * 100 / w : 0 }')" \
+            "$wall" "$(awk -v w="$wall" -v p="$pages" 'BEGIN { print w * 1000 / p }')" "$cpu" "$(awk -v c="$cpu" -v w="$wall" 'BEGIN { printf "%.0f", (w > 0) ? c * 100 / w : 0 }')" \
             "$(mib "$(field "$first" rss_before_kib)" 1024)" "$(mib "$(median "${peaks[@]}")" 1024)"
     done
     echo
