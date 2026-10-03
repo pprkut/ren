@@ -85,15 +85,20 @@ batch size for paging through items.
 
 ## Measurements
 
-To be run against the real server:
+Against the real server (News app 28.7.0; 11 folders, 49 feeds of which 15
+have update errors, 62,811 unread and 20 starred items, newest item id
+227,491):
 
-```sh
-ren --check
-ren --dump-items ~/ren-dump        # outside the repository
-just measure-fetch                 # or: scripts/measure-fetch.sh 50 200 1000 all
-```
+- `--check` and `--dump-items` work. The dump with the default batch size
+  of 200 took 315 pages of unread items, 1 of starred items, and 115 items
+  in `/items/updated` for the last day.
+- A first `just measure-fetch` with batch sizes 50, 200, 1000 and all:
+  50 was very slow (1,257 requests), and **`batchSize=-1` (all at once)
+  fails with HTTP 500**: the server can't build a response with 62,811
+  items. The script now continues after a failing batch size and its
+  defaults are 200, 500, 1000 and 2000.
 
-*Results: pending.*
+*Timing, CPU and memory per batch size: pending (`just measure-fetch`).*
 
 ## Decision
 
@@ -101,4 +106,13 @@ just measure-fetch                 # or: scripts/measure-fetch.sh 50 200 1000 al
 
 ## Consequences
 
-*Pending.*
+- **`GET /items/updated` is not paged**, and the server already fails on
+  one response of 63k items. An incremental sync after a long time offline,
+  or after a mass change on the server (e.g. "mark all read" on a large
+  account), can hit the same limit. M3 needs a fallback: if
+  `/items/updated` fails or the cursor is too old, resynchronise state with
+  paged `GET /items` instead.
+- The News API documentation recommends `batchSize=-1` for the initial
+  sync; at this account size that doesn't work, so ren always pages.
+
+*Rest pending.*
