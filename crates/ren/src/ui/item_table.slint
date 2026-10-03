@@ -106,6 +106,8 @@ component ItemTableRow inherits Rectangle {
     // Two lines (title; feed, author and date) instead of table columns.
     in property <bool> compact;
     callback clicked();
+    // An entry of the context menu was activated.
+    callback menu(action: string);
 
     property <brush> text-color: root.entry.status == ItemStatus.new ? Theme.status-new : root.entry.status == ItemStatus.unread ? Theme.status-unread : Palette.foreground;
 
@@ -124,6 +126,48 @@ component ItemTableRow inherits Rectangle {
     touch := TouchArea {
         clicked => {
             root.clicked();
+        }
+    }
+
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Open Link in Tab";
+                activated => {
+                    root.menu("open-tab");
+                }
+            }
+            MenuItem {
+                title: "Open Link in External Browser";
+                activated => {
+                    root.menu("open-browser");
+                }
+            }
+            MenuItem {
+                title: "Copy Link Address";
+                activated => {
+                    root.menu("copy-link");
+                }
+            }
+            MenuSeparator { }
+            if root.entry.status != ItemStatus.read: MenuItem {
+                title: "Mark as Read";
+                activated => {
+                    root.menu("mark-read");
+                }
+            }
+            if root.entry.status == ItemStatus.read: MenuItem {
+                title: "Mark as Unread";
+                activated => {
+                    root.menu("mark-unread");
+                }
+            }
+            MenuItem {
+                title: root.entry.starred ? "Remove Star" : "Star";
+                activated => {
+                    root.menu("toggle-star");
+                }
+            }
         }
     }
 
@@ -241,6 +285,8 @@ export component ItemTable inherits FocusScope {
     // A navigation key: "up", "down", "page-up", "page-down", "home" or
     // "end", and the number of rows per page.
     callback navigate(key: string, page: int);
+    // An entry of a row's context menu was activated.
+    callback menu(row: int, action: string);
 
     changed current => {
         // Keep the selected row in view.
@@ -352,6 +398,9 @@ export component ItemTable inherits FocusScope {
                 clicked => {
                     root.focus();
                     root.select(i);
+                }
+                menu(action) => {
+                    root.menu(i, action);
                 }
             }
         }

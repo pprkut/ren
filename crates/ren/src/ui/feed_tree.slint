@@ -35,6 +35,8 @@ component FeedTreeRow inherits Rectangle {
     in property <bool> focused;
     callback clicked();
     callback toggle();
+    // An entry of the context menu was activated.
+    callback menu(action: string);
 
     property <length> indent: Theme.tree-indent;
     // Centre of the column with this row's own branch line or chevron.
@@ -131,6 +133,54 @@ component FeedTreeRow inherits Rectangle {
         }
     }
 
+    ContextMenuArea {
+        Menu {
+            if root.entry.depth == 0: MenuItem {
+                title: "Fetch All Feeds";
+                activated => {
+                    root.menu("fetch-all");
+                }
+            }
+            if root.entry.depth > 0: MenuItem {
+                title: root.entry.is-folder ? "Fetch Feeds in Folder" : "Fetch Feed";
+                activated => {
+                    root.menu("fetch-feed");
+                }
+            }
+            MenuItem {
+                title: root.entry.depth == 0 ? "Mark All Articles as Read" : root.entry.is-folder ? "Mark Folder as Read" : "Mark Feed as Read";
+                activated => {
+                    root.menu("mark-feed-read");
+                }
+            }
+            MenuSeparator { }
+            if !root.entry.is-folder && root.entry.depth > 0: MenuItem {
+                title: "Open Homepage";
+                activated => {
+                    root.menu("open-homepage");
+                }
+            }
+            if root.entry.depth > 0: MenuItem {
+                title: root.entry.is-folder ? "Rename Folder…" : "Edit Feed…";
+                activated => {
+                    root.menu(root.entry.is-folder ? "rename-folder" : "edit-feed");
+                }
+            }
+            if root.entry.depth > 0: MenuItem {
+                title: root.entry.is-folder ? "Delete Folder…" : "Delete Feed…";
+                activated => {
+                    root.menu(root.entry.is-folder ? "delete-folder" : "delete-feed");
+                }
+            }
+            if root.entry.depth == 0: MenuItem {
+                title: "New Folder…";
+                activated => {
+                    root.menu("new-folder");
+                }
+            }
+        }
+    }
+
     HorizontalLayout {
         padding-left: Theme.row-padding + max(0, root.entry.depth) * root.indent + 2px;
         padding-right: Theme.row-padding + 2px;
@@ -166,6 +216,8 @@ export component FeedTree inherits FocusScope {
     callback toggle(row: int);
     // A navigation key: "up", "down", "left", "right", "home" or "end".
     callback navigate(key: string);
+    // An entry of a row's context menu was activated.
+    callback menu(row: int, action: string);
 
     changed current => {
         // Keep the selected row in view.
@@ -207,6 +259,9 @@ export component FeedTree inherits FocusScope {
             }
             toggle => {
                 root.toggle(i);
+            }
+            menu(action) => {
+                root.menu(i, action);
             }
         }
     }

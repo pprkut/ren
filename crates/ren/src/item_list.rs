@@ -3,8 +3,8 @@
 
 //! View model of the item list: which items are shown, in which order.
 //!
-//! Sorting happens here on dummy data for now; with the store
-//! (M2) it moves into its queries and this keeps only the state.
+//! Sorting and filtering happen here on dummy data for now; with the store
+//! (M2) they move into its queries and this keeps only the state.
 
 use std::cmp::Ordering;
 
@@ -74,7 +74,8 @@ pub fn step(current: Option<usize>, key: Key, len: usize, page: usize) -> Option
     Some(next.min(last))
 }
 
-/// The items of the selected feed or folder, sorted.
+/// The items of the selected feed or folder, filtered by the search text and
+/// sorted.
 #[derive(Default)]
 pub struct ItemList {
     /// All item ids of the selected feed or folder.
@@ -82,6 +83,7 @@ pub struct ItemList {
     /// The ids shown, in display order.
     shown: Vec<u32>,
     sort: Sort,
+    search: String,
 }
 
 impl ItemList {
@@ -124,10 +126,24 @@ impl ItemList {
         self.refresh(item);
     }
 
+    /// Shows only items whose title or author contains `text`, ignoring case.
+    pub fn set_search(&mut self, text: &str, item: impl Fn(u32) -> ItemSummary) {
+        self.search = text.trim().to_lowercase();
+        self.refresh(item);
+    }
+
     fn refresh(&mut self, item: impl Fn(u32) -> ItemSummary) {
         // The sort keys are computed once per item, not once per comparison.
-        let mut rows: Vec<(u32, ItemSummary)> =
-            self.source.iter().map(|&id| (id, item(id))).collect();
+        let mut rows: Vec<(u32, ItemSummary)> = self
+            .source
+            .iter()
+            .map(|&id| (id, item(id)))
+            .filter(|(_, it)| {
+                self.search.is_empty()
+                    || it.title.to_lowercase().contains(&self.search)
+                    || it.author.to_lowercase().contains(&self.search)
+            })
+            .collect();
         let sort = self.sort;
         rows.sort_by(|(_, a), (_, b)| {
             let order = compare(a, b, sort.column).then(b.pub_date.cmp(&a.pub_date));
@@ -203,6 +219,17 @@ mod tests {
         assert_eq!(list.ids(), [0, 1, 2, 3], "newest first again");
         list.sort_by(Column::Date, item);
         assert_eq!(list.ids(), [3, 2, 1, 0]);
+    }
+
+    #[test]
+    fn search_title_and_author() {
+        let mut list = list();
+        list.set_search("APPLE", item);
+        assert_eq!(list.ids(), [1, 3]);
+        list.set_search(" xia ", item);
+        assert_eq!(list.ids(), [2]);
+        list.set_search("", item);
+        assert_eq!(list.ids().len(), 4);
     }
 
     #[test]
