@@ -9,7 +9,27 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["renderer-software"]
+default = ["renderer-software", "html-view"]
+# The article pane renders HTML with Blitz; without it, a plain-text
+# rendering of the body is shown.
+html-view = [
+    "dep:anyrender",
+    "dep:anyrender_vello_cpu",
+    "dep:arboard",
+    "dep:atomic_refcell",
+    "dep:base64",
+    "dep:blitz-dom",
+    "dep:blitz-html",
+    "dep:blitz-paint",
+    "dep:blitz-traits",
+        "dep:cursor-icon",
+    "dep:keyboard-types",
+    "dep:parley",
+    "dep:percent-encoding",
+    "dep:rustls",
+    "dep:ureq",
+    "dep:url",
+]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
@@ -18,12 +38,32 @@ renderer-software = ["slint/renderer-software"]
 style-qt = ["slint/backend-qt"]
 
 [dependencies]
+anyrender_vello_cpu = { version = "0.17", optional = true }
+arboard = { version = "3.6", optional = true, default-features = false, features = ["wayland-data-control"] }
+# Pre-release: document text selection is only in 0.3 (see
+# docs/decisions/0004-article-view.md).
+blitz-dom = { version = "=0.3.0-beta.2", optional = true, default-features = false, features = ["floats", "svg", "system-fonts", "complex-scripts"] }
+blitz-html = { version = "=0.3.0-beta.2", optional = true }
+blitz-paint = { version = "=0.3.0-beta.2", optional = true, default-features = false, features = ["svg"] }
+blitz-traits = { version = "=0.3.0-beta.2", optional = true }
+# Types in Blitz's API, at the versions it uses.
+anyrender = { version = "0.13", optional = true }
+atomic_refcell = { version = "0.1", optional = true }
+base64 = { version = "0.23", optional = true }
+cursor-icon = { version = "1", optional = true }
+keyboard-types = { version = "0.7", optional = true }
+parley = { version = "0.11", optional = true, default-features = false, features = ["std"] }
+percent-encoding = { version = "2", optional = true }
+url = { version = "2.5", optional = true }
 freedesktop-icons = "0.4"
 nextcloud-news = { path = "../nextcloud-news" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
 toml = { version = "1", default-features = false, features = ["std", "parse", "serde"] }
+# For images in articles; the same TLS setup as nextcloud-news.
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+ureq = { version = "3.4", optional = true, default-features = false, features = ["rustls-no-provider", "platform-verifier", "gzip"] }
 
 [build-dependencies]
 slint-build = "1.18"

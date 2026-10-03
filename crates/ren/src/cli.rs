@@ -30,6 +30,8 @@ Window options:
                      --dump (default: 10000)
   --dump <DIR>       Show the items of a --dump-items directory instead
                      of dummy data
+  --plain-text       Show articles as plain text, not rendered HTML
+  --no-images        Don't fetch images in articles
   --arrangement <A>  Item list beside or above the article (default: beside)
   --bundled-icons    Use the bundled icons instead of the icon theme
   --color-scheme <S> light or dark instead of the desktop's
@@ -77,6 +79,8 @@ pub struct Options {
     pub renderer: Option<String>,
     pub items: usize,
     pub dump: Option<PathBuf>,
+    pub plain_text: bool,
+    pub no_images: bool,
     pub arrangement: Arrangement,
     pub bundled_icons: bool,
     pub color_scheme: Option<ColorScheme>,
@@ -94,6 +98,8 @@ impl Default for Options {
             renderer: None,
             items: 10_000,
             dump: None,
+            plain_text: false,
+            no_images: false,
             arrangement: Arrangement::default(),
             bundled_icons: false,
             color_scheme: None,
@@ -153,6 +159,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 }
             }
             "--dump" => options.dump = Some(value("--dump")?.into()),
+            "--plain-text" => options.plain_text = true,
+            "--no-images" => options.no_images = true,
             "--bundled-icons" => options.bundled_icons = true,
             "--color-scheme" => {
                 options.color_scheme = match value("--color-scheme")?.as_str() {
@@ -193,6 +201,8 @@ mod tests {
             renderer: Some("skia".to_owned()),
             items: 500,
             dump: Some("/tmp/dump".into()),
+            plain_text: true,
+            no_images: true,
             arrangement: Arrangement::Above,
             bundled_icons: true,
             color_scheme: Some(ColorScheme::Light),
@@ -209,6 +219,8 @@ mod tests {
                 "500",
                 "--dump",
                 "/tmp/dump",
+                "--plain-text",
+                "--no-images",
                 "--arrangement",
                 "above",
                 "--bundled-icons",

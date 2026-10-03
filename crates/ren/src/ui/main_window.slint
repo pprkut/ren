@@ -29,6 +29,34 @@ export component MainWindow inherits Window {
     in property <string> article-body;
     in-out property <length> article-content-y <=> article.content-y;
 
+    // The article rendered as HTML (Blitz) instead of plain text: an image
+    // of the visible part, with input forwarded to the renderer.
+    in property <bool> html-view;
+    in property <image> article-image;
+    // 0 default, 1 pointer (links), 2 text.
+    in property <int> article-cursor;
+    out property <length> article-width: html-pane.width;
+    out property <length> article-height: html-pane.height;
+    // Colours for the article stylesheet.
+    out property <brush> article-background: Palette.background;
+    out property <brush> article-foreground: Palette.foreground;
+    out property <brush> article-link: Palette.accent-background;
+    out property <bool> dark: Theme.dark;
+    // kind: 0 down, 1 up, 2 move; button: 0 left, 1 middle, 2 right;
+    // mods: 1 control, 2 shift, 4 alt, 8 meta.
+    callback article-pointer(kind: int, button: int, x: length, y: length, mods: int);
+    callback article-scroll(dx: length, dy: length, mods: int);
+    callback article-key(text: string, mods: int) -> bool;
+    callback article-resized();
+    callback article-theme-changed();
+    callback article-copy();
+    // Called when the HTML view needs to be rendered again (from a wake-up).
+    callback article-render();
+
+    changed dark => {
+        root.article-theme-changed();
+    }
+
     in-out property <Arrangement> arrangement: Arrangement.beside;
     // Pane sizes, changed by the splitters.
     in-out property <length> tree-width: 240px;
@@ -435,6 +463,7 @@ export component MainWindow inherits Window {
             }
 
             article := ScrollView {
+                visible: !root.html-view;
                 x: content.beside ? root.list-width + content.bar : 0px;
                 y: content.beside ? 0px : root.list-height + content.bar;
                 width: content.width - self.x;
@@ -468,6 +497,98 @@ export component MainWindow inherits Window {
                         wrap: word-wrap;
                         color: Palette.foreground;
                     }
+                }
+            }
+
+            html-pane := Rectangle {
+                visible: root.html-view;
+                x: article.x;
+                y: article.y;
+                width: article.width;
+                height: article.height;
+                background: Palette.background;
+                clip: true;
+
+                changed width => {
+                    root.article-resized();
+                }
+                changed height => {
+                    root.article-resized();
+                }
+
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.article-image;
+                    image-fit: fill;
+                }
+
+                html-focus := FocusScope {
+                    // Scrolling by keyboard; deltas are positive towards the
+                    // top, as for the mouse wheel.
+                    property <length> line: 40px;
+                    property <length> page: html-pane.height * 0.9;
+
+                    key-pressed(event) => {
+                        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                            if root.article-key(event.text, html-pane.mods(event.modifiers)) {
+                                return accept;
+                            }
+                            return reject;
+                        }
+                        if event.text == Key.UpArrow {
+                            root.article-scroll(0, self.line, 0);
+                        } else if event.text == Key.DownArrow {
+                            root.article-scroll(0, -self.line, 0);
+                        } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
+                            root.article-scroll(0, self.page, 0);
+                        } else if event.text == Key.PageDown || event.text == " " {
+                            root.article-scroll(0, -self.page, 0);
+                        } else if event.text == Key.Home {
+                            root.article-scroll(0, 1000000px, 0);
+                        } else if event.text == Key.End {
+                            root.article-scroll(0, -1000000px, 0);
+                        } else {
+                            return reject;
+                        }
+                        accept
+                    }
+                }
+
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "Copy";
+                            activated => {
+                                root.article-copy();
+                            }
+                        }
+                    }
+
+                    TouchArea {
+                        mouse-cursor: root.article-cursor == 1 ? MouseCursor.pointer : root.article-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                        pointer-event(event) => {
+                            if event.kind == PointerEventKind.down {
+                                html-focus.focus();
+                            }
+                            if event.kind != PointerEventKind.cancel {
+                                root.article-pointer(
+                                    event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                    event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
+                                    self.mouse-x,
+                                    self.mouse-y,
+                                    html-pane.mods(event.modifiers));
+                            }
+                        }
+                        scroll-event(event) => {
+                            root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
+                            accept
+                        }
+                    }
+                }
+
+                pure function mods(m: KeyboardModifiers) -> int {
+                    return (m.control ? 1 : 0) + (m.shift ? 2 : 0) + (m.alt ? 4 : 0) + (m.meta ? 8 : 0);
                 }
             }
         }
