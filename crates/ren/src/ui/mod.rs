@@ -53,11 +53,12 @@ impl Model for ItemListModel {
 
     fn row_data(&self, row: usize) -> Option<ItemRow> {
         let item = self.data.borrow().item(self.id(row)?);
+        let unread = item.unread();
         Some(ItemRow {
             title: item.title.into(),
             feed: self.feed_titles[item.feed_id as usize].clone(),
             date: format_date(item.pub_date).into(),
-            unread: item.unread,
+            unread,
             starred: item.starred,
         })
     }
