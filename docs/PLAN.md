@@ -129,6 +129,9 @@ Reference: `docs/development/api/api-v1-3.md` in `nextcloud/news`.
   `lastModified >=` the given value, including read/star state changes.
   No paging on this endpoint, so the response size limit must be generous.
 - `POST /items/{read,unread,star,unstar}/multiple` with `{"itemIds": [...]}`
+  (the News app's `appinfo/routes.php`; the `PUT` variants with `items` or
+  `feedId`/`guidHash` in the docs' "How To Sync" section are API v1-2 and
+  only kept for compatibility)
 - `POST /items/read`, `/feeds/{id}/read`, `/folders/{id}/read` with
   `{"newestItemId": n}` for "mark all read".
 - Item `lastModified` is an int in **seconds**. `title`, `author`, `url`,
@@ -345,9 +348,10 @@ this is a single command.
   becomes an option (or the default on KDE).
 - **S2 — Talk to Nextcloud.** *(done: ureq + serde, batch size 1000; see
   `docs/decisions/0003-nextcloud-client.md`)* Minimal `nextcloud-news`
-  types and client (version, folders, feeds, paged items, updated items). `ren --check`
-  prints server version, folder/feed/unread counts; `ren --dump-items <dir>`
-  stores raw responses outside the repo for later spikes and fixtures.
+  types and client (version, folders, feeds, paged items, updated items).
+  `ren --check` prints server version, folder/feed/unread counts;
+  `ren --dump-items <dir>` stores raw responses outside the repo for later
+  spikes and fixtures.
   Server and user come from `[account]` in the settings file (parsed
   minimally); the app password from `password-command` or the
   `REN_APP_PASSWORD` environment variable, so S2 doesn't wait for the
@@ -384,16 +388,26 @@ From here on every milestone ships with tests for what it adds.
 
 - **M1 — API client.** Harden the S2 code: all endpoints listed above
   (including the `*/multiple` and mark-all-read writes), typed errors (auth,
-  HTTP status, network, decode), user agent, timeouts. Tests: fixture
-  deserialisation (nulls, unknown fields), request building, a local mock
-  HTTP server.
+  HTTP status, network, decode), user agent, timeouts. The write
+  endpoints are the v1-3 `POST` forms with `itemIds` (see the API notes);
+  the open question in 0003 about the `PUT` variants is settled.
+  Streaming decode for item lists: the `items` array is decoded item by
+  item and handed to a callback, instead of into a `Vec<Item>`, so memory
+  stays flat however large a response is. This matters most for the
+  unpaged `GET /items/updated` (S2: about 3× the JSON size in memory when
+  decoded at once). Tests: fixture deserialisation (nulls, unknown
+  fields), request building, streaming decode, a local mock HTTP server.
 - **M2 — Store.** `ren-store`: schema and migrations (folders, feeds, items,
   pending_changes, sync_state, per-feed settings), indices for the list
   queries, upserts, paged queries, purge, and a "new" marker for items
   that arrived in the latest sync (cleared when the next sync starts), for
-  the item list colours. Tests on an in-memory database.
+  the item list colours. A feed `folderId` of 0 (older News versions)
+  is stored as no folder. Tests on an in-memory database.
 - **M3 — Sync engine.** `ren-sync`: initial and incremental sync and the
-  pending-change queue as described above. Unit tests with a fake `NewsApi`
+  pending-change queue as described above. Items from the streaming
+  decode are written in chunks (one transaction per chunk), so neither a
+  page nor a large `/items/updated` response is ever held in memory as a
+  whole. Unit tests with a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
   integration test with the real client against the mock server.
 - **M4 — Settings & credentials.** As described in "Settings, state and
