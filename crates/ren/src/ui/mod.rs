@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use slint::language::ColorScheme;
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
 use crate::cli::{self, Options};
@@ -470,7 +471,15 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     select_backend(options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
-    icons::load(&window, !options.bundled_icons);
+    let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
+    if let Some(dark) = dark {
+        window.set_forced_color_scheme(if dark {
+            ColorScheme::Dark
+        } else {
+            ColorScheme::Light
+        });
+    }
+    icons::load(&window, !options.bundled_icons, dark);
     window.set_arrangement(match options.arrangement {
         cli::Arrangement::Beside => Arrangement::Beside,
         cli::Arrangement::Above => Arrangement::Above,

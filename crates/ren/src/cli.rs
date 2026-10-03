@@ -12,10 +12,18 @@ Options:
   --items <N>        Number of dummy items (default: 10000)
   --arrangement <A>  Item list beside or above the article (default: beside)
   --bundled-icons    Use the bundled icons instead of the icon theme
+  --color-scheme <S> light or dark instead of the desktop's
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
   -h, --help         Show this help";
+
+/// A colour scheme forced instead of the desktop's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorScheme {
+    Light,
+    Dark,
+}
 
 /// Where the item list goes relative to the article.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -31,6 +39,7 @@ pub struct Options {
     pub items: usize,
     pub arrangement: Arrangement,
     pub bundled_icons: bool,
+    pub color_scheme: Option<ColorScheme>,
     pub measure: bool,
     pub autoscroll: bool,
 }
@@ -42,6 +51,7 @@ impl Default for Options {
             items: 10_000,
             arrangement: Arrangement::default(),
             bundled_icons: false,
+            color_scheme: None,
             measure: false,
             autoscroll: false,
         }
@@ -74,6 +84,13 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 }
             }
             "--bundled-icons" => options.bundled_icons = true,
+            "--color-scheme" => {
+                options.color_scheme = match value("--color-scheme")?.as_str() {
+                    "light" => Some(ColorScheme::Light),
+                    "dark" => Some(ColorScheme::Dark),
+                    other => return Err(format!("invalid colour scheme: {other}")),
+                }
+            }
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
             "-h" | "--help" => return Ok(Command::Help),
@@ -103,6 +120,7 @@ mod tests {
             items: 500,
             arrangement: Arrangement::Above,
             bundled_icons: true,
+            color_scheme: Some(ColorScheme::Light),
             measure: true,
             autoscroll: true,
         };
@@ -115,6 +133,8 @@ mod tests {
                 "--arrangement",
                 "above",
                 "--bundled-icons",
+                "--color-scheme",
+                "light",
                 "--measure",
                 "--autoscroll"
             ]),
@@ -128,6 +148,7 @@ mod tests {
         assert!(parse_args(&["--items", "many"]).is_err());
         assert!(parse_args(&["--bogus"]).is_err());
         assert!(parse_args(&["--arrangement", "below"]).is_err());
+        assert!(parse_args(&["--color-scheme", "blue"]).is_err());
         assert_eq!(parse_args(&["--help", "--bogus"]), Ok(Command::Help));
     }
 }
