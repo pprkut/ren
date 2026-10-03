@@ -10,8 +10,9 @@ use std::time::{Duration, Instant};
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
 use crate::cli::Options;
-use crate::dummy::{DummyData, format_date};
+use crate::dummy::{DummyData, Status, format_date};
 use crate::feed_tree::{self, FeedTree, Node};
+use crate::item_list::{self, Column, ItemList};
 
 slint::include_modules!();
 
@@ -28,37 +29,30 @@ const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 /// it, so only the visible rows ever exist as Slint values.
 struct ItemListModel {
     data: Rc<RefCell<DummyData>>,
-    ids: RefCell<Vec<u32>>,
+    list: Rc<RefCell<ItemList>>,
     feed_titles: Vec<SharedString>,
     notify: ModelNotify,
-}
-
-impl ItemListModel {
-    fn id(&self, row: usize) -> Option<u32> {
-        self.ids.borrow().get(row).copied()
-    }
-
-    fn set_ids(&self, ids: Vec<u32>) {
-        *self.ids.borrow_mut() = ids;
-        self.notify.reset();
-    }
 }
 
 impl Model for ItemListModel {
     type Data = ItemRow;
 
     fn row_count(&self) -> usize {
-        self.ids.borrow().len()
+        self.list.borrow().ids().len()
     }
 
     fn row_data(&self, row: usize) -> Option<ItemRow> {
-        let item = self.data.borrow().item(self.id(row)?);
-        let unread = item.unread();
+        let item = self.data.borrow().item(self.list.borrow().id(row)?);
         Some(ItemRow {
             title: item.title.into(),
             feed: self.feed_titles[item.feed_id as usize].clone(),
+            author: item.author.into(),
             date: format_date(item.pub_date).into(),
-            unread,
+            status: match item.status {
+                Status::New => ItemStatus::New,
+                Status::Unread => ItemStatus::Unread,
+                Status::Read => ItemStatus::Read,
+            },
             starred: item.starred,
         })
     }
@@ -75,7 +69,10 @@ struct App {
     tree_nodes: RefCell<Vec<Node>>,
     selected_node: Cell<Node>,
     feeds: Rc<VecModel<FeedRow>>,
+    list: Rc<RefCell<ItemList>>,
     items: Rc<ItemListModel>,
+    /// The item shown in the article pane.
+    current_item: Cell<Option<u32>>,
 }
 
 impl App {
@@ -107,14 +104,18 @@ impl App {
             .set_current_feed(current.map_or(-1, |i| i as i32));
     }
 
+    fn node(&self, row: usize) -> Option<Node> {
+        self.tree_nodes.borrow().get(row).copied()
+    }
+
     fn feed_clicked(&self, row: usize) {
-        if let Some(node) = self.tree_nodes.borrow().get(row).copied() {
+        if let Some(node) = self.node(row) {
             self.select_node(node);
         }
     }
 
     fn feed_toggled(&self, row: usize) {
-        if let Some(Node::Folder(id)) = self.tree_nodes.borrow().get(row).copied() {
+        if let Some(Node::Folder(id)) = self.node(row) {
             self.tree.borrow_mut().toggle(id);
         }
         self.refresh_tree();
@@ -147,20 +148,64 @@ impl App {
         self.refresh_tree();
 
         let feeds = self.tree.borrow().feeds_of(node);
-        let ids = self.data.borrow().item_ids(feeds.as_deref());
-        self.items.set_ids(ids);
+        {
+            let data = self.data.borrow();
+            let ids = data.item_ids(feeds.as_deref());
+            self.list.borrow_mut().set_source(ids, |id| data.item(id));
+        }
+        self.items.notify.reset();
+        self.current_item.set(None);
         let window = self.window();
         window.set_item_list_content_y(0.0);
         window.set_current_item(-1);
         show_placeholder(&window);
     }
 
+    fn sort_clicked(&self, column: usize) {
+        let Some(column) = Column::from_index(column) else {
+            return;
+        };
+        {
+            let data = self.data.borrow();
+            self.list.borrow_mut().sort_by(column, |id| data.item(id));
+        }
+        self.items.notify.reset();
+        let window = self.window();
+        let sort = self.list.borrow().sort();
+        window.set_sort_column(sort.column.index() as i32);
+        window.set_sort_ascending(sort.ascending);
+        // Keep the current item selected, wherever it moved.
+        let row = self
+            .current_item
+            .get()
+            .and_then(|id| self.list.borrow().row_of(id));
+        window.set_current_item(row.map_or(-1, |r| r as i32));
+    }
+
+    fn item_key(&self, key: &str, page: usize) {
+        let key = match key {
+            "up" => item_list::Key::Up,
+            "down" => item_list::Key::Down,
+            "page-up" => item_list::Key::PageUp,
+            "page-down" => item_list::Key::PageDown,
+            "home" => item_list::Key::Home,
+            "end" => item_list::Key::End,
+            _ => return,
+        };
+        let current = usize::try_from(self.window().get_current_item()).ok();
+        let len = self.list.borrow().ids().len();
+        if let Some(row) = item_list::step(current, key, len, page) {
+            self.item_clicked(row);
+        }
+    }
+
     fn item_clicked(&self, row: usize) {
-        let Some(id) = self.items.id(row) else {
+        let Some(id) = self.list.borrow().id(row) else {
             return;
         };
         let window = self.window();
         window.set_current_item(row as i32);
+        self.current_item.set(Some(id));
 
         let (item, body, newly_read) = {
             let mut data = self.data.borrow_mut();
@@ -280,7 +325,8 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     }
 
     let data = Rc::new(RefCell::new(DummyData::new(options.items)));
-    let (tree, feed_titles, ids) = {
+    let list = Rc::new(RefCell::new(ItemList::default()));
+    let (tree, feed_titles) = {
         let data = data.borrow();
         let tree = FeedTree::new(
             data.folders(),
@@ -293,12 +339,14 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
             .iter()
             .map(|f| SharedString::from(f.title.as_str()))
             .collect();
-        (tree, titles, data.item_ids(None))
+        list.borrow_mut()
+            .set_source(data.item_ids(None), |id| data.item(id));
+        (tree, titles)
     };
 
     let items = Rc::new(ItemListModel {
         data: data.clone(),
-        ids: RefCell::new(ids),
+        list: list.clone(),
         feed_titles,
         notify: ModelNotify::default(),
     });
@@ -314,7 +362,9 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         tree_nodes: RefCell::new(Vec::new()),
         selected_node: Cell::new(Node::All),
         feeds,
+        list,
         items,
+        current_item: Cell::new(None),
     });
     app.refresh_tree();
 
@@ -340,6 +390,19 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     window.on_item_clicked(move |row| {
         if let Some(app) = weak.upgrade() {
             app.item_clicked(row as usize);
+        }
+    });
+
+    let weak = Rc::downgrade(&app);
+    window.on_item_key(move |key, page| {
+        if let Some(app) = weak.upgrade() {
+            app.item_key(&key, usize::try_from(page).unwrap_or(1));
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_sort_clicked(move |column| {
+        if let Some(app) = weak.upgrade() {
+            app.sort_clicked(column as usize);
         }
     });
 

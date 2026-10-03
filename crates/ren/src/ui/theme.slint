@@ -23,6 +23,12 @@ export global Theme {
         return Palette.accent-background.with-alpha(focused ? 0.35 : 0.18);
     }
 
+    // Item status colours, as in akregator: new items red, unread green.
+    // Breeze's negative and positive text colours.
+    out property <brush> status-new: root.dark ? #f0505f : #da4453;
+    out property <brush> status-unread: root.dark ? #2ecc71 : #1e8449;
+    out property <brush> starred: root.dark ? #f6c342 : #c9a200;
+
     // Tree
     out property <length> tree-indent: 18px;
     out property <brush> branch-line: Palette.foreground.with-alpha(0.3);

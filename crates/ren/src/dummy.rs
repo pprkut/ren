@@ -44,12 +44,6 @@ pub struct ItemSummary {
     pub starred: bool,
 }
 
-impl ItemSummary {
-    pub fn unread(&self) -> bool {
-        self.status != Status::Read
-    }
-}
-
 const FOLDERS: &[&str] = &["Technology", "Science", "News", "Comics"];
 
 /// Feed titles; the first `FOLDER_SIZES.iter().sum()` go into folders in
@@ -365,7 +359,9 @@ mod tests {
     #[test]
     fn mark_read() {
         let mut data = DummyData::new(100);
-        let id = (0..100).find(|&id| data.item(id).unread()).unwrap();
+        let id = (0..100)
+            .find(|&id| data.item(id).status != Status::Read)
+            .unwrap();
         let feed = data.feed_of(id);
         let before = data.unread_count(feed);
         assert!(data.mark_read(id));

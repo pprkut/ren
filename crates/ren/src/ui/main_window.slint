@@ -3,83 +3,9 @@
 
 import { ListView, Palette, ScrollView } from "std-widgets.slint";
 import { FeedTree, FeedRow } from "feed_tree.slint";
+import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
 
-export { FeedRow }
-
-export struct ItemRow {
-    title: string,
-    feed: string,
-    date: string,
-    unread: bool,
-    starred: bool,
-}
-
-component ItemListRow inherits Rectangle {
-    in property <ItemRow> entry;
-    in property <bool> selected;
-    callback clicked();
-
-    property <brush> text-color: root.selected ? Palette.selection-foreground : Palette.foreground;
-
-    height: 48px;
-    background: root.selected ? Palette.selection-background : touch.has-hover ? Palette.alternate-background : transparent;
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    VerticalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        alignment: center;
-        spacing: 2px;
-
-        HorizontalLayout {
-            spacing: 4px;
-
-            Text {
-                horizontal-stretch: 1;
-                text: root.entry.title;
-                overflow: elide;
-                font-weight: root.entry.unread ? 700 : 400;
-                color: root.text-color;
-            }
-
-            Text {
-                text: root.entry.starred ? "★" : "";
-                color: root.text-color;
-            }
-        }
-
-        HorizontalLayout {
-            spacing: 8px;
-
-            Text {
-                horizontal-stretch: 1;
-                text: root.entry.feed;
-                overflow: elide;
-                font-size: 0.85rem;
-                color: root.text-color;
-                opacity: 0.7;
-            }
-
-            Text {
-                text: root.entry.date;
-                font-size: 0.85rem;
-                color: root.text-color;
-                opacity: 0.7;
-            }
-        }
-    }
-
-    Rectangle {
-        y: root.height - self.height;
-        height: 1px;
-        background: Palette.border;
-    }
-}
+export { FeedRow, ItemRow, ItemStatus }
 
 export component MainWindow inherits Window {
     in property <[FeedRow]> feeds;
@@ -93,12 +19,16 @@ export component MainWindow inherits Window {
 
     // For the autoscroll measurement.
     in-out property <length> item-list-content-y <=> item-list.content-y;
-    out property <length> item-list-scroll-range: max(0px, item-list.content-height - item-list.visible-height);
+    out property <length> item-list-scroll-range: item-list.scroll-range;
+    in property <int> sort-column: 3;
+    in property <bool> sort-ascending: false;
 
     callback feed-clicked(row: int);
     callback feed-toggled(row: int);
     callback feed-key(key: string);
     callback item-clicked(row: int);
+    callback item-key(key: string, page: int);
+    callback sort-clicked(column: int);
 
     title: "ren";
     preferred-width: 1280px;
@@ -126,15 +56,20 @@ export component MainWindow inherits Window {
             background: Palette.border;
         }
 
-        item-list := ListView {
-            width: 420px;
-
-            for row[i] in root.items: ItemListRow {
-                entry: row;
-                selected: i == root.current-item;
-                clicked => {
-                    root.item-clicked(i);
-                }
+        item-list := ItemTable {
+            width: 640px;
+            rows: root.items;
+            current: root.current-item;
+            sort-column: root.sort-column;
+            sort-ascending: root.sort-ascending;
+            select(row) => {
+                root.item-clicked(row);
+            }
+            navigate(key, page) => {
+                root.item-key(key, page);
+            }
+            sort(column) => {
+                root.sort-clicked(column);
             }
         }
 
