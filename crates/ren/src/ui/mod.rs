@@ -468,6 +468,64 @@ fn start_autoscroll(window: &MainWindow) -> slint::Timer {
     timer
 }
 
+/// Time before `--cycle-articles` starts, and between two articles.
+const CYCLE_DELAY: Duration = Duration::from_secs(2);
+const CYCLE_INTERVAL: Duration = Duration::from_millis(300);
+/// Time after the last article, for its images to load.
+const CYCLE_SETTLE: Duration = Duration::from_secs(3);
+
+fn log_rss(when: &str) {
+    let kib = |field| crate::procstat::proc_status_kib(field).unwrap_or(0);
+    eprintln!(
+        "ren: rss {when}: {} KiB (anon {}, file {}, shmem {}; peak {} KiB)",
+        kib("VmRSS:"),
+        kib("RssAnon:"),
+        kib("RssFile:"),
+        kib("RssShmem:"),
+        kib("VmHWM:")
+    );
+}
+
+/// Opens the first `count` articles of the list one by one, logging memory
+/// use before, after the first and after the last, then quits.
+fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let created = Instant::now();
+    let mut opened = 0;
+    let mut done_at = None;
+    timer.start(slint::TimerMode::Repeated, CYCLE_INTERVAL, move || {
+        let Some(app) = app.upgrade() else {
+            return;
+        };
+        if created.elapsed() < CYCLE_DELAY {
+            return;
+        }
+        if let Some(done_at) = done_at {
+            if Instant::now() >= done_at {
+                log_rss(&format!("after {opened} articles"));
+                let _ = slint::quit_event_loop();
+            }
+            return;
+        }
+        let rows = app.list.borrow().ids().len();
+        if opened == 0 {
+            log_rss("before articles");
+        }
+        if opened < count.min(rows) {
+            app.item_clicked(opened);
+            opened += 1;
+            if opened == 1 {
+                log_rss("after 1 article");
+            } else if opened.is_multiple_of(100) && opened < count {
+                log_rss(&format!("after {opened} articles"));
+            }
+        } else {
+            done_at = Some(Instant::now() + CYCLE_SETTLE);
+        }
+    });
+    timer
+}
+
 pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
 
@@ -530,7 +588,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         &window,
         !options.plain_text,
         !options.no_images,
-        options.measure,
+        options.measure || options.cycle_articles.is_some(),
         move |url| {
             if let Some(window) = weak.upgrade() {
                 window.set_status_text(format!("Link: {url}").into());
@@ -617,5 +675,8 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     });
 
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
+    let _cycle = options
+        .cycle_articles
+        .map(|count| start_article_cycle(Rc::downgrade(&app), count));
     window.run()
 }
