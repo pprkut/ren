@@ -13,6 +13,9 @@ default = ["renderer-software"]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
+# Slint's native Qt style and the Qt backend it draws with; needs the Qt 6
+# development files at build time.
+style-qt = ["slint/backend-qt"]
 
 [dependencies]
 freedesktop-icons = "0.4"
