@@ -5,6 +5,8 @@ mod cli;
 mod dummy;
 mod feed_tree;
 mod item_list;
+mod remote;
+mod settings;
 mod ui;
 
 use std::process::ExitCode;
@@ -25,7 +27,11 @@ fn main() -> ExitCode {
         }
     };
 
-    match ui::run(&options, started) {
+    let result = match options.mode {
+        cli::Mode::Window => ui::run(&options, started).map_err(|err| err.to_string()),
+        _ => remote::run(&options),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("ren: {err}");

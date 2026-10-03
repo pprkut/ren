@@ -3549,8 +3549,12 @@ name = "ren"
 version = "0.1.0"
 dependencies = [
  "freedesktop-icons",
+ "nextcloud-news",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
+ "toml",
 ]
 
 [[package]]

@@ -3,10 +3,25 @@
 
 //! Command line options.
 
+use std::path::PathBuf;
+
 pub const USAGE: &str = "\
 Usage: ren [OPTIONS]
 
-Options:
+Server commands (instead of opening the window):
+  --check              Print the server's News app version, folder, feed,
+                       unread and starred counts
+  --fetch-unread       Fetch all unread items without storing them and
+                       print time, size and peak memory
+  --dump-items <DIR>   Store the raw responses (folders, feeds, unread and
+                       starred items) in DIR, outside the repository
+  --batch-size <N>     Items per request, or \"all\" (default: 200)
+  --settings <FILE>    Settings file (default:
+                       $XDG_CONFIG_HOME/ren/settings.toml)
+  The app password comes from $REN_APP_PASSWORD or from password-command
+  in the [account] table of the settings file.
+
+Window options:
   --backend <NAME>   Slint backend: winit or qt (default: qt when built
                      with the Qt style, else winit)
   --renderer <NAME>  Slint renderer for winit: software, femtovg or skia
@@ -35,8 +50,25 @@ pub enum Arrangement {
     Above,
 }
 
+/// What ren does.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Mode {
+    #[default]
+    Window,
+    Check,
+    FetchUnread,
+    DumpItems(PathBuf),
+}
+
+/// Items per request of the server commands.
+pub const DEFAULT_BATCH_SIZE: u32 = 200;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
+    pub mode: Mode,
+    pub settings: Option<PathBuf>,
+    /// `None` fetches all items in one request.
+    pub batch_size: Option<u32>,
     pub backend: Option<String>,
     pub renderer: Option<String>,
     pub items: usize,
@@ -50,6 +82,9 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            mode: Mode::Window,
+            settings: None,
+            batch_size: Some(DEFAULT_BATCH_SIZE),
             backend: None,
             renderer: None,
             items: 10_000,
@@ -74,7 +109,30 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         let mut value = |name: &str| args.next().ok_or(format!("{name} needs a value"));
+        let mode = match arg.as_str() {
+            "--check" => Some(Mode::Check),
+            "--fetch-unread" => Some(Mode::FetchUnread),
+            "--dump-items" => Some(Mode::DumpItems(value("--dump-items")?.into())),
+            _ => None,
+        };
+        if let Some(mode) = mode {
+            if options.mode != Mode::Window {
+                return Err("only one of --check, --fetch-unread and --dump-items".to_owned());
+            }
+            options.mode = mode;
+            continue;
+        }
         match arg.as_str() {
+            "--settings" => options.settings = Some(value("--settings")?.into()),
+            "--batch-size" => {
+                options.batch_size = match value("--batch-size")?.as_str() {
+                    "all" => None,
+                    n => match n.parse() {
+                        Ok(n) if n > 0 => Some(n),
+                        _ => return Err(format!("invalid batch size: {n}")),
+                    },
+                }
+            }
             "--backend" => options.backend = Some(value("--backend")?),
             "--renderer" => options.renderer = Some(value("--renderer")?),
             "--items" => {
@@ -121,6 +179,9 @@ mod tests {
     #[test]
     fn all_options() {
         let expected = Options {
+            mode: Mode::Window,
+            settings: None,
+            batch_size: Some(DEFAULT_BATCH_SIZE),
             backend: Some("winit".to_owned()),
             renderer: Some("skia".to_owned()),
             items: 500,
@@ -158,5 +219,32 @@ mod tests {
         assert!(parse_args(&["--arrangement", "below"]).is_err());
         assert!(parse_args(&["--color-scheme", "blue"]).is_err());
         assert_eq!(parse_args(&["--help", "--bogus"]), Ok(Command::Help));
+        assert!(parse_args(&["--batch-size", "0"]).is_err());
+        assert!(parse_args(&["--batch-size", "-1"]).is_err());
+        assert!(parse_args(&["--dump-items"]).is_err());
+        assert!(parse_args(&["--check", "--fetch-unread"]).is_err());
+    }
+
+    #[test]
+    fn server_commands() {
+        let Ok(Command::Run(options)) = parse_args(&[
+            "--dump-items",
+            "/tmp/dump",
+            "--batch-size",
+            "all",
+            "--settings",
+            "/etc/ren.toml",
+        ]) else {
+            panic!("parse failed");
+        };
+        assert_eq!(options.mode, Mode::DumpItems("/tmp/dump".into()));
+        assert_eq!(options.batch_size, None);
+        assert_eq!(options.settings, Some("/etc/ren.toml".into()));
+
+        let Ok(Command::Run(options)) = parse_args(&["--check", "--batch-size", "50"]) else {
+            panic!("parse failed");
+        };
+        assert_eq!(options.mode, Mode::Check);
+        assert_eq!(options.batch_size, Some(50));
     }
 }
