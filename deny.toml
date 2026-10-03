@@ -30,3 +30,11 @@ allow = [
     "Unicode-3.0",
     "Zlib",
 ]
+exceptions = [
+    # Mozilla's CA certificates as data, pulled in by Servo's networking
+    # (servo-net enables async-tungstenite's webpki-roots unconditionally).
+    # CDLA-Permissive-2.0 imposes no conditions on use or redistribution of
+    # the results. Not on the plan's list: pending approval, see
+    # docs/decisions/0005-web-tabs.md.
+    { name = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+]
