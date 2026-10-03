@@ -173,6 +173,18 @@ article switch and capped at 16 MiB):
 | Blitz, no images | 44.8 | 61.4 | 81.1 | 81.1 | 36.1 / 29.5 | 3.7 / 7.7 / 28.8 | 0.7 / 0.8 / 13.5 | 1.4 / 2.8 / 8.9 | 1.6 / 4.6 / 8.3 |
 | Blitz, with images | 44.9 | 61.3 | 108.4 | 122.9 | 61.2 / 31.6 | 4.0 / 7.9 / 16.4 | 0.7 / 0.8 / 2.7 | 1.5 / 2.7 / 7.4 | 1.8 / 4.6 / 8.3 |
 
+Once more at 649cdba with
+`GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072`, which makes glibc
+serve every block of 128 KiB or more with mmap and return it when freed,
+instead of growing its threshold and keeping such blocks in the heap:
+
+| variant | RSS before | after 1st | after last | peak | anon / file after last | first frame ms (median / p90 / max) | parse ms | style+layout ms | paint ms |
+|---|---|---|---|---|---|---|---|---|---|
+| build without html-view | 42.1 | 42.8 | 45.4 | 49.4 | 8.0 / 21.7 | - | - | - | - |
+| plain text | 44.4 | 45.1 | 47.7 | 51.6 | 8.6 / 23.6 | - | - | - | - |
+| Blitz, no images | 44.6 | 61.3 | 81.1 | 81.1 | 36.0 / 29.5 | 4.1 / 10.6 / 38.9 | 0.7 / 1.1 / 12.2 | 1.6 / 4.3 / 20.0 | 1.8 / 5.5 / 13.6 |
+| Blitz, with images | 44.8 | 61.4 | 84.6 | 103.8 | 37.6 / 31.4 | 8.5 / 16.0 / 30.0 | 1.3 / 2.3 / 15.9 | 3.1 / 5.3 / 13.0 | 3.3 / 8.0 / 14.4 |
+
 ### Manual check
 
 Selecting text and copying it with Ctrl+C, links, the cursor, images,
@@ -195,12 +207,20 @@ jumped.
   reading. Images account for about half. vello_cpu's image cache (up to
   64 MiB, pruned only while painting) looked like the cause, but clearing
   and capping it changed little (108.4 instead of 109.8 MiB after 100
-  articles, peak 122.9 instead of 124.0). What remains is not explained
-  yet. Likely: Blitz decodes images at full resolution (a 4000×3000 photo
-  is 46 MiB as RGBA), and glibc's malloc keeps freed memory of that size
-  in the heap instead of returning it (its mmap threshold grows after
-  large frees), so RSS stays at the high-water mark of the largest images
-  seen.
+  articles, peak 122.9 instead of 124.0).
+- **The memory for images is freed memory glibc keeps.** With a fixed
+  mmap threshold (third table), RSS after 100 articles with images is
+  84.6 MiB, about the same as without images (81.1), and the heap 37.6
+  instead of 61.2 MiB; the peak drops from 122.9 to 103.8 MiB. Blitz frees
+  the decoded images (they are decoded at full resolution, a 4000×3000
+  photo is 46 MiB as RGBA), but glibc raises its mmap threshold after
+  freeing large blocks and then keeps later ones in the heap, so RSS stayed
+  at the high-water mark. The fixed threshold has a price: the first frame
+  of articles with images took twice as long (median 8.5 instead of 4.0 ms,
+  p90 16 instead of 8), as every large block is mapped and zeroed anew.
+- **Without images it is not glibc:** 81.1 MiB with or without the
+  setting, so the 27 MiB of extra heap after 100 articles is memory Blitz
+  and its libraries still hold (caches; it levels off).
 - **CSS coverage is good for what feeds use.** The common elements,
   inline styles, floats with `clear`, tables and figures render; real
   articles looked right. What doesn't fit the view: `<video>`/`<audio>`
@@ -232,8 +252,9 @@ jumped.
 - **Version:** 0.3.0-beta.2, pinned, because the stable 0.2 can't select
   document text. Move to 0.3.0 when it is released.
 - **Memory is the condition:** M6 has to bring reading many articles with
-  images under the 100 MiB goal before the view is considered done (see
-  the consequences).
+  images under the 100 MiB goal, including the peak, before the view is
+  considered done (see the consequences). The glibc experiment shows it is
+  reachable: 85 MiB after 100 articles with images, peak 104.
 
 ## Consequences
 
@@ -242,15 +263,16 @@ For M6:
 - **Images at display size:** decode (or downscale after decoding) to at
   most the pane width × scale factor, instead of keeping full-resolution
   RGBA; together with the on-disk image cache from the plan.
-- **Find where the memory goes**, with a heap profiler (e.g. heaptrack):
-  the heap growth without images (27 MiB after 100 articles, levelling off;
-  Stylo, Parley and vello_cpu caches are the suspects) and the 28 MiB more
-  with images. First check how much is freed memory glibc keeps: run
-  `just measure-articles` with
-  `GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072` (large blocks always
-  from mmap, returned when freed), and try `malloc_trim` after an article
-  switch.
-- **Re-measure** with `just measure-articles` after each of these.
+- **Give freed image memory back without slowing every article:** try
+  `malloc_trim(0)` after an article switch, or when the view has been idle
+  for a moment, against a fixed mmap threshold set with `mallopt` at
+  startup (which made first frames twice as slow), and decoding images at
+  display size, which also lowers the peak (104 MiB with the fixed
+  threshold; large photos are the cause). Then re-measure with
+  `just measure-articles`.
+- **Find the heap Blitz keeps** (27 MiB after 100 articles without images,
+  levelling off) with a heap profiler (e.g. heaptrack): Stylo, Parley and
+  vello_cpu caches are the suspects; trim or cap what can be.
 - **Dark mode:** neutralise author colours (`color`, `background-color`,
   `bgcolor`) in dark mode, or invert only where contrast is too low.
 - **Scroll position:** Blitz draws no scrollbar for the viewport; add an

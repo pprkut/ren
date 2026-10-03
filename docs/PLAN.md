@@ -429,12 +429,13 @@ From here on every milestone ships with tests for what it adds.
   on open, star toggle, manual refresh, sync status, background sync thread
   (`slint::invoke_from_event_loop`). View models unit-tested.
 - **M6 — Article view.** The S3 result made production-ready behind the
-  `html-view` feature, including the image cache. From S3: images decoded
-  at display size, the heap growth over many articles found and capped,
-  reading with images under the memory goal (re-measured with
-  `just measure-articles`), author colours in dark mode, a scroll position
-  indicator, media elements as poster or link, and a setting to load
-  remote images only on request.
+  `html-view` feature, including the image cache. From S3: freed image
+  memory returned to the system (glibc keeps it; `malloc_trim` or the
+  mmap threshold), images decoded at display size, the heap growth over
+  many articles found and capped, reading with images under the memory
+  goal (re-measured with `just measure-articles`), author colours in dark
+  mode, a scroll position indicator, media elements as poster or link, and
+  a setting to load remote images only on request.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting.
