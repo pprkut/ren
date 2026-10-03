@@ -9,6 +9,8 @@ default:
 check:
     reuse lint
     cargo fmt --all --check
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
+    cargo test --locked --no-default-features --features renderer-software
     cargo clippy --all-targets --locked -- -D warnings
     cargo test --locked
     cargo deny check licenses
