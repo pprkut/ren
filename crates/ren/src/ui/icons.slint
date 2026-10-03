@@ -1,0 +1,23 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Icons, loaded at startup from the desktop's icon theme, or from the
+// bundled monochrome set if the theme doesn't have them.
+export global Icons {
+    in property <image> add-feed;
+    in property <image> fetch-feed;
+    in property <image> fetch-all;
+    in property <image> cancel;
+    in property <image> mark-read;
+    in property <image> quit;
+    in property <image> find;
+    in property <image> configure;
+
+    // Feed tree
+    in property <image> all-items;
+    in property <image> folder;
+    in property <image> feed;
+
+    // The bundled icons are drawn in black and need the text colour.
+    in property <bool> monochrome;
+}

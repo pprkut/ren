@@ -3,6 +3,7 @@
 
 import { ListView, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 
 export struct FeedRow {
     title: string,
@@ -185,6 +186,14 @@ component FeedTreeRow inherits Rectangle {
         padding-left: Theme.row-padding + max(0, root.entry.depth) * root.indent + 2px;
         padding-right: Theme.row-padding + 2px;
         spacing: 6px;
+
+        Image {
+            width: Theme.tree-icon-size;
+            height: Theme.tree-icon-size;
+            y: (parent.height - self.height) / 2;
+            source: root.entry.depth == 0 ? Icons.all-items : root.entry.is-folder ? Icons.folder : Icons.feed;
+            colorize: Icons.monochrome ? Palette.foreground : transparent;
+        }
 
         Text {
             horizontal-stretch: 1;
