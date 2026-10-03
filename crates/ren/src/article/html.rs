@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use anyrender::ImageRenderer;
-use anyrender_vello_cpu::VelloCpuImageRenderer;
+use anyrender_vello_cpu::{ImageCacheConfig, VelloCpuImageRenderer};
 use atomic_refcell::AtomicRefCell;
 use blitz_dom::{Document, DocumentConfig, FontContext, StyleThreading};
 use blitz_html::{HtmlDocument, HtmlProvider};
@@ -31,6 +31,10 @@ const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
 
 /// Largest image (or other resource) fetched for an article.
 const RESOURCE_LIMIT: u64 = 20 * 1024 * 1024;
+
+/// Most memory the renderer keeps for images converted for painting (the
+/// default is 64 MiB).
+const IMAGE_CACHE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Threads fetching and decoding images.
 const FETCH_THREADS: usize = 2;
@@ -311,7 +315,14 @@ impl HtmlView {
 
         Self {
             doc: None,
-            renderer: VelloCpuImageRenderer::new(1, 1),
+            renderer: VelloCpuImageRenderer::with_image_cache_config(
+                1,
+                1,
+                ImageCacheConfig {
+                    max_bytes: IMAGE_CACHE_BYTES,
+                    ..Default::default()
+                },
+            ),
             size: (1, 1),
             scale: 1.0,
             color_scheme: ColorScheme::Light,
@@ -352,8 +363,11 @@ impl HtmlView {
             style_threading: StyleThreading::Sequential,
             ..Default::default()
         };
-        // Drop the previous document (and its pending images) first.
+        // Drop the previous document (and its pending images) first, and
+        // the renderer's copies of its images: the renderer only prunes them
+        // while painting, which may not happen for a long time.
         self.doc = None;
+        self.renderer.clear_image_cache();
         let doc = HtmlDocument::from_html(html, config);
         self.net.current_doc.store(doc.id(), Ordering::Release);
         self.doc = Some(doc);
