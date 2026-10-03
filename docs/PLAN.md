@@ -359,8 +359,10 @@ this is a single command.
   *Done when:* works against the real server; time, peak RSS and CPU of
   fetching all unread items are recorded for a few batch sizes.
   *Decides:* ureq + serde approach, batch size.
-- **S3 — Article view with Blitz.** Render the items dumped in S2 into the
-  article pane of the S1 window: scrolling, link clicks (just logged),
+- **S3 — Article view with Blitz.** *(done: Blitz 0.3 (pre-release) stays;
+  memory with images is the open condition for M6; see
+  `docs/decisions/0004-article-view.md`)* Render the items dumped in S2
+  into the article pane of the S1 window: scrolling, link clicks (just logged),
   text selection with copy to the clipboard (Blitz's clipboard hook,
   implemented e.g. with `arboard`, since Slint has no public clipboard API),
   mouse cursor changes over links and text, images, light/dark stylesheet.
@@ -427,7 +429,12 @@ From here on every milestone ships with tests for what it adds.
   on open, star toggle, manual refresh, sync status, background sync thread
   (`slint::invoke_from_event_loop`). View models unit-tested.
 - **M6 — Article view.** The S3 result made production-ready behind the
-  `html-view` feature, including the image cache.
+  `html-view` feature, including the image cache. From S3: images decoded
+  at display size, the heap growth over many articles found and capped,
+  reading with images under the memory goal (re-measured with
+  `just measure-articles`), author colours in dark mode, a scroll position
+  indicator, media elements as poster or link, and a setting to load
+  remote images only on request.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting.

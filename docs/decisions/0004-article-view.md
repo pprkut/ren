@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0004 — Article view: Blitz (spike S3)
 
-**Status:** draft; waiting for measurements and checks on real items.
+**Status:** accepted (2026-10-03).
 
 ## Context
 
@@ -114,7 +114,7 @@ Arabic, emoji) under Xvfb:
 - Memory does not grow per article: opening 300 articles in a row levels
   off after about 100. What it levels off at is to be measured on real items.
 - Italic text looked wrong in the container, which has no italic sans-serif
-  font; to check on the desktop.
+  font; on the desktop it is fine.
 - **Dependencies:** about 120 crates more (Stylo, Taffy, html5ever,
   vello_cpu, …). Parley 0.11.1 and usvg 0.48.1 are the same versions Slint
   uses, so they are shared. All licenses fit the policy (Stylo is MPL-2.0).
@@ -125,24 +125,124 @@ Arabic, emoji) under Xvfb:
 
 ## Measurements
 
-To be run with the S2 dump:
+On the S2 dump (62,831 articles), i7-1185G7, Linux 7.2.8, KDE on X11.
 
-```sh
-just survey-articles ~/ren-dump
-just measure-articles ~/ren-dump 100
-```
+### Survey of the article HTML
 
-And by hand (`ren --dump ~/ren-dump`, also with `--color-scheme dark`):
-selecting and copying text (Ctrl+C and the context menu), clicking links,
-the cursor over links and text, images, italics, scrolling with wheel and
-keys, and how a varied set of real articles looks compared to the web view.
+`just survey-articles ~/ren-dump`; counts only.
 
-*Results: pending.*
+- **Body size:** median 496 bytes, p90 8.2 KB, p99 22 KB, largest 209 KB;
+  17 empty bodies.
+- **Features** (share of articles containing it): images 58.4 % (56,367
+  images; `width`/`height` attributes 7.4 %, `srcset` 0.7 %, WebP 0.4 %,
+  SVG files 0.2 %, AVIF 13 articles, `http:` 40 articles, lazy-loaded
+  images without a usable `src` none), blockquote 3.4 %, `pre` 1.9 %,
+  iframe 1.3 %, table 0.6 %, figure 0.3 %, floats 0.2 % (inline style) +
+  0.2 % (`align`), `picture` 0.2 %, `sup`/`sub` 0.2 % each, `kbd` 0.1 %,
+  video 0.1 %, `center` 13 articles, `details` 4, audio 1, `font` 1.
+- **Elements:** mostly `p`, `a`, `span`, `img`, `li`, `div`, `em`,
+  `strong`, `h2`, `code`; then table parts, `ul`, `br`, `h3`, `pre`, `h4`.
+- **Inline CSS** (23,643 `style` attributes): `font-size` 7,585,
+  `font-weight` 7,408, `color` 3,783, `height` 1,291, `width` 1,061,
+  `text-align` 1,025, margins and paddings, `clear` 579, `border` 509,
+  `background-color` 466, `vertical-align` 349, `line-height` 285,
+  `font-family` 284, `float` 153; presentational attributes `bgcolor` 716,
+  `align` 462, `border` 133, `cellpadding`/`cellspacing`.
+
+### Memory and render time
+
+`just measure-articles ~/ren-dump 100` at 451cb6e (before the fixes
+below): 100 articles opened 300 ms apart, RSS in MiB.
+
+| variant | RSS before | after 1st | after last | peak | anon / file after last | first frame ms (median / p90 / max) | parse ms | style+layout ms | paint ms |
+|---|---|---|---|---|---|---|---|---|---|
+| build without html-view | 42.2 | 42.9 | 45.5 | 49.4 | 8.3 / 21.5 | - | - | - | - |
+| plain text | 44.4 | 45.1 | 48.1 | 51.7 | 8.9 / 23.6 | - | - | - | - |
+| Blitz, no images | 44.8 | 61.5 | 81.2 | 81.2 | 36.1 / 29.5 | 3.8 / 8.7 / 27.3 | 0.7 / 0.9 / 12.6 | 1.4 / 3.5 / 15.6 | 1.7 / 4.6 / 8.1 |
+| Blitz, with images | 44.8 | 61.6 | 109.8 | 124.0 | 62.5 / 31.7 | 4.1 / 8.5 / 17.4 | 0.7 / 1.0 / 2.7 | 1.5 / 3.5 / 8.2 | 1.8 / 4.6 / 8.5 |
+
+Binary size: 20.1 MiB without `html-view`, 31.0 MiB with it.
+
+### Manual check
+
+Selecting text and copying it with Ctrl+C, links, the cursor, images,
+keyboard and wheel scrolling work on real articles. Two problems, both
+fixed afterwards (see below): the right-click menu didn't open, and with
+a high-resolution wheel (Logitech MX Master 4) scrolling felt choppy; a
+fast flick didn't scroll at first and then jumped.
+
+### Reading the numbers
+
+- **Speed is not an issue.** The first frame of an article takes 4 ms
+  (median) and 8.5 ms (p90); the slowest of 100 took 27 ms. Parsing,
+  styling and layout, and painting each take a few milliseconds.
+- **Memory is.** Blitz costs nothing until the first article (the view is
+  created then), and 17 MiB with it. After 100 articles RSS is 33 MiB
+  above plain text without images (27 MiB of it heap, levelling off, as
+  seen with synthetic articles) and 62 MiB above with images, with a peak
+  of 124 MiB. That is above the goal of staying well below 100 MiB while
+  reading. Images account for about half: Blitz keeps them decoded at
+  full resolution (a 4000×3000 photo is 46 MiB as RGBA), and vello_cpu
+  kept converted copies of the images of earlier articles in a cache of up
+  to 64 MiB that it only prunes while painting.
+- **CSS coverage is good for what feeds use.** The common elements,
+  inline styles, floats with `clear`, tables and figures render; real
+  articles looked right. What doesn't fit the view: `<video>`/`<audio>`
+  (0.1 %; Blitz has no media playback), iframes (1.3 %; replaced by links on
+  purpose), and possibly AVIF (13 articles) and `picture`/`srcset` source
+  selection (unverified). The inline `color`, `background-color` and
+  `bgcolor` (several thousand uses) are written for light backgrounds and
+  will clash with the dark stylesheet.
+
+### Fixes after the measurement
+
+- The right-click menu: the `TouchArea` forwarding input to Blitz took the
+  right click; it now opens the menu itself.
+- Scrolling: every input event rendered a frame at once, so a burst of
+  high-resolution wheel events queued up behind the frames. Events are
+  still applied at once, but the frame is rendered after the queued
+  events, once per event-loop pass.
+- Images: vello_cpu's image cache is cleared when another article is shown
+  and capped at 16 MiB.
 
 ## Decision
 
-*Pending.*
+- **Blitz: yes**, behind `html-view`, on by default. It renders real
+  articles correctly and quickly and does everything S3 asked for: text
+  selection with copy, link clicks, cursors, images, light and dark. The
+  alternatives don't do better where it matters: litehtml leaves selection,
+  painting and image handling to the embedder (and brings a C++ build),
+  and Slint's own text can't show tables, floats or inline images.
+- **Version:** 0.3.0-beta.2, pinned, because the stable 0.2 can't select
+  document text. Move to 0.3.0 when it is released.
+- **Memory is the condition:** M6 has to bring reading many articles with
+  images under the 100 MiB goal before the view is considered done (see
+  the consequences).
 
 ## Consequences
 
-*Pending.*
+For M6:
+
+- **Images at display size:** decode (or downscale after decoding) to at
+  most the pane width × scale factor, instead of keeping full-resolution
+  RGBA; together with the on-disk image cache from the plan.
+- **Find the heap growth without images** (27 MiB after 100 articles,
+  levelling off) with a heap profiler: Stylo, Parley and vello_cpu caches
+  are the suspects; trim or cap what can be.
+- **Re-measure** with `just measure-articles` after the image-cache fix of
+  this spike and after the above.
+- **Dark mode:** neutralise author colours (`color`, `background-color`,
+  `bgcolor`) in dark mode, or invert only where contrast is too low.
+- **Scroll position:** Blitz draws no scrollbar for the viewport; add an
+  indicator (a Slint scrollbar driven by the document's scroll position
+  and height).
+- **Scrolling feel:** check the once-per-pass rendering with a
+  high-resolution wheel; consider smooth (animated) scrolling for the
+  keyboard.
+- **Media:** `<video>`/`<audio>` as a poster image or link that opens the
+  full page (S4); check AVIF, `srcset` and `<picture>`.
+- **Privacy:** loading remote images tells the image hosts what is being
+  read; a setting to load them only on request (akregator has the same).
+- Animations stay off; select all (Ctrl+A) is not supported by Blitz's
+  selection API in a usable form yet.
+- **S4:** check whether Blitz's Stylo and Servo's can be unified.
