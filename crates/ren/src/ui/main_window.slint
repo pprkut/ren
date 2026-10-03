@@ -555,7 +555,7 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                ContextMenuArea {
+                article-menu := ContextMenuArea {
                     Menu {
                         MenuItem {
                             title: "Copy";
@@ -570,6 +570,15 @@ export component MainWindow inherits Window {
                         pointer-event(event) => {
                             if event.kind == PointerEventKind.down {
                                 html-focus.focus();
+                            }
+                            // This TouchArea takes the right click before the
+                            // ContextMenuArea sees it; open the menu here, and
+                            // keep the click from Blitz so the selection stays.
+                            if event.button == PointerEventButton.right {
+                                if event.kind == PointerEventKind.down {
+                                    article-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                }
+                                return;
                             }
                             if event.kind != PointerEventKind.cancel {
                                 root.article-pointer(
