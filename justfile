@@ -17,6 +17,14 @@ check:
 measure *variants:
     scripts/measure.sh {{variants}}
 
+# Measure the article view on items from a --dump-items directory (needs a display)
+measure-articles dump *articles:
+    scripts/measure-articles.sh {{dump}} {{articles}}
+
+# Survey the HTML and CSS used by the articles in a --dump-items directory
+survey-articles dump:
+    scripts/survey-articles.py {{dump}}
+
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}

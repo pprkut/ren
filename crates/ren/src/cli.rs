@@ -32,6 +32,9 @@ Window options:
                      of dummy data
   --plain-text       Show articles as plain text, not rendered HTML
   --no-images        Don't fetch images in articles
+  --cycle-articles <N>
+                     After 2 s, open the first N articles one by one, print
+                     render times and memory use, and quit
   --arrangement <A>  Item list beside or above the article (default: beside)
   --bundled-icons    Use the bundled icons instead of the icon theme
   --color-scheme <S> light or dark instead of the desktop's
@@ -81,6 +84,7 @@ pub struct Options {
     pub dump: Option<PathBuf>,
     pub plain_text: bool,
     pub no_images: bool,
+    pub cycle_articles: Option<usize>,
     pub arrangement: Arrangement,
     pub bundled_icons: bool,
     pub color_scheme: Option<ColorScheme>,
@@ -100,6 +104,7 @@ impl Default for Options {
             dump: None,
             plain_text: false,
             no_images: false,
+            cycle_articles: None,
             arrangement: Arrangement::default(),
             bundled_icons: false,
             color_scheme: None,
@@ -161,6 +166,13 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--dump" => options.dump = Some(value("--dump")?.into()),
             "--plain-text" => options.plain_text = true,
             "--no-images" => options.no_images = true,
+            "--cycle-articles" => {
+                let n = value("--cycle-articles")?;
+                options.cycle_articles = Some(
+                    n.parse()
+                        .map_err(|_| format!("invalid article count: {n}"))?,
+                );
+            }
             "--bundled-icons" => options.bundled_icons = true,
             "--color-scheme" => {
                 options.color_scheme = match value("--color-scheme")?.as_str() {
@@ -203,6 +215,7 @@ mod tests {
             dump: Some("/tmp/dump".into()),
             plain_text: true,
             no_images: true,
+            cycle_articles: Some(20),
             arrangement: Arrangement::Above,
             bundled_icons: true,
             color_scheme: Some(ColorScheme::Light),
@@ -221,6 +234,8 @@ mod tests {
                 "/tmp/dump",
                 "--plain-text",
                 "--no-images",
+                "--cycle-articles",
+                "20",
                 "--arrangement",
                 "above",
                 "--bundled-icons",
