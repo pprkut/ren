@@ -35,3 +35,9 @@ SPDX-FileCopyrightText = [
     "Copyright 2013-present Cole Bemis",
 ]
 SPDX-License-Identifier = "ISC AND MIT"
+
+# Screenshots of ren; they show Breeze icons (KDE, LGPL-3.0-or-later).
+[[annotations]]
+path = "docs/decisions/*/*.webp"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "GPL-3.0-or-later"

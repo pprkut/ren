@@ -225,7 +225,11 @@ this is a single command.
   *Done when:* idle RSS, startup time and idle CPU are recorded for the
   software, FemtoVG and Skia renderers, and scrolling the 10k list is smooth.
   *Decides:* Slint yes/no, default renderer.
-- **S1b — UI capabilities.** Before building on Slint, check that it can
+- **S1b — UI capabilities.** *(done: Slint stays, custom tree, table,
+  splitter and tool bar components; the Qt style is an opt-in build
+  feature, `style-qt`, which needs the Qt 6 development files (set
+  `QMAKE=qmake6` if there is no `qmake`); see
+  `docs/decisions/0002-ui-capabilities.md`)* Before building on Slint, check that it can
   carry the desktop UI we want, using akregator as the reference. Still on
   dummy data; keep presentation in `ui/` and the logic in plain-Rust view
   models (tree guides, sorting, column state) so it survives into M5.
