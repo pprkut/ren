@@ -44,6 +44,12 @@ export component MainWindow inherits Window {
     in property <string> status-text;
     in property <string> unread-text;
     in-out property <bool> show-toolbar: true;
+    // Overrides the desktop's colour scheme unless `unknown`.
+    in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+
+    changed forced-color-scheme => {
+        Palette.color-scheme = root.forced-color-scheme;
+    }
 
     // A menu, tool bar or shortcut action, by name.
     callback action(name: string);

@@ -121,13 +121,29 @@ fn lookup(names: &[&str], theme: &str, scale: u16) -> Option<PathBuf> {
     })
 }
 
+/// The variant of an icon theme for a forced colour scheme: Breeze and
+/// others come as `name` and `name-dark`.
+fn theme_variant(theme: String, dark: Option<bool>) -> String {
+    match (dark, theme.strip_suffix("-dark")) {
+        (Some(false), Some(light)) => light.to_owned(),
+        (Some(true), None)
+            if freedesktop_icons::list_themes().contains(&format!("{theme}-dark")) =>
+        {
+            format!("{theme}-dark")
+        }
+        _ => theme,
+    }
+}
+
 /// Loads all icons into the window. Uses the icon theme if it has all of
 /// them (and `use_theme` is set), else the bundled set, so the tool bar
-/// doesn't mix styles.
-pub fn load(window: &MainWindow, use_theme: bool) {
+/// doesn't mix styles. `dark` is a forced colour scheme, if any.
+pub fn load(window: &MainWindow, use_theme: bool, dark: Option<bool>) {
     let icons = window.global::<Icons>();
     let scale = window.window().scale_factor().ceil().max(1.0) as u16;
-    let theme = theme_name().filter(|_| use_theme);
+    let theme = theme_name()
+        .filter(|_| use_theme)
+        .map(|theme| theme_variant(theme, dark));
     let themed: Option<Vec<Image>> = theme.and_then(|theme| {
         ICONS
             .iter()
