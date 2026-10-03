@@ -17,6 +17,8 @@ use crate::item_list::{self, Column, ItemList};
 
 mod article;
 mod icons;
+#[cfg(feature = "servo")]
+mod pages;
 
 slint::include_modules!();
 
@@ -81,6 +83,8 @@ struct App {
     /// The item shown in the article pane.
     current_item: Cell<Option<u32>>,
     article: Rc<RefCell<article::ArticlePane>>,
+    #[cfg(feature = "servo")]
+    pages: Rc<RefCell<pages::Pages>>,
     /// Clears the status bar message after `STATUS_TIMEOUT`.
     status_timer: slint::Timer,
 }
@@ -218,6 +222,11 @@ impl App {
                     self.set_read(id, name == "mark-read");
                 }
             }
+            "open-tab" => {
+                if let Some(id) = self.current_item.get() {
+                    self.open_tab(id);
+                }
+            }
             "about" => self.status("ren: a native Nextcloud News reader (spike S1b)"),
             _ => self.not_implemented(name),
         }
@@ -236,7 +245,27 @@ impl App {
         };
         match action {
             "mark-read" | "mark-unread" => self.set_read(id, action == "mark-read"),
+            "open-tab" => self.open_tab(id),
             _ => self.not_implemented(action),
+        }
+    }
+
+    /// Opens the item's web page in a tab.
+    fn open_tab(&self, id: u32) {
+        #[cfg(feature = "servo")]
+        {
+            let Some(url) = self.data.borrow().url(id) else {
+                self.status("This article has no link");
+                return;
+            };
+            if let Err(err) = self.pages.borrow_mut().open(&url) {
+                self.status(format!("Opening the page failed: {err}"));
+            }
+        }
+        #[cfg(not(feature = "servo"))]
+        {
+            let _ = id;
+            self.not_implemented("open-tab");
         }
     }
 
@@ -596,6 +625,9 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         },
     );
 
+    #[cfg(feature = "servo")]
+    let pages = pages::Pages::new(&window, options.tabs, options.measure);
+
     let app = Rc::new(App {
         window: window.as_weak(),
         data,
@@ -607,6 +639,8 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         items,
         current_item: Cell::new(None),
         article,
+        #[cfg(feature = "servo")]
+        pages,
         status_timer: slint::Timer::default(),
     });
     app.refresh_tree();
