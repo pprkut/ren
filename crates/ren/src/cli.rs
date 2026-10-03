@@ -7,7 +7,9 @@ pub const USAGE: &str = "\
 Usage: ren [OPTIONS]
 
 Options:
-  --renderer <NAME>  Slint renderer: software, femtovg or skia
+  --backend <NAME>   Slint backend: winit or qt (default: qt when built
+                     with the Qt style, else winit)
+  --renderer <NAME>  Slint renderer for winit: software, femtovg or skia
                      (default: $SLINT_BACKEND, else software)
   --items <N>        Number of dummy items (default: 10000)
   --arrangement <A>  Item list beside or above the article (default: beside)
@@ -35,6 +37,7 @@ pub enum Arrangement {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
+    pub backend: Option<String>,
     pub renderer: Option<String>,
     pub items: usize,
     pub arrangement: Arrangement,
@@ -47,6 +50,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            backend: None,
             renderer: None,
             items: 10_000,
             arrangement: Arrangement::default(),
@@ -71,6 +75,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
     while let Some(arg) = args.next() {
         let mut value = |name: &str| args.next().ok_or(format!("{name} needs a value"));
         match arg.as_str() {
+            "--backend" => options.backend = Some(value("--backend")?),
             "--renderer" => options.renderer = Some(value("--renderer")?),
             "--items" => {
                 let n = value("--items")?;
@@ -116,6 +121,7 @@ mod tests {
     #[test]
     fn all_options() {
         let expected = Options {
+            backend: Some("winit".to_owned()),
             renderer: Some("skia".to_owned()),
             items: 500,
             arrangement: Arrangement::Above,
@@ -126,6 +132,8 @@ mod tests {
         };
         assert_eq!(
             parse_args(&[
+                "--backend",
+                "winit",
                 "--renderer",
                 "skia",
                 "--items",

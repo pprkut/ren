@@ -391,10 +391,25 @@ fn show_placeholder(window: &MainWindow) {
     window.set_article_body(SharedString::new());
 }
 
-/// Uses the given renderer, else the one from `$SLINT_BACKEND`, else
+/// The backend when none is given: Qt draws the Qt style's native widgets.
+const DEFAULT_BACKEND: &str = if cfg!(feature = "style-qt") {
+    "qt"
+} else {
+    "winit"
+};
+
+/// Uses the given backend, else `DEFAULT_BACKEND`. For winit, uses the
+/// given renderer, else the one from `$SLINT_BACKEND`, else
 /// `DEFAULT_RENDERER`.
-fn select_backend(renderer: Option<&str>) -> Result<(), slint::PlatformError> {
-    let mut selector = slint::BackendSelector::new().backend_name("winit".to_owned());
+fn select_backend(
+    backend: Option<&str>,
+    renderer: Option<&str>,
+) -> Result<(), slint::PlatformError> {
+    let backend = backend.unwrap_or(DEFAULT_BACKEND);
+    let mut selector = slint::BackendSelector::new().backend_name(backend.to_owned());
+    if backend != "winit" {
+        return selector.select();
+    }
     let renderer = renderer.or_else(|| {
         std::env::var_os("SLINT_BACKEND")
             .is_none()
@@ -468,7 +483,7 @@ fn start_autoscroll(window: &MainWindow) -> slint::Timer {
 }
 
 pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformError> {
-    select_backend(options.renderer.as_deref())?;
+    select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
     let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
