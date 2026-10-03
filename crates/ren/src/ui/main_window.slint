@@ -2,14 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ListView, Palette, ScrollView } from "std-widgets.slint";
+import { FeedTree, FeedRow } from "feed_tree.slint";
 
-export struct FeedRow {
-    title: string,
-    depth: int,
-    unread: int,
-    is-folder: bool,
-    expanded: bool,
-}
+export { FeedRow }
 
 export struct ItemRow {
     title: string,
@@ -17,51 +12,6 @@ export struct ItemRow {
     date: string,
     unread: bool,
     starred: bool,
-}
-
-component FeedTreeRow inherits Rectangle {
-    in property <FeedRow> entry;
-    in property <bool> selected;
-    callback clicked();
-
-    property <brush> text-color: root.selected ? Palette.selection-foreground : Palette.foreground;
-
-    height: 28px;
-    background: root.selected ? Palette.selection-background : touch.has-hover ? Palette.alternate-background : transparent;
-
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    HorizontalLayout {
-        padding-left: 8px + root.entry.depth * 16px;
-        padding-right: 8px;
-        spacing: 4px;
-
-        Text {
-            width: 12px;
-            text: !root.entry.is-folder ? "" : root.entry.expanded ? "▾" : "▸";
-            vertical-alignment: center;
-            color: root.text-color;
-        }
-
-        Text {
-            horizontal-stretch: 1;
-            text: root.entry.title;
-            overflow: elide;
-            vertical-alignment: center;
-            font-weight: root.entry.unread > 0 ? 700 : 400;
-            color: root.text-color;
-        }
-
-        Text {
-            text: root.entry.unread > 0 ? "\{root.entry.unread}" : "";
-            vertical-alignment: center;
-            color: root.text-color;
-        }
-    }
 }
 
 component ItemListRow inherits Rectangle {
@@ -146,6 +96,8 @@ export component MainWindow inherits Window {
     out property <length> item-list-scroll-range: max(0px, item-list.content-height - item-list.visible-height);
 
     callback feed-clicked(row: int);
+    callback feed-toggled(row: int);
+    callback feed-key(key: string);
     callback item-clicked(row: int);
 
     title: "ren";
@@ -154,15 +106,18 @@ export component MainWindow inherits Window {
     background: Palette.background;
 
     HorizontalLayout {
-        ListView {
+        FeedTree {
             width: 240px;
-
-            for row[i] in root.feeds: FeedTreeRow {
-                entry: row;
-                selected: i == root.current-feed;
-                clicked => {
-                    root.feed-clicked(i);
-                }
+            rows: root.feeds;
+            current: root.current-feed;
+            select(row) => {
+                root.feed-clicked(row);
+            }
+            toggle(row) => {
+                root.feed-toggled(row);
+            }
+            navigate(key) => {
+                root.feed-key(key);
             }
         }
 

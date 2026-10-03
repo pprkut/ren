@@ -11,7 +11,7 @@ use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedSt
 
 use crate::cli::Options;
 use crate::dummy::{DummyData, format_date};
-use crate::feed_tree::{FeedTree, Node};
+use crate::feed_tree::{self, FeedTree, Node};
 
 slint::include_modules!();
 
@@ -98,6 +98,8 @@ impl App {
                     unread: r.unread.try_into().unwrap_or(i32::MAX),
                     is_folder: r.expanded.is_some(),
                     expanded: r.expanded == Some(true),
+                    last: r.last,
+                    guides: ModelRc::new(VecModel::from(r.guides)),
                 })
                 .collect::<Vec<_>>(),
         );
@@ -106,22 +108,46 @@ impl App {
     }
 
     fn feed_clicked(&self, row: usize) {
-        let Some(node) = self.tree_nodes.borrow().get(row).copied() else {
-            return;
-        };
-        let filter = match node {
-            Node::Folder(id) => {
-                self.tree.borrow_mut().toggle(id);
-                self.refresh_tree();
-                return;
-            }
-            Node::All => None,
-            Node::Feed(id) => Some(id),
-        };
-        self.selected_node.set(node);
-        self.window().set_current_feed(row as i32);
+        if let Some(node) = self.tree_nodes.borrow().get(row).copied() {
+            self.select_node(node);
+        }
+    }
 
-        let ids = self.data.borrow().item_ids(filter);
+    fn feed_toggled(&self, row: usize) {
+        if let Some(Node::Folder(id)) = self.tree_nodes.borrow().get(row).copied() {
+            self.tree.borrow_mut().toggle(id);
+        }
+        self.refresh_tree();
+    }
+
+    fn feed_key(&self, key: &str) {
+        let key = match key {
+            "up" => feed_tree::Key::Up,
+            "down" => feed_tree::Key::Down,
+            "left" => feed_tree::Key::Left,
+            "right" => feed_tree::Key::Right,
+            "home" => feed_tree::Key::Home,
+            "end" => feed_tree::Key::End,
+            _ => return,
+        };
+        let next = self
+            .tree
+            .borrow_mut()
+            .navigate(self.selected_node.get(), key);
+        match next {
+            Some(node) => self.select_node(node),
+            // Expanding or collapsing a folder.
+            None => self.refresh_tree(),
+        }
+    }
+
+    /// Selects a feed, a folder or "All items" and shows its items.
+    fn select_node(&self, node: Node) {
+        self.selected_node.set(node);
+        self.refresh_tree();
+
+        let feeds = self.tree.borrow().feeds_of(node);
+        let ids = self.data.borrow().item_ids(feeds.as_deref());
         self.items.set_ids(ids);
         let window = self.window();
         window.set_item_list_content_y(0.0);
@@ -296,6 +322,18 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     window.on_feed_clicked(move |row| {
         if let Some(app) = weak.upgrade() {
             app.feed_clicked(row as usize);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_feed_toggled(move |row| {
+        if let Some(app) = weak.upgrade() {
+            app.feed_toggled(row as usize);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_feed_key(move |key| {
+        if let Some(app) = weak.upgrade() {
+            app.feed_key(&key);
         }
     });
     let weak = Rc::downgrade(&app);
