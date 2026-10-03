@@ -49,6 +49,11 @@ Web page tabs (with the servo feature):
                      wgpu (in-process, frames shared as GPU textures; needs
                      the servo-wgpu feature and the femtovg-wgpu renderer)
                      (default: helper)
+  --tab-url <URL>    A page for --measure-tabs; repeat for more (default:
+                     the links of the first items)
+  --measure-tabs     After 2 s, open one page, then three, scroll, close
+                     them all and open one again, printing memory use and
+                     frame times, then quit
   -h, --help         Show this help";
 
 /// A colour scheme forced instead of the desktop's.
@@ -108,6 +113,8 @@ pub struct Options {
     pub measure: bool,
     pub autoscroll: bool,
     pub tabs: TabMode,
+    pub tab_urls: Vec<String>,
+    pub measure_tabs: bool,
 }
 
 impl Default for Options {
@@ -129,6 +136,8 @@ impl Default for Options {
             measure: false,
             autoscroll: false,
             tabs: TabMode::default(),
+            tab_urls: Vec::new(),
+            measure_tabs: false,
         }
     }
 }
@@ -210,6 +219,8 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                     other => return Err(format!("invalid tab mode: {other}")),
                 }
             }
+            "--tab-url" => options.tab_urls.push(value("--tab-url")?),
+            "--measure-tabs" => options.measure_tabs = true,
             "-h" | "--help" => return Ok(Command::Help),
             _ => return Err(format!("unknown argument: {arg}")),
         }
@@ -249,6 +260,8 @@ mod tests {
             measure: true,
             autoscroll: true,
             tabs: TabMode::InProcess,
+            tab_urls: vec!["https://a/".to_owned(), "https://b/".to_owned()],
+            measure_tabs: true,
         };
         assert_eq!(
             parse_args(&[
@@ -272,7 +285,12 @@ mod tests {
                 "--measure",
                 "--autoscroll",
                 "--tabs",
-                "in-process"
+                "in-process",
+                "--tab-url",
+                "https://a/",
+                "--tab-url",
+                "https://b/",
+                "--measure-tabs"
             ]),
             Ok(Command::Run(expected))
         );

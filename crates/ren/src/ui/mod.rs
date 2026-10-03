@@ -626,7 +626,11 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     );
 
     #[cfg(feature = "servo")]
-    let pages = pages::Pages::new(&window, options.tabs, options.measure);
+    let pages = pages::Pages::new(
+        &window,
+        options.tabs,
+        options.measure || options.measure_tabs,
+    );
 
     let app = Rc::new(App {
         window: window.as_weak(),
@@ -712,5 +716,24 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     let _cycle = options
         .cycle_articles
         .map(|count| start_article_cycle(Rc::downgrade(&app), count));
+    #[cfg(feature = "servo")]
+    let _measure_tabs = options.measure_tabs.then(|| {
+        let urls = if options.tab_urls.is_empty() {
+            let data = app.data.borrow();
+            let list = app.list.borrow();
+            list.ids()
+                .iter()
+                .filter_map(|&id| data.url(id))
+                .take(3)
+                .collect()
+        } else {
+            options.tab_urls.clone()
+        };
+        if urls.is_empty() {
+            eprintln!("ren: --measure-tabs needs --tab-url or items with links (--dump)");
+            std::process::exit(1);
+        }
+        pages::start_measurement(Rc::downgrade(&app.pages), urls)
+    });
     window.run()
 }
