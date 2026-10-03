@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
-use crate::cli::Options;
+use crate::cli::{self, Options};
 use crate::dummy::{DummyData, Status, format_date};
 use crate::feed_tree::{self, FeedTree, Node};
 use crate::item_list::{self, Column, ItemList};
@@ -319,6 +319,10 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     select_backend(options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
+    window.set_arrangement(match options.arrangement {
+        cli::Arrangement::Beside => Arrangement::Beside,
+        cli::Arrangement::Above => Arrangement::Above,
+    });
     if options.measure {
         log_elapsed(started, "window created");
         report_startup(&window, started);
