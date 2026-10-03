@@ -1,0 +1,213 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ListView, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct FeedRow {
+    title: string,
+    // 0 for the root ("All items"), 1 for folders and top-level feeds, 2 for
+    // feeds in folders.
+    depth: int,
+    unread: int,
+    is-folder: bool,
+    expanded: bool,
+    // Last child of its parent: the branch line ends at this row.
+    last: bool,
+    // Per ancestor level below the root: a branch line passes through.
+    guides: [bool],
+}
+
+component Chevron inherits Path {
+    in property <bool> expanded;
+
+    width: 8px;
+    height: 8px;
+    viewbox-width: 8;
+    viewbox-height: 8;
+    commands: root.expanded ? "M 0.5 2.5 L 4 6 L 7.5 2.5" : "M 2.5 0.5 L 6 4 L 2.5 7.5";
+    stroke-width: 1.2px;
+}
+
+component FeedTreeRow inherits Rectangle {
+    in property <FeedRow> entry;
+    in property <bool> selected;
+    in property <bool> focused;
+    callback clicked();
+    callback toggle();
+
+    property <length> indent: Theme.tree-indent;
+    // Centre of the column with this row's own branch line or chevron.
+    property <length> branch-x: Theme.row-padding + (root.entry.depth - 1) * root.indent + root.indent / 2;
+    // Gap around the chevron, so the branch line doesn't run through it.
+    property <length> chevron-gap: 7px;
+
+    height: Theme.row-height;
+
+    Rectangle {
+        x: 2px;
+        width: parent.width - 4px;
+        border-radius: Theme.selection-radius;
+        background: root.selected ? Theme.selection(root.focused) : touch.has-hover ? Theme.hover : transparent;
+        border-width: root.selected && root.focused ? 1px : 0px;
+        border-color: Theme.selection-border;
+    }
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+        double-clicked => {
+            if root.entry.is-folder {
+                root.toggle();
+            }
+        }
+    }
+
+    // Lines of ancestors with further siblings.
+    for guide[level] in root.entry.guides: Rectangle {
+        x: Theme.row-padding + level * root.indent + root.indent / 2;
+        width: 1px;
+        background: Theme.branch-line;
+        visible: guide;
+    }
+
+    // The root connects down to its children.
+    if root.entry.depth == 0: Rectangle {
+        x: Theme.row-padding + root.indent / 2;
+        y: root.height / 2 + root.chevron-gap;
+        width: 1px;
+        height: root.height / 2 - root.chevron-gap;
+        background: Theme.branch-line;
+    }
+
+    // Own branch: vertical line from the parent, and on to the next sibling
+    // unless this is the last child.
+    if root.entry.depth > 0: Rectangle {
+        x: root.branch-x;
+        width: 1px;
+        height: root.entry.is-folder ? root.height / 2 - root.chevron-gap : root.entry.last ? root.height / 2 : root.height;
+        y: 0;
+        background: Theme.branch-line;
+    }
+    if root.entry.depth > 0 && root.entry.is-folder && !root.entry.last: Rectangle {
+        x: root.branch-x;
+        y: root.height / 2 + root.chevron-gap;
+        width: 1px;
+        height: root.height / 2 - root.chevron-gap;
+        background: Theme.branch-line;
+    }
+    if root.entry.depth > 0 && !root.entry.is-folder: Rectangle {
+        x: root.branch-x;
+        y: root.height / 2;
+        width: root.indent / 2;
+        height: 1px;
+        background: Theme.branch-line;
+    }
+
+    // A folder's line to its feeds starts below the folder.
+    if root.entry.is-folder && root.entry.expanded: Rectangle {
+        x: root.branch-x + root.indent;
+        y: root.height / 2 + root.chevron-gap;
+        width: 1px;
+        height: root.height / 2 - root.chevron-gap;
+        background: Theme.branch-line;
+    }
+
+    if root.entry.is-folder: Rectangle {
+        x: root.branch-x - self.width / 2;
+        width: root.indent;
+        height: root.height;
+
+        Chevron {
+            expanded: root.entry.expanded;
+            stroke: chevron-touch.has-hover ? Palette.accent-background : Palette.foreground;
+        }
+
+        chevron-touch := TouchArea {
+            clicked => {
+                root.toggle();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.row-padding + max(0, root.entry.depth) * root.indent + 2px;
+        padding-right: Theme.row-padding + 2px;
+        spacing: 6px;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.title;
+            overflow: elide;
+            vertical-alignment: center;
+            font-weight: root.entry.unread > 0 ? 700 : 400;
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: root.entry.unread > 0 ? "\{root.entry.unread}" : "";
+            vertical-alignment: center;
+            color: Palette.foreground;
+            opacity: 0.75;
+        }
+    }
+}
+
+// Folders and feeds as a tree. Rows come flattened from the view model,
+// which also handles keyboard navigation.
+export component FeedTree inherits FocusScope {
+    in property <[FeedRow]> rows;
+    in property <int> current: 0;
+
+    // A row was clicked.
+    callback select(row: int);
+    // The chevron of a folder was clicked.
+    callback toggle(row: int);
+    // A navigation key: "up", "down", "left", "right", "home" or "end".
+    callback navigate(key: string);
+
+    changed current => {
+        // Keep the selected row in view.
+        let top = root.current * Theme.row-height;
+        if top < -list.content-y {
+            list.content-y = -top;
+        } else if top + Theme.row-height > -list.content-y + list.visible-height {
+            list.content-y = -(top + Theme.row-height - list.visible-height);
+        }
+    }
+
+    key-pressed(event) => {
+        if event.text == Key.UpArrow {
+            root.navigate("up");
+        } else if event.text == Key.DownArrow {
+            root.navigate("down");
+        } else if event.text == Key.LeftArrow {
+            root.navigate("left");
+        } else if event.text == Key.RightArrow {
+            root.navigate("right");
+        } else if event.text == Key.Home {
+            root.navigate("home");
+        } else if event.text == Key.End {
+            root.navigate("end");
+        } else {
+            return reject;
+        }
+        accept
+    }
+
+    list := ListView {
+        for row[i] in root.rows: FeedTreeRow {
+            entry: row;
+            selected: i == root.current;
+            focused: root.has-focus;
+            clicked => {
+                root.focus();
+                root.select(i);
+            }
+            toggle => {
+                root.toggle(i);
+            }
+        }
+    }
+}

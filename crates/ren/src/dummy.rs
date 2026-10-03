@@ -232,10 +232,10 @@ impl DummyData {
         (mix(u64::from(item_id) ^ 0xfeed) % self.feeds.len() as u64) as u32
     }
 
-    /// Item ids, newest first; all items or only those of one feed.
-    pub fn item_ids(&self, feed_id: Option<u32>) -> Vec<u32> {
+    /// Item ids, newest first; all items, or only those of the given feeds.
+    pub fn item_ids(&self, feeds: Option<&[u32]>) -> Vec<u32> {
         (0..self.item_count() as u32)
-            .filter(|&id| feed_id.is_none_or(|f| self.feed_of(id) == f))
+            .filter(|&id| feeds.is_none_or(|f| f.contains(&self.feed_of(id))))
             .collect()
     }
 
@@ -352,13 +352,13 @@ mod tests {
         let total: usize = data
             .feeds()
             .iter()
-            .map(|f| data.item_ids(Some(f.id)).len())
+            .map(|f| data.item_ids(Some(&[f.id])).len())
             .sum();
         assert_eq!(total, 1_000);
         assert!(
-            data.item_ids(Some(3))
+            data.item_ids(Some(&[3, 5]))
                 .iter()
-                .all(|&id| data.feed_of(id) == 3)
+                .all(|&id| [3, 5].contains(&data.feed_of(id)))
         );
     }
 

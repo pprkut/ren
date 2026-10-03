@@ -1,0 +1,32 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette } from "std-widgets.slint";
+
+// Colours and metrics shared by the custom widgets. Colours derive from the
+// style's palette, which follows the desktop's colour scheme and accent.
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    // Rows
+    out property <length> row-height: 26px;
+    out property <length> row-padding: 6px;
+    out property <brush> alternate-row: root.dark ? #ffffff08 : #00000008;
+    out property <brush> hover: Palette.accent-background.with-alpha(0.12);
+
+    // Selection, modelled on Breeze's item views: a tinted fill with an
+    // accent border while the view has focus, a lighter fill without.
+    out property <length> selection-radius: 3px;
+    out property <brush> selection-border: Palette.accent-background;
+
+    public pure function selection(focused: bool) -> brush {
+        return Palette.accent-background.with-alpha(focused ? 0.35 : 0.18);
+    }
+
+    // Tree
+    out property <length> tree-indent: 18px;
+    out property <brush> branch-line: Palette.foreground.with-alpha(0.3);
+
+    // Separators between panes and around headers
+    out property <brush> separator: Palette.border;
+}
