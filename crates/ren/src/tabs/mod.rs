@@ -116,6 +116,10 @@ pub trait Engine {
     /// The newest frame of the active tab, if it changed since the last
     /// call.
     fn take_frame(&mut self) -> Option<slint::Image>;
+    /// The helper process, if there is one, for memory measurements.
+    fn helper_pid(&self) -> Option<u32> {
+        None
+    }
     /// Frames so far, and the mean and longest time from a painted frame
     /// to a Slint image: the readback from the GPU, plus the transfer from
     /// the helper process if there is one.

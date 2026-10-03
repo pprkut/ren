@@ -6,7 +6,17 @@
 
 /// A `/proc/self/status` field in KiB, e.g. `VmHWM:` (peak RSS).
 pub fn proc_status_kib(field: &str) -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    status_kib("/proc/self/status", field)
+}
+
+/// A `/proc/<pid>/status` field of another process in KiB.
+#[cfg_attr(not(feature = "servo"), allow(dead_code))]
+pub fn proc_status_kib_of(pid: u32, field: &str) -> Option<u64> {
+    status_kib(&format!("/proc/{pid}/status"), field)
+}
+
+fn status_kib(path: &str, field: &str) -> Option<u64> {
+    let status = std::fs::read_to_string(path).ok()?;
     let line = status.lines().find(|l| l.starts_with(field))?;
     line.split_whitespace().nth(1)?.parse().ok()
 }
@@ -35,5 +45,7 @@ mod tests {
         // below the current RSS; only check that both are there.
         assert!(proc_status_kib("VmRSS:").unwrap() > 0);
         assert!(proc_status_kib("VmHWM:").unwrap() > 0);
+        assert!(proc_status_kib_of(std::process::id(), "VmRSS:").unwrap() > 0);
+        assert_eq!(proc_status_kib_of(u32::MAX, "VmRSS:"), None);
     }
 }

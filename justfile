@@ -23,6 +23,10 @@ measure *variants:
 measure-articles dump *articles:
     scripts/measure-articles.sh {{dump}} {{articles}}
 
+# Measure memory and frames of web page tabs, with pages from a --dump-items directory or the given URLs (needs a display)
+measure-tabs dump *urls:
+    scripts/measure-tabs.sh {{dump}} {{urls}}
+
 # Survey the HTML and CSS used by the articles in a --dump-items directory
 survey-articles dump:
     scripts/survey-articles.py {{dump}}

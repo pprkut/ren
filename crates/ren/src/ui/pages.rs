@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use slint::{ComponentHandle, Model, VecModel};
 
@@ -52,6 +52,28 @@ impl Pages {
         self.window
             .upgrade()
             .expect("the pages only live as long as the window")
+    }
+
+    pub fn helper_pid(&self) -> Option<u32> {
+        self.engine.as_ref()?.helper_pid()
+    }
+
+    /// Whether Servo can still be started after the last tab closed.
+    pub fn can_restart(&self) -> bool {
+        self.mode == TabMode::Helper
+    }
+
+    /// Frames shown so far by the current engine.
+    pub fn frame_count(&self) -> usize {
+        self.engine
+            .as_ref()
+            .and_then(|e| e.frame_stats())
+            .map_or(0, |(count, _, _)| count)
+    }
+
+    /// Whether any open tab is still loading.
+    pub fn loading(&self) -> bool {
+        self.rows.iter().any(|row| row.loading)
     }
 
     fn size(&self) -> Size {
@@ -157,6 +179,12 @@ impl Pages {
         let current = self.window().get_current_tab();
         if current >= index as i32 {
             self.select((current - 1).max(0).min(self.tabs.len() as i32 - 1));
+        }
+    }
+
+    pub fn close_all(&mut self) {
+        while !self.tabs.is_empty() {
+            self.close(self.tabs.len() - 1);
         }
     }
 
@@ -316,4 +344,141 @@ fn connect(window: &MainWindow, pages: &Rc<RefCell<Pages>>) {
     let w = with.clone();
     window.on_page_theme_changed(move || w(&|p| p.theme_changed()));
     window.on_page_pump(move || with(&|p| p.pump()));
+}
+
+/// Time before `--measure-tabs` starts.
+const MEASURE_DELAY: Duration = Duration::from_secs(2);
+/// The longest wait for pages to load.
+const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
+/// Time after loading or closing before memory is measured, for Servo's
+/// and the allocator's work to settle.
+const SETTLE: Duration = Duration::from_secs(3);
+/// How long `--measure-tabs` scrolls the page, and by how much per step
+/// (logical pixels at about 60 steps per second).
+const SCROLL_TIME: Duration = Duration::from_secs(3);
+const SCROLL_STEP: f32 = 40.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Start,
+    OneTab,
+    Scroll,
+    ThreeTabs,
+    Closed,
+    Reopened,
+    ClosedAgain,
+}
+
+fn log_memory(when: &str, pages: &Pages) {
+    super::log_rss(when);
+    if let Some(pid) = pages.helper_pid() {
+        let kib = |field| crate::procstat::proc_status_kib_of(pid, field).unwrap_or(0);
+        eprintln!(
+            "ren: helper rss {when}: {} KiB (anon {}, file {}, shmem {}; peak {} KiB)",
+            kib("VmRSS:"),
+            kib("RssAnon:"),
+            kib("RssFile:"),
+            kib("RssShmem:"),
+            kib("VmHWM:")
+        );
+    }
+}
+
+/// `--measure-tabs`: opens one page and then three, scrolls the first,
+/// closes them all, opens one again if Servo can be restarted, and logs
+/// memory use after each step; then quits.
+pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let url = move |i: usize| urls[i % urls.len()].clone();
+    let mut step = Step::Start;
+    // When the current step's waiting ends, and whether it waits for
+    // loading first.
+    let mut wait_until = Instant::now() + MEASURE_DELAY;
+    let mut wait_for_load = false;
+    let mut scroll_started = (Instant::now(), 0);
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(16),
+        move || {
+            let Some(pages) = pages.upgrade() else {
+                return;
+            };
+            let mut pages = pages.borrow_mut();
+            let now = Instant::now();
+            if step == Step::Scroll {
+                if now < scroll_started.0 + SCROLL_TIME {
+                    pages.scroll(0.0, -SCROLL_STEP, 100.0, 100.0);
+                    return;
+                }
+                let frames = pages.frame_count() - scroll_started.1;
+                eprintln!(
+                    "ren: scrolling: {frames} frames in {:.1} s",
+                    scroll_started.0.elapsed().as_secs_f64()
+                );
+            } else {
+                if wait_for_load && pages.loading() && now < wait_until + LOAD_TIMEOUT {
+                    return;
+                }
+                if wait_for_load {
+                    if pages.loading() {
+                        eprintln!("ren: pages still loading after {LOAD_TIMEOUT:?}");
+                    }
+                    wait_for_load = false;
+                    wait_until = now + SETTLE;
+                }
+                if now < wait_until {
+                    return;
+                }
+            }
+            let open = |pages: &mut Pages, i| {
+                if let Err(err) = pages.open(&url(i)) {
+                    eprintln!("ren: opening a tab failed: {err}");
+                }
+            };
+            step = match step {
+                Step::Start => {
+                    log_memory("before tabs", &pages);
+                    open(&mut pages, 0);
+                    Step::OneTab
+                }
+                Step::OneTab => {
+                    log_memory("with 1 tab", &pages);
+                    scroll_started = (now, pages.frame_count());
+                    Step::Scroll
+                }
+                Step::Scroll => {
+                    open(&mut pages, 1);
+                    open(&mut pages, 2);
+                    Step::ThreeTabs
+                }
+                Step::ThreeTabs => {
+                    log_memory("with 3 tabs", &pages);
+                    pages.close_all();
+                    Step::Closed
+                }
+                Step::Closed => {
+                    log_memory("after closing all tabs", &pages);
+                    if !pages.can_restart() {
+                        let _ = slint::quit_event_loop();
+                        return;
+                    }
+                    open(&mut pages, 0);
+                    Step::Reopened
+                }
+                Step::Reopened => {
+                    log_memory("with 1 tab again", &pages);
+                    pages.close_all();
+                    Step::ClosedAgain
+                }
+                Step::ClosedAgain => {
+                    log_memory("after closing again", &pages);
+                    let _ = slint::quit_event_loop();
+                    return;
+                }
+            };
+            wait_for_load = matches!(step, Step::OneTab | Step::ThreeTabs | Step::Reopened);
+            wait_until = now + SETTLE;
+        },
+    );
+    timer
 }

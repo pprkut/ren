@@ -287,6 +287,10 @@ impl Engine for Helper {
         self.frame.take()
     }
 
+    fn helper_pid(&self) -> Option<u32> {
+        Some(self.child.id())
+    }
+
     fn frame_stats(&self) -> Option<(usize, Duration, Duration)> {
         self.stats.summary()
     }
