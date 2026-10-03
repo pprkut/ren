@@ -11,6 +11,7 @@ Options:
                      (default: $SLINT_BACKEND, else software)
   --items <N>        Number of dummy items (default: 10000)
   --arrangement <A>  Item list beside or above the article (default: beside)
+  --bundled-icons    Use the bundled icons instead of the icon theme
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
@@ -29,6 +30,7 @@ pub struct Options {
     pub renderer: Option<String>,
     pub items: usize,
     pub arrangement: Arrangement,
+    pub bundled_icons: bool,
     pub measure: bool,
     pub autoscroll: bool,
 }
@@ -39,6 +41,7 @@ impl Default for Options {
             renderer: None,
             items: 10_000,
             arrangement: Arrangement::default(),
+            bundled_icons: false,
             measure: false,
             autoscroll: false,
         }
@@ -70,6 +73,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                     other => return Err(format!("invalid arrangement: {other}")),
                 }
             }
+            "--bundled-icons" => options.bundled_icons = true,
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
             "-h" | "--help" => return Ok(Command::Help),
@@ -98,6 +102,7 @@ mod tests {
             renderer: Some("skia".to_owned()),
             items: 500,
             arrangement: Arrangement::Above,
+            bundled_icons: true,
             measure: true,
             autoscroll: true,
         };
@@ -109,6 +114,7 @@ mod tests {
                 "500",
                 "--arrangement",
                 "above",
+                "--bundled-icons",
                 "--measure",
                 "--autoscroll"
             ]),

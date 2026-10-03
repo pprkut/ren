@@ -3,6 +3,7 @@
 
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
 
 // A flat tool bar button with an icon and a label, like KDE's tool bars.
 export component ToolButton inherits Rectangle {
@@ -34,7 +35,7 @@ export component ToolButton inherits Rectangle {
             height: Theme.toolbar-icon-size;
             y: (parent.height - self.height) / 2;
             source: root.icon;
-            colorize: Theme.monochrome-icons ? Palette.foreground : transparent;
+            colorize: Icons.monochrome ? Palette.foreground : transparent;
         }
 
         Text {

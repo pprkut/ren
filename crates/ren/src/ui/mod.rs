@@ -14,6 +14,8 @@ use crate::dummy::{DummyData, Status, format_date};
 use crate::feed_tree::{self, FeedTree, Node};
 use crate::item_list::{self, Column, ItemList};
 
+mod icons;
+
 slint::include_modules!();
 
 /// The renderer with the smallest footprint, see
@@ -468,6 +470,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     select_backend(options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
+    icons::load(&window, !options.bundled_icons);
     window.set_arrangement(match options.arrangement {
         cli::Arrangement::Beside => Arrangement::Beside,
         cli::Arrangement::Above => Arrangement::Above,

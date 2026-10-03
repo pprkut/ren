@@ -7,3 +7,31 @@ version = 1
 path = "Cargo.lock"
 SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
 SPDX-License-Identifier = "CC0-1.0"
+
+# Fallback icons from Lucide (https://lucide.dev).
+[[annotations]]
+path = [
+    "crates/ren/icons/arrow-down-to-line.svg",
+    "crates/ren/icons/folder.svg",
+    "crates/ren/icons/library.svg",
+    "crates/ren/icons/mail-check.svg",
+    "crates/ren/icons/settings.svg",
+]
+SPDX-FileCopyrightText = "Copyright 2026 Lucide Icons and Contributors"
+SPDX-License-Identifier = "ISC"
+
+# Lucide icons derived from Feather.
+[[annotations]]
+path = [
+    "crates/ren/icons/chevrons-down.svg",
+    "crates/ren/icons/circle-x.svg",
+    "crates/ren/icons/log-out.svg",
+    "crates/ren/icons/plus.svg",
+    "crates/ren/icons/rss.svg",
+    "crates/ren/icons/search.svg",
+]
+SPDX-FileCopyrightText = [
+    "Copyright 2026 Lucide Icons and Contributors",
+    "Copyright 2013-present Cole Bemis",
+]
+SPDX-License-Identifier = "ISC AND MIT"

@@ -15,6 +15,7 @@ renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
 
 [dependencies]
+freedesktop-icons = "0.4"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
 
 [build-dependencies]
