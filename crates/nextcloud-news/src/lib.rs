@@ -13,6 +13,6 @@ mod error;
 mod request;
 pub mod types;
 
-pub use client::{Client, Credentials, api_base, decode};
+pub use client::{Client, Config, Credentials, api_base, decode};
 pub use error::Error;
 pub use request::{Endpoint, ItemQuery, PageInfo, Pager, Selection};
