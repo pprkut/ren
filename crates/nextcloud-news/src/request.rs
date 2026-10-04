@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The read endpoints, as paths and query parameters relative to the API
-//! base URL, and the paging logic for `GET /items`.
+//! The endpoints, as paths, query parameters and request bodies relative to
+//! the API base URL, and the paging logic for `GET /items`.
+
+use serde::Serialize;
 
 use crate::types::Item;
 
@@ -115,6 +117,88 @@ impl Endpoint {
             }
             _ => Vec::new(),
         }
+    }
+}
+
+/// What [`Update::Items`] does to the items.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ItemAction {
+    Read,
+    Unread,
+    Star,
+    Unstar,
+}
+
+/// Which items [`Update::MarkRead`] marks as read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadScope {
+    All,
+    Feed(u64),
+    /// A folder. Feeds outside of folders have to be marked one by one:
+    /// for folder 0, the News app passes a null id where it expects a
+    /// number (28.7; `ren --check-writes` tries it).
+    Folder(u64),
+}
+
+/// A write request to the API: a `POST` with a JSON body (API v1-3; the
+/// `PUT` variants in the documentation's "How To Sync" section are v1-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Update<'a> {
+    /// `POST /items/{read,unread,star,unstar}/multiple` with
+    /// `{"itemIds": [...]}`. The server skips ids it doesn't know.
+    Items { action: ItemAction, ids: &'a [u64] },
+    /// "Mark all as read": the items up to and including `newest_item_id`,
+    /// so that items which arrived after the user's last look stay unread.
+    /// `POST /items/read`, `/feeds/{id}/read` or `/folders/{id}/read` with
+    /// `{"newestItemId": n}`.
+    MarkRead {
+        scope: ReadScope,
+        newest_item_id: u64,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemIds<'a> {
+    item_ids: &'a [u64],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewestItemId {
+    newest_item_id: u64,
+}
+
+impl Update<'_> {
+    /// Path relative to the API base URL.
+    pub fn path(&self) -> String {
+        match *self {
+            Update::Items { action, .. } => {
+                let action = match action {
+                    ItemAction::Read => "read",
+                    ItemAction::Unread => "unread",
+                    ItemAction::Star => "star",
+                    ItemAction::Unstar => "unstar",
+                };
+                format!("items/{action}/multiple")
+            }
+            Update::MarkRead { scope, .. } => match scope {
+                ReadScope::All => "items/read".to_owned(),
+                ReadScope::Feed(id) => format!("feeds/{id}/read"),
+                ReadScope::Folder(id) => format!("folders/{id}/read"),
+            },
+        }
+    }
+
+    /// The JSON request body.
+    pub fn body(&self) -> Vec<u8> {
+        let body = match *self {
+            Update::Items { ids, .. } => serde_json::to_vec(&ItemIds { item_ids: ids }),
+            Update::MarkRead { newest_item_id, .. } => {
+                serde_json::to_vec(&NewestItemId { newest_item_id })
+            }
+        };
+        body.expect("serialising numbers can't fail")
     }
 }
 
@@ -341,5 +425,37 @@ mod tests {
         let mut pager = Pager::new(ItemQuery::unread(Some(10)));
         take(&mut pager, &[]);
         assert_eq!(pager.start_page(), None);
+    }
+
+    #[test]
+    fn item_updates() {
+        let ids = [3, 1, 2];
+        for (action, path) in [
+            (ItemAction::Read, "items/read/multiple"),
+            (ItemAction::Unread, "items/unread/multiple"),
+            (ItemAction::Star, "items/star/multiple"),
+            (ItemAction::Unstar, "items/unstar/multiple"),
+        ] {
+            let update = Update::Items { action, ids: &ids };
+            assert_eq!(update.path(), path);
+            assert_eq!(update.body(), br#"{"itemIds":[3,1,2]}"#);
+        }
+    }
+
+    #[test]
+    fn mark_read_updates() {
+        for (scope, path) in [
+            (ReadScope::All, "items/read"),
+            (ReadScope::Feed(12), "feeds/12/read"),
+            (ReadScope::Folder(4), "folders/4/read"),
+            (ReadScope::Folder(0), "folders/0/read"),
+        ] {
+            let update = Update::MarkRead {
+                scope,
+                newest_item_id: 227_491,
+            };
+            assert_eq!(update.path(), path);
+            assert_eq!(update.body(), br#"{"newestItemId":227491}"#);
+        }
     }
 }
