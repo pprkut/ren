@@ -15,6 +15,9 @@ Server commands (instead of opening the window):
                        print time, size and peak memory
   --dump-items <DIR>   Store the raw responses (folders, feeds, unread and
                        starred items) in DIR, outside the repository
+  --check-writes       Check the write requests: toggle the read and
+                       starred state of the newest item and restore it,
+                       and mark all items up to id 0 as read (no change)
   --batch-size <N>     Items per request, or \"all\" (default: 1000)
   --settings <FILE>    Settings file (default:
                        $XDG_CONFIG_HOME/ren/settings.toml)
@@ -88,6 +91,7 @@ pub enum Mode {
     Check,
     FetchUnread,
     DumpItems(PathBuf),
+    CheckWrites,
 }
 
 /// Items per request of the server commands, see
@@ -158,11 +162,15 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--check" => Some(Mode::Check),
             "--fetch-unread" => Some(Mode::FetchUnread),
             "--dump-items" => Some(Mode::DumpItems(value("--dump-items")?.into())),
+            "--check-writes" => Some(Mode::CheckWrites),
             _ => None,
         };
         if let Some(mode) = mode {
             if options.mode != Mode::Window {
-                return Err("only one of --check, --fetch-unread and --dump-items".to_owned());
+                return Err(
+                    "only one of --check, --fetch-unread, --dump-items and --check-writes"
+                        .to_owned(),
+                );
             }
             options.mode = mode;
             continue;
@@ -309,6 +317,7 @@ mod tests {
         assert!(parse_args(&["--batch-size", "-1"]).is_err());
         assert!(parse_args(&["--dump-items"]).is_err());
         assert!(parse_args(&["--check", "--fetch-unread"]).is_err());
+        assert!(parse_args(&["--check-writes", "--check"]).is_err());
     }
 
     #[test]
@@ -332,5 +341,10 @@ mod tests {
         };
         assert_eq!(options.mode, Mode::Check);
         assert_eq!(options.batch_size, Some(50));
+
+        let Ok(Command::Run(options)) = parse_args(&["--check-writes"]) else {
+            panic!("parse failed");
+        };
+        assert_eq!(options.mode, Mode::CheckWrites);
     }
 }
