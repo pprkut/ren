@@ -458,7 +458,26 @@ From here on every milestone ships with tests for what it adds.
   - Free the two frame buffers while no article is shown.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
-  full page instead of article" setting.
+  full page instead of article" setting. Remove the spike-only variants
+  (`--tabs in-process`, `servo-wgpu`). From the S4 decision record (0005):
+  frames through shared memory, the UI's frame buffers given back after
+  the last tab closes, popups, navigation buttons. From the S4 review:
+  - **Keep Servo current**, instead of pinning it to the version that
+    shares stylo with Blitz: Servo runs in the helper and Blitz in the UI
+    process, so sharing stylo saves build time and binary size but no
+    memory, while a pinned web engine misses security fixes. Accept two
+    stylo versions while their releases differ.
+  - **Restrict navigation inside tabs** to `http`/`https` with Servo's
+    `request_navigation` hook, so pages can't navigate to `file:` and
+    other schemes (link clicks from articles are already filtered).
+  - **Decide on a Servo profile:** without one, cookies and site data are
+    lost when the helper exits, so consent banners and logins come back
+    every time. Likely a profile in `$XDG_DATA_HOME/ren/servo` with a
+    setting to clear it.
+  - **Pass the helper an inherited socket pair** instead of a socket path,
+    which also removes the fallback to the temporary directory.
+  - **Don't wait for the helper on the UI thread** when the last tab
+    closes (up to 3 s for a hung helper).
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -469,7 +488,10 @@ From here on every milestone ships with tests for what it adds.
   Settings for the pane arrangement and the item status colours. The
   account page: Login Flow v2 with a "waiting for the browser" state, the
   manual app password fallback, and log out (revoking the app password).
-  First run opens the account page.
+  First run opens the account page. Also Help → About ren: version, the
+  GPL notice, a link to the source, credits (Slint, Blitz, Servo, the
+  icons) and a "Third-party licenses" view showing the notices from M11
+  (rendered like an article), embedded in the binary.
 
 ### Phase 4 — Hardening
 
@@ -479,6 +501,16 @@ From here on every milestone ships with tests for what it adds.
 - **M10 — Performance.** Re-run the measurement scripts: idle, reading, with
   tabs open and after closing them, during initial and incremental sync of a
   large account. Profile and fix hotspots.
+- **M11 — Release and packaging.**
+  - **Third-party notices** generated with `cargo-about` (all features, so
+    one file covers every build) into a committed
+    `THIRD-PARTY-NOTICES.html`, regenerated with `just notices`; CI checks
+    that it matches `Cargo.lock`. Content that isn't a crate is added by
+    hand: the bundled Lucide icons, and libraries vendored inside crates
+    (SpiderMonkey's in `mozjs_sys`, e.g. ICU and zlib). The About dialog
+    (M8b) embeds the file; packages install it as documentation.
+  - A `.desktop` file, an app icon, AppStream metadata, the install layout
+    (binary, notices, icons), and a SlackBuild.
 
 ## Conventions
 

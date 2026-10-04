@@ -185,6 +185,17 @@ Found while trying it, fixed in this spike:
   production-ready; the wgpu path (`servo-wgpu`, `--tabs wgpu`) and
   `--tabs in-process` are spike code that M7 removes.
 
+## Review of the code (2026-10-04)
+
+- The UI accepted any frame size and event length from the helper and
+  allocated accordingly; as the helper runs web content, that is now
+  bounded (frames up to the largest size requested, events up to 1 MiB).
+- For M7 (see the plan): keep Servo current instead of pinning it to
+  Blitz's stylo, since the two run in different processes and sharing
+  saves no memory at runtime; deny non-web navigation inside tabs; decide
+  on a persistent Servo profile; an inherited socket pair instead of a
+  socket path; don't wait for the helper on the UI thread.
+
 ## Open points
 
 - M7: frames through shared memory instead of the socket (one copy less),
