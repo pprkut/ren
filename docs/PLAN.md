@@ -478,6 +478,25 @@ From here on every milestone ships with tests for what it adds.
     which also removes the fallback to the temporary directory.
   - **Don't wait for the helper on the UI thread** when the last tab
     closes (up to 3 s for a hung helper).
+  - **Let the helper die with the UI:** `PR_SET_PDEATHSIG`, and a bound
+    on its own shutdown (Servo's can hang once the UI is gone; an
+    orphaned helper ran on for 10 minutes).
+
+  Scrolling heavy pages (0005, "Scrolling heavy pages"); check each with
+  `REN_TAB_STATS=1`:
+  - **Asynchronous readback:** read frames into pixel buffer objects and
+    fetch the previous one, instead of `glReadPixels` waiting for the GPU
+    (4–22 ms per frame on heise, up to 160 ms).
+  - **Frame pacing:** the helper sends a frame only when the UI has taken
+    the previous one, always the newest; frames the UI couldn't show are
+    not read back at all.
+  - **Shared memory** for frames instead of the socket (see above): no
+    transfer, no receiving thread in the UI.
+  - **Smooth wheel scrolling:** spread each wheel step over a few frames.
+  - **Content blocking (optional):** filter ad and tracker requests
+    through Servo's request interception with a filter list (e.g. the
+    `adblock` crate, MPL-2.0). Ads are what makes these pages repaint all
+    the time; also a privacy feature. As a setting.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -500,7 +519,11 @@ From here on every milestone ships with tests for what it adds.
   test against a Nextcloud + News container.
 - **M10 — Performance.** Re-run the measurement scripts: idle, reading, with
   tabs open and after closing them, during initial and incremental sync of a
-  large account. Profile and fix hotspots.
+  large account. Profile and fix hotspots. Compare the UI renderers again
+  for scrolling web pages after M7's frame path work: GPU renderers halve
+  the UI's drawing cost on heavy pages but cost 35–60 MiB for the whole
+  session (0001, 0005); if one still feels clearly better, offer it as a
+  setting.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
