@@ -61,8 +61,10 @@ Alternatives considered:
    Blitz with a small built-in stylesheet (readable typography, light/dark
    following the Slint theme). No JavaScript. Images are fetched by the app
    (not by Blitz's own net provider) through a small on-disk cache so they
-   can be shown offline and loaded off the UI thread. Link clicks go to the
-   system browser, or to a Servo tab with a modifier.
+   can be shown offline and loaded off the UI thread. Link clicks open the
+   page in a Servo tab (any button, with or without modifiers); the link's
+   context menu also offers the system browser. Without the `servo`
+   feature, clicks go to the system browser.
 2. **Full-page tabs (on demand, expensive).** "Open page" on an item opens
    its `url` in a new tab in the main window, rendered by Servo with
    JavaScript enabled. Rules:
@@ -444,7 +446,7 @@ From here on every milestone ships with tests for what it adds.
     doesn't stop a small file that decodes to gigabytes. Find out which
     limits Blitz passes to the `image` crate.
   - Link clicks open only `http`, `https` and `mailto` URLs; anything
-    else (`javascript:`, `file:`, …) is ignored.
+    else (`javascript:`, `file:`, …) is ignored. (Done in S4.)
   - A selection colour derived from the accent, readable in dark mode
     (`::selection`, if Blitz supports it).
   - Free the two frame buffers while no article is shown.
