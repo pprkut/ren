@@ -196,6 +196,51 @@ Found while trying it, fixed in this spike:
   on a persistent Servo profile; an inherited socket pair instead of a
   socket path; don't wait for the helper on the UI thread.
 
+## Scrolling heavy pages (2026-10-04)
+
+Scrolling felt slow on script-heavy pages (heise, Ars Technica) after
+accepting their consent banners. Measured with `REN_TAB_STATS=1` and
+per-thread CPU sampling while scrolling a heise article and a plain text
+page with 60 mouse wheel steps in 3 s (release build, i7-1185G7, Iris Xe):
+
+| per frame (mean / max) | plain page | heise after consent |
+|---|---|---|
+| frames per second | 29 (one per wheel step) | 29–68; still ~24 after scrolling stopped |
+| Servo `paint` | 0.3 ms | 0.5–2.3 ms |
+| readback (`glReadPixels`) | 3 ms | 4–22 ms, up to 160 ms |
+| send to the UI | 2.7 ms | 2.5–10 ms |
+| helper CPU | 22 % of a core | 90 % (page script 42–46 %, styling ~13 %) |
+| UI CPU (software renderer) | 29 % | 55 % (drawing 42 %, receiving 13 %) |
+
+- Servo's painting is cheap, and its scrolling doesn't wait for the
+  page's scripts. **The frame path is the bottleneck:** `glReadPixels`
+  waits for the GPU to finish the frame, then the frame is copied through
+  the socket and drawn again by the UI.
+- **Heavy pages repaint all the time** (ads, animations): about 24 frames
+  per second without any input, each paying the whole frame path, so
+  scroll frames queue behind them.
+- Servo has **no smooth wheel scrolling**: every wheel step is one jump.
+
+The UI renderer doesn't change this. Same test on heise:
+
+| UI renderer | UI CPU (drawing) | frames/s | readback mean / max |
+|---|---|---|---|
+| software | 55 % (42 %) | 28–68 | 4–18 / 160 ms |
+| FemtoVG | 26 % (14.5 %) | 29–90 | 5–12 / 36 ms |
+| Skia | 36 % (22 %) | 30–73 | 6–21 / 48 ms |
+| wgpu textures (Servo in-process) | 93 % incl. Servo, 19 % drawing | 37–65 | none |
+
+GPU renderers halve the UI's drawing cost, but the readback in the helper,
+the constant repaints and the missing smooth scrolling stay, and in use
+all variants felt the same. The software renderer stays; the frame path is
+fixed in M7 and the renderers compared again in M10.
+
+Also found: when the UI process is killed (not closed), the helper isn't
+told to quit by ren, only by its stdin closing, and Servo's shutdown can
+then hang: one orphaned helper was still running after 10 minutes, another
+exited by itself. M7 makes the helper die with its parent and bound its
+own shutdown time.
+
 ## Open points
 
 - M7: frames through shared memory instead of the socket (one copy less),
