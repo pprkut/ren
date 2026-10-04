@@ -15,6 +15,15 @@ check:
     cargo test --locked
     cargo deny check licenses
 
+
+# Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
+check-light:
+    reuse lint
+    cargo fmt --all --check
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
+    cargo test --locked --no-default-features --features renderer-software
+    @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
+
 # Run the checks of CI's Servo job (a long build)
 check-servo:
     cargo clippy --all-targets --locked --features servo -- -D warnings
