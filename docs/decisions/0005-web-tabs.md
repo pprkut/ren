@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0005 — Web pages in Servo tabs (spike S4)
 
-**Status:** accepted (2026-10-04). The licence exception for `webpki-roots`
-awaits approval.
+**Status:** accepted (2026-10-04), including the licence exception for
+`webpki-roots`.
 
 ## Context
 
@@ -40,8 +40,11 @@ one and three tabs and after closing them all.
   CDLA-Permissive-2.0, which is not on the plan's list. It is a permissive
   data licence without conditions on redistributing results, but per the
   plan "anything unclear" needs a decision. `deny.toml` has an exception for
-  that one crate, **pending approval**. Alternatives: patch servo-net to use
-  the platform verifier, or wait for upstream to make it optional.
+  that one crate. Alternatives: patch servo-net to use the platform
+  verifier, or wait for upstream to make it optional. *Approved in review:*
+  the licence only asks that redistributors include its text, which the
+  third-party notices (plan, M11) take care of; patching servo-net would be
+  maintenance on every Servo upgrade.
 - The embedder has to pick rustls' crypto provider, as Servo's networking
   has both ring and aws-lc-rs; ren installs ring's, which it already uses.
 
@@ -184,7 +187,6 @@ Found while trying it, fixed in this spike:
 
 ## Open points
 
-- Approve or reject the `webpki-roots` (CDLA-Permissive-2.0) exception.
 - M7: frames through shared memory instead of the socket (one copy less),
   and giving the UI process's frame buffers back after the last tab closes
   (`malloc_trim` or buffers outside the heap).
