@@ -21,10 +21,17 @@ on-demand Servo tabs for full pages).
   mark it ready for review when the milestone is done. The full job only
   runs for pull requests, `master` and weekly; a branch without a pull
   request is only checked without the rendering engines.
-- Before committing: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`,
-  and `cargo test` once tests exist. Tests are optional in phase 1 (spikes),
-  mandatory from phase 2 on — but follow "Designing for testability" in the
-  plan from the start.
+- Before committing: `just check-light` (`reuse lint`, `cargo fmt`, clippy
+  and tests without the rendering engines, `cargo deny` if installed).
+  Tests are optional in phase 1 (spikes), mandatory from phase 2 on — but
+  follow "Designing for testability" in the plan from the start.
+- **Don't build Blitz or Servo unless the change needs it.** Build and test
+  with `--no-default-features --features renderer-software` (that's what
+  `just check-light` does). Only changes to the article view (`article/`,
+  `ui/article.rs`) or the tabs (`tabs/`, `ui/pages.rs`), or to those cargo
+  features, need the full builds (`just check`, `just check-servo`); even
+  then, prefer letting CI's pull request jobs run them over building Servo
+  locally (12–24 minutes per build). Phase 2 (M1–M4) never needs them.
 - Task automation goes into a `justfile` (see "Conventions" in the plan);
   don't add Makefiles or `cargo xtask`.
 - Low RAM and low CPU use are primary requirements. Don't add an async
