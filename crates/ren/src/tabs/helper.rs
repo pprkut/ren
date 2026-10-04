@@ -375,11 +375,17 @@ pub fn run(socket: &std::path::Path) -> Result<(), String> {
     let mut browser = Browser::new(waker, context.clone(), size, dark);
     let mut out = BufWriter::new(stream);
     let mut pixels = Vec::new();
+    let mut stats = super::StageStats::new("helper");
 
     'run: loop {
         // Handle everything that is queued before spinning Servo once.
+        let idle = Instant::now();
         let mut message = receiver.recv().map_err(|err| err.to_string())?;
+        stats.time("idle", idle.elapsed());
         loop {
+            if let Message::Command(Command::Input(Input::Wheel { .. })) = message {
+                stats.count("wheel");
+            }
             match message {
                 Message::Quit => break 'run,
                 Message::Wake => {}
@@ -399,27 +405,40 @@ pub fn run(socket: &std::path::Path) -> Result<(), String> {
             }
         }
 
-        for event in browser.spin() {
+        let started = Instant::now();
+        let events = browser.spin();
+        stats.time("spin", started.elapsed());
+        for event in events {
             let json = serde_json::to_vec(&event).expect("events serialise");
             out.write_all(b"E")
                 .and_then(|()| out.write_all(&(json.len() as u32).to_le_bytes()))
                 .and_then(|()| out.write_all(&json))
                 .map_err(|err| err.to_string())?;
         }
+        let started = Instant::now();
         if browser.paint() {
+            stats.time("paint", started.elapsed());
             let started = Instant::now();
             let size = servo::RenderingContext::size(&*context);
             pixels.resize(size.width as usize * size.height as usize * 4, 0);
             context.read_into(&mut pixels);
+            stats.time("readback", started.elapsed());
+            stats.count("frames");
             let readback = u32::try_from(started.elapsed().as_micros()).unwrap_or(u32::MAX);
+            // Flushed here, so the time includes the transfer.
+            let started = Instant::now();
             out.write_all(b"F")
                 .and_then(|()| out.write_all(&size.width.to_le_bytes()))
                 .and_then(|()| out.write_all(&size.height.to_le_bytes()))
                 .and_then(|()| out.write_all(&readback.to_le_bytes()))
                 .and_then(|()| out.write_all(&pixels))
                 .map_err(|err| err.to_string())?;
+            out.flush().map_err(|err| err.to_string())?;
+            stats.time("send", started.elapsed());
+        } else {
+            out.flush().map_err(|err| err.to_string())?;
         }
-        out.flush().map_err(|err| err.to_string())?;
+        stats.report();
     }
     // Shut Servo down before exiting, so it can clean up its threads.
     drop(browser);
