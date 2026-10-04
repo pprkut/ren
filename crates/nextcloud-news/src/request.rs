@@ -135,8 +135,8 @@ pub enum ReadScope {
     All,
     Feed(u64),
     /// A folder. Feeds outside of folders have to be marked one by one:
-    /// for folder 0, the News app passes a null id where it expects a
-    /// number (28.7; `ren --check-writes` tries it).
+    /// folder 0 fails with HTTP 500 (News 28.7 passes a null id where it
+    /// expects a number).
     Folder(u64),
 }
 
