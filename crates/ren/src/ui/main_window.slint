@@ -51,6 +51,13 @@ export component MainWindow inherits Window {
     callback article-resized();
     callback article-theme-changed();
     callback article-copy();
+    // The URL of the link at a position in the article, or "".
+    callback article-link-at(x: length, y: length) -> string;
+    // A link in the article: action "open" (clicked with any button, or
+    // the context menu's "Open Link in Tab"), "browser" or "copy".
+    callback article-link-action(url: string, action: string);
+    // Whether links can open in tabs (built with Servo).
+    in property <bool> tabs-available;
     // Called when the HTML view needs to be rendered again (from a wake-up).
     callback article-render();
 
@@ -595,8 +602,30 @@ export component MainWindow inherits Window {
                     }
                 }
 
+                // The link under the pointer when the menu opened.
+                property <string> menu-link;
+
                 article-menu := ContextMenuArea {
                     Menu {
+                        if html-pane.menu-link != "" && root.tabs-available: MenuItem {
+                            title: "Open Link in Tab";
+                            activated => {
+                                root.article-link-action(html-pane.menu-link, "open");
+                            }
+                        }
+                        if html-pane.menu-link != "": MenuItem {
+                            title: "Open Link in Browser";
+                            activated => {
+                                root.article-link-action(html-pane.menu-link, "browser");
+                            }
+                        }
+                        if html-pane.menu-link != "": MenuItem {
+                            title: "Copy Link Address";
+                            activated => {
+                                root.article-link-action(html-pane.menu-link, "copy");
+                            }
+                        }
+                        if html-pane.menu-link != "": MenuSeparator { }
                         MenuItem {
                             title: "Copy";
                             activated => {
@@ -616,6 +645,7 @@ export component MainWindow inherits Window {
                             // keep the click from Blitz so the selection stays.
                             if event.button == PointerEventButton.right {
                                 if event.kind == PointerEventKind.down {
+                                    html-pane.menu-link = root.article-link-at(self.mouse-x, self.mouse-y);
                                     article-menu.show({ x: self.mouse-x, y: self.mouse-y });
                                 }
                                 return;

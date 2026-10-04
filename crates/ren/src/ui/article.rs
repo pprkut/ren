@@ -113,6 +113,17 @@ impl ArticlePane {
         }
     }
 
+    /// Puts `text` on the clipboard (only with the HTML view, which has
+    /// the clipboard).
+    pub fn copy_text(&self, text: &str) {
+        #[cfg(feature = "html-view")]
+        if let Some(html) = &self.html {
+            html.view.copy_text(text);
+        }
+        #[cfg(not(feature = "html-view"))]
+        let _ = text;
+    }
+
     fn show_placeholder(&self) {
         let window = self.window();
         window.set_article_title(PLACEHOLDER.into());
@@ -249,7 +260,6 @@ impl ArticlePane {
         }
 
         for url in html.view.take_link_clicks() {
-            eprintln!("ren: link clicked: {url}");
             (self.on_link)(&url);
         }
     }
@@ -293,6 +303,15 @@ impl ArticlePane {
         if let Some(html) = &mut self.html {
             html.view.copy();
         }
+    }
+
+    /// The URL of the link at `x`, `y` (logical pixels), or an empty string.
+    fn link_at(&self, x: f32, y: f32) -> SharedString {
+        self.html
+            .as_ref()
+            .and_then(|html| html.view.link_at(x, y))
+            .unwrap_or_default()
+            .into()
     }
 }
 
@@ -338,4 +357,10 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     let w = with.clone();
     window.on_article_theme_changed(move || w(&|p| p.load_html()));
     window.on_article_copy(move || with(&|p| p.copy()));
+    let weak = Rc::downgrade(pane);
+    window.on_article_link_at(move |x, y| {
+        weak.upgrade()
+            .map(|pane| pane.borrow().link_at(x, y))
+            .unwrap_or_default()
+    });
 }

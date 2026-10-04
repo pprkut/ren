@@ -222,9 +222,9 @@ impl App {
                     self.set_read(id, name == "mark-read");
                 }
             }
-            "open-tab" => {
+            "open-tab" | "open-browser" => {
                 if let Some(id) = self.current_item.get() {
-                    self.open_tab(id);
+                    self.open_item(id, name == "open-browser");
                 }
             }
             "about" => self.status("ren: a native Nextcloud News reader (spike S1b)"),
@@ -245,27 +245,68 @@ impl App {
         };
         match action {
             "mark-read" | "mark-unread" => self.set_read(id, action == "mark-read"),
-            "open-tab" => self.open_tab(id),
+            "open-tab" | "open-browser" => self.open_item(id, action == "open-browser"),
             _ => self.not_implemented(action),
         }
     }
 
-    /// Opens the item's web page in a tab.
-    fn open_tab(&self, id: u32) {
-        #[cfg(feature = "servo")]
-        {
-            let Some(url) = self.data.borrow().url(id) else {
-                self.status("This article has no link");
-                return;
-            };
-            if let Err(err) = self.pages.borrow_mut().open(&url) {
-                self.status(format!("Opening the page failed: {err}"));
-            }
+    /// Opens the item's web page in a tab, or in the system browser.
+    fn open_item(&self, id: u32, browser: bool) {
+        let Some(url) = self.data.borrow().url(id) else {
+            self.status("This article has no link");
+            return;
+        };
+        if browser {
+            self.open_in_browser(&url);
+        } else {
+            self.open_url(&url);
         }
-        #[cfg(not(feature = "servo"))]
+    }
+
+    /// Opens a web page in a tab (without Servo in the system browser), a
+    /// mail link in the desktop's mail client.
+    fn open_url(&self, url: &str) {
+        match link_kind(url) {
+            #[cfg(feature = "servo")]
+            LinkKind::Web => {
+                if let Err(err) = self.pages.borrow_mut().open(url) {
+                    self.status(format!("Opening the page failed: {err}"));
+                }
+            }
+            _ => self.open_in_browser(url),
+        }
+    }
+
+    /// Opens `url` with the desktop's default application (`xdg-open`).
+    /// Only web and mail links: feed content mustn't open local files or
+    /// start other applications through their URL schemes.
+    fn open_in_browser(&self, url: &str) {
+        if link_kind(url) == LinkKind::Other {
+            self.status(format!("Not opening this kind of link: {url}"));
+            return;
+        }
+        match std::process::Command::new("xdg-open")
+            .arg(url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .spawn()
         {
-            let _ = id;
-            self.not_implemented("open-tab");
+            Ok(mut child) => {
+                // xdg-open returns soon; wait for it so it doesn't linger as
+                // a zombie.
+                std::thread::spawn(move || child.wait());
+            }
+            Err(err) => self.status(format!("Opening the browser failed: {err}")),
+        }
+    }
+
+    /// A link in the article: opened in a tab, in the browser, or copied.
+    fn article_link(&self, url: &str, action: &str) {
+        match action {
+            "open" => self.open_url(url),
+            "browser" => self.open_in_browser(url),
+            "copy" => self.article.borrow().copy_text(url),
+            _ => self.not_implemented(action),
         }
     }
 
@@ -405,6 +446,26 @@ impl App {
             self.tree.borrow_mut().set_unread(item.feed_id, unread);
             self.refresh_tree();
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkKind {
+    /// http or https.
+    Web,
+    Mail,
+    /// Anything else (`file:`, `javascript:`, …), which isn't opened.
+    Other,
+}
+
+fn link_kind(url: &str) -> LinkKind {
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return LinkKind::Other;
+    };
+    match scheme.to_ascii_lowercase().as_str() {
+        "http" | "https" if rest.starts_with("//") => LinkKind::Web,
+        "mailto" => LinkKind::Mail,
+        _ => LinkKind::Other,
     }
 }
 
@@ -661,7 +722,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         options.measure || options.cycle_articles.is_some(),
         move |url| {
             if let Some(window) = weak.upgrade() {
-                window.set_status_text(format!("Link: {url}").into());
+                window.invoke_article_link_action(url.into(), "open".into());
             }
         },
     );
@@ -747,6 +808,13 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         }
     });
     let weak = Rc::downgrade(&app);
+    window.on_article_link_action(move |url, action| {
+        if let Some(app) = weak.upgrade() {
+            app.article_link(&url, &action);
+        }
+    });
+    window.set_tabs_available(cfg!(feature = "servo"));
+    let weak = Rc::downgrade(&app);
     window.on_search_edited(move |text| {
         if let Some(app) = weak.upgrade() {
             app.search_edited(&text);
@@ -777,4 +845,21 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         pages::start_measurement(Rc::downgrade(&app.pages), urls)
     });
     window.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_kinds() {
+        assert_eq!(link_kind("https://example.org/a"), LinkKind::Web);
+        assert_eq!(link_kind("HTTP://example.org"), LinkKind::Web);
+        assert_eq!(link_kind("mailto:a@example.org"), LinkKind::Mail);
+        assert_eq!(link_kind("file:///etc/passwd"), LinkKind::Other);
+        assert_eq!(link_kind("javascript:alert(1)"), LinkKind::Other);
+        assert_eq!(link_kind("http:no-slashes"), LinkKind::Other);
+        assert_eq!(link_kind("http"), LinkKind::Other);
+        assert_eq!(link_kind(""), LinkKind::Other);
+    }
 }

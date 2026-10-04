@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use anyrender::ImageRenderer;
 use anyrender_vello_cpu::{ImageCacheConfig, VelloCpuImageRenderer};
 use atomic_refcell::AtomicRefCell;
-use blitz_dom::{Document, DocumentConfig, FontContext, StyleThreading};
+use blitz_dom::{Document, DocumentConfig, FontContext, StyleThreading, local_name};
 use blitz_html::{HtmlDocument, HtmlProvider};
 use blitz_traits::events::{
     BlitzKeyEvent, BlitzPointerEvent, BlitzPointerId, BlitzWheelDelta, BlitzWheelEvent, KeyState,
@@ -291,6 +291,8 @@ pub struct HtmlView {
     buttons: MouseEventButtons,
     /// Last pointer position, logical pixels relative to the view.
     pointer: (f32, f32),
+    /// Links clicked with the middle button, which Blitz doesn't follow.
+    middle_clicks: Vec<String>,
     started: Instant,
 }
 
@@ -336,6 +338,7 @@ impl HtmlView {
             net: Arc::new(Net::new(load_images)),
             buttons: MouseEventButtons::None,
             pointer: (0.0, 0.0),
+            middle_clicks: Vec::new(),
             started: Instant::now(),
         }
     }
@@ -450,6 +453,11 @@ impl HtmlView {
     /// A pointer event at `x`, `y`, in logical pixels relative to the view.
     pub fn pointer(&mut self, kind: PointerKind, x: f32, y: f32, mods: Mods) {
         self.pointer = (x, y);
+        if kind == PointerKind::Up(Button::Middle)
+            && let Some(url) = self.link_at(x, y)
+        {
+            self.middle_clicks.push(url);
+        }
         let button = match kind {
             PointerKind::Down(b) | PointerKind::Up(b) => match b {
                 Button::Left => MouseEventButton::Main,
@@ -543,13 +551,38 @@ impl HtmlView {
         }
     }
 
-    /// Links clicked since the last call.
-    pub fn take_link_clicks(&self) -> Vec<String> {
-        self.navigation
+    /// Links clicked (with any button and modifiers) since the last call.
+    pub fn take_link_clicks(&mut self) -> Vec<String> {
+        let mut clicks = self
+            .navigation
             .clicks
             .lock()
             .map(|mut clicks| std::mem::take(&mut *clicks))
-            .unwrap_or_default()
+            .unwrap_or_default();
+        clicks.append(&mut self.middle_clicks);
+        clicks
+    }
+
+    /// The URL of the link at `x`, `y` (logical pixels relative to the
+    /// view), if there is one.
+    pub fn link_at(&self, x: f32, y: f32) -> Option<String> {
+        let doc = self.doc.as_ref()?;
+        let mut id = doc.element_from_point(x, y)?;
+        loop {
+            let node = doc.get_node(id)?;
+            if let Some(element) = node.element_data()
+                && element.name.local == local_name!("a")
+                && let Some(href) = element.attr(local_name!("href"))
+            {
+                return doc.url().join(href).ok().map(String::from);
+            }
+            id = node.parent?;
+        }
+    }
+
+    /// Puts `text` on the clipboard.
+    pub fn copy_text(&self, text: &str) -> bool {
+        self.shell.set_clipboard_text(text.to_owned()).is_ok()
     }
 }
 
