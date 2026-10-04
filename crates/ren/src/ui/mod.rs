@@ -396,6 +396,8 @@ impl App {
             (data.item(id), data.article(id), newly_read)
         };
         self.article.borrow_mut().show(article);
+        #[cfg(feature = "servo")]
+        self.pages.borrow_mut().show_article();
 
         if newly_read {
             self.items.notify.row_changed(row);

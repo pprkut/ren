@@ -123,7 +123,7 @@ impl Browser {
         webview.notify_theme_change(self.theme());
         self.delegate.tab_ids.borrow_mut().insert(webview.id(), tab);
         self.tabs.push((tab, webview));
-        self.activate(tab);
+        self.activate(Some(tab));
     }
 
     pub fn close(&mut self, tab: TabId) {
@@ -132,18 +132,19 @@ impl Browser {
         };
         let (_, webview) = self.tabs.remove(index);
         self.delegate.tab_ids.borrow_mut().remove(&webview.id());
+        // The UI activates another tab if it wants one.
         if self.active == Some(tab) {
             self.active = None;
             self.delegate.active.set(None);
-            if let Some(&(next, _)) = self.tabs.get(index.min(self.tabs.len().wrapping_sub(1))) {
-                self.activate(next);
-            }
         }
     }
 
-    pub fn activate(&mut self, tab: TabId) {
+    /// Shows `tab`, or no page for `None`; the others are hidden and
+    /// throttled.
+    pub fn activate(&mut self, tab: Option<TabId>) {
+        self.delegate.active.set(None);
         for (id, webview) in &self.tabs {
-            if *id == tab {
+            if Some(*id) == tab {
                 webview.show();
                 webview.set_throttled(false);
                 webview.focus();
@@ -153,8 +154,8 @@ impl Browser {
                 webview.set_throttled(true);
             }
         }
-        self.active = Some(tab);
-        self.delegate.frame_ready.set(true);
+        self.active = tab;
+        self.delegate.frame_ready.set(tab.is_some());
     }
 
     pub fn resize(&mut self, size: Size) {

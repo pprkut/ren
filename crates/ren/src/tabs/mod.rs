@@ -107,8 +107,9 @@ pub enum Event {
 pub trait Engine {
     fn open(&mut self, url: &str) -> TabId;
     fn close(&mut self, tab: TabId);
-    /// Shows `tab`; the others are hidden and throttled.
-    fn activate(&mut self, tab: TabId);
+    /// Shows `tab`, or no page for `None` (the article is shown); the
+    /// others are hidden and throttled.
+    fn activate(&mut self, tab: Option<TabId>);
     fn resize(&mut self, size: Size);
     fn input(&mut self, input: Input);
     fn set_dark(&mut self, dark: bool);

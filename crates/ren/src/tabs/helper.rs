@@ -52,7 +52,7 @@ enum Command {
         tab: TabId,
     },
     Activate {
-        tab: TabId,
+        tab: Option<TabId>,
     },
     Resize(Size),
     Input(Input),
@@ -256,7 +256,7 @@ impl Engine for Helper {
         self.send(&Command::Close { tab });
     }
 
-    fn activate(&mut self, tab: TabId) {
+    fn activate(&mut self, tab: Option<TabId>) {
         self.send(&Command::Activate { tab });
     }
 
