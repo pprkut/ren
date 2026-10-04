@@ -18,10 +18,6 @@ use crate::error::Error;
 use crate::request::{Endpoint, ItemQuery, Selection};
 use crate::types::{Feeds, Folder, Folders, Item, Items, Status, Version};
 
-/// Upper bound for a response body. `GET /items/updated` is not paged, so
-/// this has to be generous.
-const BODY_LIMIT: u64 = 512 * 1024 * 1024;
-
 /// How much of an error response is read for the News app's message.
 const ERROR_BODY_LIMIT: u64 = 64 * 1024;
 
@@ -38,6 +34,35 @@ impl fmt::Debug for Credentials {
             .field("user", &self.user)
             .field("password", &"…")
             .finish()
+    }
+}
+
+/// HTTP settings of a [`Client`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Config {
+    pub user_agent: String,
+    /// For connecting, including the TLS handshake.
+    pub connect_timeout: Duration,
+    /// From sending a request until the response headers arrive. The News
+    /// app builds an item list before it sends anything; S2 saw 1.5–2.2 s
+    /// per page of 200–2000 items.
+    pub response_timeout: Duration,
+    /// For receiving a whole response body.
+    pub body_timeout: Duration,
+    /// Upper bound for a response body. `GET /items/updated` is not paged,
+    /// so this has to be generous.
+    pub body_limit: u64,
+}
+
+impl Config {
+    pub fn new(user_agent: impl Into<String>) -> Self {
+        Self {
+            user_agent: user_agent.into(),
+            connect_timeout: Duration::from_secs(15),
+            response_timeout: Duration::from_secs(60),
+            body_timeout: Duration::from_secs(300),
+            body_limit: 512 * 1024 * 1024,
+        }
     }
 }
 
@@ -64,12 +89,13 @@ pub struct Client {
     agent: Agent,
     base: String,
     authorization: String,
+    body_limit: u64,
 }
 
 impl Client {
     /// `server` is the Nextcloud URL, e.g. `https://cloud.example.org`.
     /// Server certificates are checked against the system's trust store.
-    pub fn new(server: &str, credentials: &Credentials, user_agent: &str) -> Self {
+    pub fn new(server: &str, credentials: &Credentials, config: &Config) -> Self {
         let tls = TlsConfig::builder()
             .provider(TlsProvider::Rustls)
             .root_certs(RootCerts::PlatformVerifier)
@@ -77,10 +103,10 @@ impl Client {
             .build();
         let agent = Agent::config_builder()
             .tls_config(tls)
-            .user_agent(user_agent)
-            .timeout_connect(Some(Duration::from_secs(15)))
-            .timeout_recv_response(Some(Duration::from_secs(60)))
-            .timeout_recv_body(Some(Duration::from_secs(300)))
+            .user_agent(&config.user_agent)
+            .timeout_connect(Some(config.connect_timeout))
+            .timeout_recv_response(Some(config.response_timeout))
+            .timeout_recv_body(Some(config.body_timeout))
             // Unsuccessful responses are handled here, to keep the
             // server's message.
             .http_status_as_error(false)
@@ -91,6 +117,7 @@ impl Client {
             agent,
             base: api_base(server),
             authorization: format!("Basic {token}"),
+            body_limit: config.body_limit,
         }
     }
 
@@ -112,7 +139,7 @@ impl Client {
         Ok(response
             .into_body()
             .into_with_config()
-            .limit(BODY_LIMIT)
+            .limit(self.body_limit)
             .reader())
     }
 

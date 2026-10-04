@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use nextcloud_news::types::Items;
-use nextcloud_news::{Client, Credentials, Endpoint, ItemQuery, Pager, Selection};
+use nextcloud_news::{Client, Config, Credentials, Endpoint, ItemQuery, Pager, Selection};
 
 use crate::cli::{Mode, Options};
 use crate::procstat::{cpu_seconds, proc_status_kib};
@@ -30,7 +30,7 @@ pub fn run(options: &Options) -> Result<(), String> {
         user: account.user.clone(),
         password,
     };
-    let client = Client::new(&account.server, &credentials, USER_AGENT);
+    let client = Client::new(&account.server, &credentials, &Config::new(USER_AGENT));
 
     let result = match &options.mode {
         Mode::Window => unreachable!("the window is not a remote mode"),
