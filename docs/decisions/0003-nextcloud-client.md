@@ -176,8 +176,8 @@ time while fetching):
 
 ## M1: the client hardened
 
-**Status:** done (2026-10-04); the check against the real server and the
-fixtures from the S2 dump are to be run locally (see "Open").
+**Status:** done (2026-10-04); the check of the write requests against
+the real server is to be run locally (see "Open").
 
 What changed in `nextcloud-news`:
 
@@ -266,12 +266,13 @@ To run locally against the real server:
    sends "mark all read" up to item 0 for everything, the item's feed and
    folder, and folder 0. The item's state is restored also after a
    failure; other clients see it as changed (its `lastModified` moves).
-2. `just anonymise-dump <dump dir>` writes anonymised fixtures from the S2
-   dump to `crates/nextcloud-news/tests/fixtures/recorded/`; review them
-   and commit them, and `cargo test -p nextcloud-news` checks them along
-   with the hand-written ones.
-3. Optionally `just measure-fetch 200 2000` for the memory of the streaming
+2. Optionally `just measure-fetch 200 2000` for the memory of the streaming
    decode against the server.
+
+Done since: the anonymised fixtures from the S2 dump
+(`tests/fixtures/recorded/`, News 28.7.0) have the same form as the
+hand-written ones: the same keys in the same order, `lastModified` as a
+number, and `filtered` already sent by 28.7.0.
 
 Left for M3: the `NewsApi` trait (shaped by what the sync needs),
 bounding the number of ids per `*/multiple` request (the server updates
