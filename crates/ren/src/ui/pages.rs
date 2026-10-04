@@ -28,6 +28,7 @@ pub struct Pages {
     measure: bool,
     /// A pump is already queued on the event loop.
     pump_queued: Arc<AtomicBool>,
+    stats: crate::tabs::StageStats,
 }
 
 impl Pages {
@@ -42,6 +43,7 @@ impl Pages {
             tabs: Vec::new(),
             rows,
             measure,
+            stats: crate::tabs::StageStats::new("ui"),
             pump_queued: Arc::default(),
         }));
         connect(window, &pages);
@@ -240,8 +242,10 @@ impl Pages {
         let frame = engine.take_frame();
         let window = self.window();
         if let Some(frame) = frame {
+            self.stats.count("frames");
             window.set_page_image(frame);
         }
+        self.stats.report();
         for event in events {
             match event {
                 Event::Title { tab, title } => self.update_row(tab, |row| row.title = title.into()),
