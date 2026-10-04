@@ -16,7 +16,7 @@ use ureq::{Agent, Body};
 
 use crate::decode::{decode, decode_items};
 use crate::error::Error;
-use crate::request::{Endpoint, ItemQuery, PageInfo, Pager, Selection};
+use crate::request::{Endpoint, ItemQuery, PageInfo, Pager, Selection, Update};
 use crate::types::{Feeds, Folder, Folders, Item, Status, Version};
 
 /// How much of an error response is read for the News app's message.
@@ -215,6 +215,32 @@ impl Client {
             selection,
         };
         self.each_item(&endpoint, f)
+    }
+
+    /// Sends a write request. An empty list of item ids sends nothing.
+    pub fn update(&self, update: &Update) -> Result<(), Error> {
+        if let Update::Items { ids: [], .. } = update {
+            return Ok(());
+        }
+        let response = self
+            .agent
+            .post(format!("{}{}", self.base, update.path()))
+            .header("Authorization", &self.authorization)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(&update.body()[..])?;
+        let response = check(response)?;
+        // The body is empty or `[]`. Reading it lets the connection be
+        // reused; the change is made, whatever happens to the rest.
+        let _ = std::io::copy(
+            &mut response
+                .into_body()
+                .into_with_config()
+                .limit(ERROR_BODY_LIMIT)
+                .reader(),
+            &mut std::io::sink(),
+        );
+        Ok(())
     }
 }
 
