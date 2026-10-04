@@ -396,7 +396,10 @@ expensive to build, so it comes last with everything else in place.
 
 From here on every milestone ships with tests for what it adds.
 
-- **M1 — API client.** Harden the S2 code: all endpoints listed above
+- **M1 — API client.** *(done; see "M1" in
+  `docs/decisions/0003-nextcloud-client.md`. Open: `ren --check-writes`
+  and anonymised fixtures from the S2 dump, both run locally)*
+  Harden the S2 code: all endpoints listed above
   (including the `*/multiple` and mark-all-read writes), typed errors (auth,
   HTTP status, network, decode), user agent, timeouts. The write
   endpoints are the v1-3 `POST` forms with `itemIds` (see the API notes);
@@ -420,7 +423,12 @@ From here on every milestone ships with tests for what it adds.
   pending-change queue as described above. Items from the streaming
   decode are written in chunks (one transaction per chunk), so neither a
   page nor a large `/items/updated` response is ever held in memory as a
-  whole. Unit tests with a fake `NewsApi`
+  whole. The `NewsApi` trait is defined here, after what the sync needs
+  from `Client` (M1 left it out). The server marks items read or starred
+  one by one per `*/multiple` request, so the queue is pushed in batches
+  of bounded size. "Mark all read" for feeds outside of folders goes feed
+  by feed (`/folders/0/read` most likely fails, see 0003). Unit tests with
+  a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
   integration test with the real client against the mock server.
 - **M4 — Settings & credentials.** As described in "Settings, state and
