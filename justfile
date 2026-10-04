@@ -46,6 +46,10 @@ measure-tabs dump *urls:
 survey-articles dump:
     scripts/survey-articles.py {{dump}}
 
+# Turn a --dump-items directory into anonymised test fixtures for nextcloud-news
+anonymise-dump dump *out:
+    scripts/anonymise-dump.py {{dump}} {{out}}
+
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}
