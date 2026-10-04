@@ -176,8 +176,7 @@ time while fetching):
 
 ## M1: the client hardened
 
-**Status:** done (2026-10-04); the check of the write requests against
-the real server is to be run locally (see "Open").
+**Status:** done (2026-10-04), checked against the real server.
 
 What changed in `nextcloud-news`:
 
@@ -231,11 +230,11 @@ documentation is inconsistent:
 - **"Mark all read" with `newestItemId` 0 changes nothing:** all three
   select `items.id <= :maxItemId` first. `ren --check-writes` relies on
   that to try them without changing anything.
-- **`/folders/0/read` most likely fails:** the controller turns folder 0
-  into `null` and passes it to `FolderServiceV2::read(string $userId, int
-  $id, ...)`, which can't take `null` in PHP 8. So feeds outside of
-  folders are marked as read feed by feed. `--check-writes` tries it and
-  reports the outcome.
+- **`/folders/0/read` fails** (HTTP 500 on 28.7.0, without a message):
+  the controller turns folder 0 into `null` and passes it to
+  `FolderServiceV2::read(string $userId, int $id, ...)`, which can't take
+  `null` in PHP 8. So feeds outside of folders are marked as read feed by
+  feed.
 - **Errors** are `{"message": "..."}` with the status (404 for an unknown
   feed or folder, 422, 409). `GET /items` answers `getRead=false` on the
   starred list with HTTP 200 and a message instead of items; the decoder
@@ -253,26 +252,36 @@ build; `VmHWM` after decoding, 2.3 MiB before):
 | item by item (`decode_items`) | 2.3 MiB |
 
 With real data S2 measured about 3× the JSON size for decoding at once
-(more, shorter strings than this synthetic body). Re-running `just
-measure-fetch` against the server should now show the peak RSS no longer
-growing with the batch size.
+(more, shorter strings than this synthetic body).
+
+Against the real server, `just measure-fetch 200 2000` at b1c0b58
+(i7-1185G7, Linux 7.2.8; News 28.7.0, 62,849 unread items; median of 3
+runs after a warm-up), next to S2's numbers, which decoded each page at
+once:
+
+| batch size | requests | wall s | CPU s (user + sys) | RSS before MiB | peak RSS MiB | S2 peak RSS MiB |
+|---|---|---|---|---|---|---|
+| 200 | 315 | 502.356 | 1.31 | 10.0 | 14.8 | 14.2 |
+| 2000 | 32 | 68.695 | 1.14 | 10.1 | 14.9 | 29.9 |
+
+The peak no longer depends on the batch size: 4.8 MiB above the start for
+both, where S2 needed 5.9 and 21.6 MiB. Time and CPU are unchanged, so the
+streaming decode costs nothing. (The start is 1.7 MiB higher than in S2;
+the binary grew in between, with the S3/S4 code.)
+
+### Checked against the real server
+
+`ren --check-writes` on News 28.7.0: all four `*/multiple` requests
+changed the item as expected and the state was restored; "mark all read"
+up to item 0 was accepted for everything, a feed and a folder;
+`/folders/0/read` failed with HTTP 500 (see above).
+
+The anonymised fixtures from the S2 dump (`tests/fixtures/recorded/`,
+News 28.7.0) have the same form as the hand-written ones: the same keys
+in the same order, `lastModified` as a number, and `filtered` already
+sent by 28.7.0.
 
 ### Open
-
-To run locally against the real server:
-
-1. `cargo run --release -- --check-writes` toggles the read and starred
-   state of the newest item, checks each change, restores the state, and
-   sends "mark all read" up to item 0 for everything, the item's feed and
-   folder, and folder 0. The item's state is restored also after a
-   failure; other clients see it as changed (its `lastModified` moves).
-2. Optionally `just measure-fetch 200 2000` for the memory of the streaming
-   decode against the server.
-
-Done since: the anonymised fixtures from the S2 dump
-(`tests/fixtures/recorded/`, News 28.7.0) have the same form as the
-hand-written ones: the same keys in the same order, `lastModified` as a
-number, and `filtered` already sent by 28.7.0.
 
 Left for M3: the `NewsApi` trait (shaped by what the sync needs),
 bounding the number of ids per `*/multiple` request (the server updates
