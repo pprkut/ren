@@ -166,9 +166,113 @@ time while fetching):
     batch size). To check in M3, when the pages go into the store.
   - Whether the server sends `lastModified` as a number or a string; both
     are accepted. The dump answers it, and M1's fixtures should cover the
-    form the server uses.
+    form the server uses. *M1: a number (see below).*
   - The write endpoints (`*/multiple`, mark all read) and which of the
-    documented variants the server accepts: M1.
+    documented variants the server accepts: M1. *M1: the `POST` forms
+    (see below).*
   - Timeouts (60 s until the response headers) are far above the 1.5–2 s
     per request seen here, but a slower server or a much larger account
     could need more; make them settings if that happens.
+
+## M1: the client hardened
+
+**Status:** done (2026-10-04); the check against the real server and the
+fixtures from the S2 dump are to be run locally (see "Open").
+
+What changed in `nextcloud-news`:
+
+- **Write requests:** `Update::Items` (`POST
+  /items/{read,unread,star,unstar}/multiple` with `{"itemIds": [...]}`)
+  and `Update::MarkRead` (`POST /items/read`, `/feeds/{id}/read`,
+  `/folders/{id}/read` with `{"newestItemId": n}`), sent by
+  `Client::update`. An empty id list sends nothing.
+- **Streaming decode:** `decode_items` decodes `{"items": [...]}` item by
+  item and hands each one to a callback; `Client::items`,
+  `Client::updated_items` and `Client::next_page` (one page through a
+  `Pager`) use it. The callback's own error type stops the request and is
+  returned unchanged, so the sync can stop on a store error. The `Pager`
+  takes items one at a time (`start_page`, `accept`, `finish_page`); a
+  page that is started again after a failed request forgets what it had
+  accepted.
+- **Typed errors:** `Unauthorized` (401), `Status { code, message }` with
+  the News app's `{"message": ...}` if it sent one, `Network` (name
+  resolution, connection, TLS, timeouts, a connection lost during the
+  body, a body above the limit) and `Decode`. Before, a connection lost
+  while the body was decoded came out as a decode error.
+- **`Config`:** user agent, the three timeouts and the body limit, with
+  the S2 values as defaults.
+- **`Item::filtered`:** News 28.4 added keyword filters per feed; matching
+  items are sent with `"filtered": true` and hidden by the web interface.
+- Tests: the request building, the streaming decode (including that items
+  are handed over before the body is complete), fixtures in the server's
+  form, and the client against a mock HTTP server on localhost (a small
+  `std::net` server in the tests, no new dependency): headers and
+  credentials, paging with exclusive and inclusive offsets, every write
+  request, 401, 404 with a message, 500 without one, invalid JSON,
+  connection refused, response timeout, connection lost mid-body, the body
+  limit, and a caller's error.
+- `ren --fetch-unread` decodes item by item now; `ren --check-writes`
+  checks the write requests against the server (see "Open").
+
+### Findings from the News app's source
+
+Read at `nextcloud/news` master (29.0.0-beta.1, 2026-10-04), since the
+documentation is inconsistent:
+
+- **The write endpoints of v1-3 are the `POST` forms with `itemIds`**
+  (`appinfo/routes.php`, `ItemApiController::readMultipleByIds` etc.).
+  The `PUT` forms with `items` are routed for v1-2 only. The server marks
+  the items one by one and skips unknown ids; the controllers return
+  nothing (an empty 200 response).
+- **`lastModified` is a number**: `Item::toAPI()` sends
+  `cropApiLastModified()`, which returns an `int` (seconds; the database
+  keeps microseconds). `updatedDate` is always `null`. Strings stay
+  accepted.
+- **"Mark all read" with `newestItemId` 0 changes nothing:** all three
+  select `items.id <= :maxItemId` first. `ren --check-writes` relies on
+  that to try them without changing anything.
+- **`/folders/0/read` most likely fails:** the controller turns folder 0
+  into `null` and passes it to `FolderServiceV2::read(string $userId, int
+  $id, ...)`, which can't take `null` in PHP 8. So feeds outside of
+  folders are marked as read feed by feed. `--check-writes` tries it and
+  reports the outcome.
+- **Errors** are `{"message": "..."}` with the status (404 for an unknown
+  feed or folder, 422, 409). `GET /items` answers `getRead=false` on the
+  starred list with HTTP 200 and a message instead of items; the decoder
+  reports that message.
+
+### Measurements
+
+Peak memory when decoding one item list, decoded at once vs. item by item
+(synthetic: 60,000 items, 197 MiB of JSON with 2.9 KiB bodies; release
+build; `VmHWM` after decoding, 2.3 MiB before):
+
+| decoding | peak RSS |
+|---|---|
+| at once (`decode::<Items>`) | 207 MiB |
+| item by item (`decode_items`) | 2.3 MiB |
+
+With real data S2 measured about 3× the JSON size for decoding at once
+(more, shorter strings than this synthetic body). Re-running `just
+measure-fetch` against the server should now show the peak RSS no longer
+growing with the batch size.
+
+### Open
+
+To run locally against the real server:
+
+1. `cargo run --release -- --check-writes` toggles the read and starred
+   state of the newest item, checks each change, restores the state, and
+   sends "mark all read" up to item 0 for everything, the item's feed and
+   folder, and folder 0. The item's state is restored also after a
+   failure; other clients see it as changed (its `lastModified` moves).
+2. `just anonymise-dump <dump dir>` writes anonymised fixtures from the S2
+   dump to `crates/nextcloud-news/tests/fixtures/recorded/`; review them
+   and commit them, and `cargo test -p nextcloud-news` checks them along
+   with the hand-written ones.
+3. Optionally `just measure-fetch 200 2000` for the memory of the streaming
+   decode against the server.
+
+Left for M3: the `NewsApi` trait (shaped by what the sync needs),
+bounding the number of ids per `*/multiple` request (the server updates
+them one by one), and whether RSS returns to the baseline after a sync.
