@@ -105,6 +105,8 @@ component ItemTableRow inherits Rectangle {
     in property <ColumnWidths> widths;
     // Two lines (title; feed, author and date) instead of table columns.
     in property <bool> compact;
+    // Web pages can be opened in tabs (the `servo` feature).
+    in property <bool> tabs-available;
     callback clicked();
     // An entry of the context menu was activated.
     callback menu(action: string);
@@ -131,7 +133,7 @@ component ItemTableRow inherits Rectangle {
 
     ContextMenuArea {
         Menu {
-            MenuItem {
+            if root.tabs-available: MenuItem {
                 title: "Open Link in Tab";
                 activated => {
                     root.menu("open-tab");
@@ -273,6 +275,8 @@ export component ItemTable inherits FocusScope {
     in-out property <length> date-width: 140px;
     // Two-line rows without a header, for a narrow list beside the article.
     in property <bool> compact;
+    // Web pages can be opened in tabs (the `servo` feature).
+    in property <bool> tabs-available;
 
     property <length> row-height: root.compact ? Theme.compact-row-height : Theme.row-height;
 
@@ -395,6 +399,7 @@ export component ItemTable inherits FocusScope {
                 focused: root.has-focus;
                 widths: { feed: root.feed-width, author: root.author-width, date: root.date-width };
                 compact: root.compact;
+                tabs-available: root.tabs-available;
                 clicked => {
                     root.focus();
                     root.select(i);

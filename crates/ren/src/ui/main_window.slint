@@ -285,6 +285,7 @@ export component MainWindow inherits Window {
             title: "Article";
             MenuItem {
                 title: "Open Link in Tab";
+                enabled: root.tabs-available;
                 shortcut: @keys(Control + Return);
                 activated => {
                     root.action("open-tab");
@@ -453,6 +454,7 @@ export component MainWindow inherits Window {
                 width: content.beside ? root.list-width : content.width;
                 height: (content.beside ? content.height : root.list-height) - content.search-height;
                 compact: content.beside;
+                tabs-available: root.tabs-available;
                 rows: root.items;
                 current: root.current-item;
                 sort-column: root.sort-column;
