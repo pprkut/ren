@@ -398,7 +398,7 @@ From here on every milestone ships with tests for what it adds.
 
 - **M1 — API client.** *(done; see "M1" in
   `docs/decisions/0003-nextcloud-client.md`. Open: `ren --check-writes`
-  and anonymised fixtures from the S2 dump, both run locally)*
+  against the real server, run locally)*
   Harden the S2 code: all endpoints listed above
   (including the `*/multiple` and mark-all-read writes), typed errors (auth,
   HTTP status, network, decode), user agent, timeouts. The write
