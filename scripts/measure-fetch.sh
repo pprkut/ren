@@ -81,7 +81,7 @@ done
 
 summary=$OUT_DIR/summary.md
 {
-    echo "## ren S2 fetch measurements, $(date -u +'%Y-%m-%d %H:%M UTC')"
+    echo "## ren fetch measurements, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
     echo "- ren: $(git describe --always --dirty)"
     echo "- kernel: $(uname -sr)"

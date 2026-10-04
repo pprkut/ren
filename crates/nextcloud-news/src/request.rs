@@ -120,14 +120,35 @@ impl Endpoint {
 
 /// Paging through `GET /items`: the next page starts below the lowest id of
 /// the previous one.
+///
+/// ```no_run
+/// # fn f(client: &nextcloud_news::Client) -> Result<(), nextcloud_news::Error> {
+/// use nextcloud_news::{ItemQuery, Pager};
+///
+/// let mut pager = Pager::new(ItemQuery::unread(Some(1000)));
+/// while let Some(query) = pager.start_page() {
+///     client.items(query, |item| {
+///         if pager.accept(&item) {
+///             // Store the item.
+///         }
+///         Ok::<_, nextcloud_news::Error>(())
+///     })?;
+///     pager.finish_page();
+/// }
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct Pager {
     query: ItemQuery,
     done: bool,
+    /// The current page so far.
+    page: PageInfo,
+    lowest: Option<u64>,
 }
 
-/// What a page contained, after dropping items already seen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a page contained.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PageInfo {
     /// Items not seen on an earlier page.
     pub new: usize,
@@ -138,33 +159,45 @@ pub struct PageInfo {
 
 impl Pager {
     pub fn new(query: ItemQuery) -> Self {
-        Self { query, done: false }
+        Self {
+            query,
+            done: false,
+            page: PageInfo::default(),
+            lowest: None,
+        }
     }
 
-    /// The query for the next page, or `None` when all pages were fetched.
-    pub fn next_query(&self) -> Option<ItemQuery> {
+    /// Starts the next page and returns its query, or `None` when all pages
+    /// were fetched. Starting a page again, e.g. after a failed request,
+    /// forgets what was accepted from it.
+    pub fn start_page(&mut self) -> Option<ItemQuery> {
+        self.page = PageInfo::default();
+        self.lowest = None;
         (!self.done).then_some(self.query)
     }
 
-    /// Takes a fetched page: removes items that an earlier page already
-    /// contained and advances to the next page. Paging ends with a page
-    /// shorter than the batch size, or one without new items.
-    pub fn advance(&mut self, page: &mut Vec<Item>) -> PageInfo {
-        let total = page.len();
-        if self.query.offset > 0 {
-            let offset = self.query.offset;
-            page.retain(|item| item.id < offset);
+    /// Takes an item of the current page. Returns `false` for an item that
+    /// an earlier page already contained, which the caller should skip.
+    pub fn accept(&mut self, item: &Item) -> bool {
+        let offset = self.query.offset;
+        if offset > 0 && item.id >= offset {
+            self.page.repeated += 1;
+            return false;
         }
-        let info = PageInfo {
-            new: page.len(),
-            repeated: total - page.len(),
-        };
-        let lowest = page.iter().map(|item| item.id).min();
-        match (lowest, self.query.batch_size) {
+        self.page.new += 1;
+        self.lowest = Some(self.lowest.map_or(item.id, |lowest| lowest.min(item.id)));
+        true
+    }
+
+    /// Ends the current page and advances to the next one. Paging ends with
+    /// a page shorter than the batch size, or one without new items.
+    pub fn finish_page(&mut self) -> PageInfo {
+        let total = self.page.new + self.page.repeated;
+        match (self.lowest, self.query.batch_size) {
             (Some(lowest), Some(size)) if total >= size as usize => self.query.offset = lowest,
             _ => self.done = true,
         }
-        info
+        self.page
     }
 }
 
@@ -221,64 +254,92 @@ mod tests {
         assert!(Endpoint::Feeds.query().is_empty());
     }
 
+    /// Feeds a page through the pager; returns the accepted ids.
+    fn take(pager: &mut Pager, ids: &[u64]) -> (Vec<u64>, PageInfo) {
+        assert!(pager.start_page().is_some());
+        let accepted = page(ids)
+            .iter()
+            .filter(|item| pager.accept(item))
+            .map(|item| item.id)
+            .collect();
+        (accepted, pager.finish_page())
+    }
+
     #[test]
     fn paging_until_short_page() {
         let mut pager = Pager::new(ItemQuery::unread(Some(3)));
-        assert_eq!(pager.next_query().unwrap().offset, 0);
+        assert_eq!(pager.start_page().unwrap().offset, 0);
 
-        let mut p = page(&[90, 80, 70]);
         assert_eq!(
-            pager.advance(&mut p),
-            PageInfo {
-                new: 3,
-                repeated: 0
-            }
+            take(&mut pager, &[90, 80, 70]),
+            (
+                vec![90, 80, 70],
+                PageInfo {
+                    new: 3,
+                    repeated: 0
+                }
+            )
         );
-        assert_eq!(pager.next_query().unwrap().offset, 70);
+        assert_eq!(pager.start_page().unwrap().offset, 70);
 
-        let mut p = page(&[60, 50]);
-        pager.advance(&mut p);
-        assert_eq!(pager.next_query(), None);
+        take(&mut pager, &[60, 50]);
+        assert_eq!(pager.start_page(), None);
     }
 
     #[test]
     fn inclusive_offset_does_not_loop() {
         let mut pager = Pager::new(ItemQuery::unread(Some(2)));
-        pager.advance(&mut page(&[90, 80]));
+        take(&mut pager, &[90, 80]);
         // The server includes the offset item again.
-        let mut p = page(&[80, 70]);
         assert_eq!(
-            pager.advance(&mut p),
-            PageInfo {
-                new: 1,
-                repeated: 1
-            }
+            take(&mut pager, &[80, 70]),
+            (
+                vec![70],
+                PageInfo {
+                    new: 1,
+                    repeated: 1
+                }
+            )
         );
-        assert_eq!(p, page(&[70]));
-        assert_eq!(pager.next_query().unwrap().offset, 70);
+        assert_eq!(pager.start_page().unwrap().offset, 70);
         // Only the offset item comes back: nothing new, stop.
-        let mut p = page(&[70, 70]);
         assert_eq!(
-            pager.advance(&mut p),
-            PageInfo {
-                new: 0,
-                repeated: 2
-            }
+            take(&mut pager, &[70, 70]),
+            (
+                vec![],
+                PageInfo {
+                    new: 0,
+                    repeated: 2
+                }
+            )
         );
-        assert_eq!(pager.next_query(), None);
+        assert_eq!(pager.start_page(), None);
+    }
+
+    #[test]
+    fn restarted_page_forgets_partial_items() {
+        let mut pager = Pager::new(ItemQuery::unread(Some(3)));
+        take(&mut pager, &[90, 80, 70]);
+        // The request for the second page fails after one item.
+        pager.start_page();
+        assert!(pager.accept(&item(10)));
+        // Retried: the lowest id must not be the 10 from the failed try.
+        let (_, info) = take(&mut pager, &[60, 50, 40]);
+        assert_eq!(info.new, 3);
+        assert_eq!(pager.start_page().unwrap().offset, 40);
     }
 
     #[test]
     fn unpaged_query_is_one_page() {
         let mut pager = Pager::new(ItemQuery::unread(None));
-        pager.advance(&mut page(&[3, 2, 1]));
-        assert_eq!(pager.next_query(), None);
+        take(&mut pager, &[3, 2, 1]);
+        assert_eq!(pager.start_page(), None);
     }
 
     #[test]
     fn empty_page_ends_paging() {
         let mut pager = Pager::new(ItemQuery::unread(Some(10)));
-        pager.advance(&mut Vec::new());
-        assert_eq!(pager.next_query(), None);
+        take(&mut pager, &[]);
+        assert_eq!(pager.start_page(), None);
     }
 }

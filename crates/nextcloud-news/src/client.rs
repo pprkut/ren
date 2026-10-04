@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::fmt;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,9 +14,10 @@ use ureq::http::Response;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 use ureq::{Agent, Body};
 
+use crate::decode::{decode, decode_items};
 use crate::error::Error;
-use crate::request::{Endpoint, ItemQuery, Selection};
-use crate::types::{Feeds, Folder, Folders, Item, Items, Status, Version};
+use crate::request::{Endpoint, ItemQuery, PageInfo, Pager, Selection};
+use crate::types::{Feeds, Folder, Folders, Item, Status, Version};
 
 /// How much of an error response is read for the News app's message.
 const ERROR_BODY_LIMIT: u64 = 64 * 1024;
@@ -50,7 +51,8 @@ pub struct Config {
     /// For receiving a whole response body.
     pub body_timeout: Duration,
     /// Upper bound for a response body. `GET /items/updated` is not paged,
-    /// so this has to be generous.
+    /// so this has to be generous; item lists are decoded while they are
+    /// received, so a large response doesn't cost memory.
     pub body_limit: u64,
 }
 
@@ -72,11 +74,6 @@ pub fn api_base(server: &str) -> String {
         "{}/index.php/apps/news/api/v1-3/",
         server.trim_end_matches('/')
     )
-}
-
-/// Decodes a JSON response body.
-pub fn decode<T: DeserializeOwned>(reader: impl Read) -> Result<T, Error> {
-    serde_json::from_reader(BufReader::new(reader)).map_err(Error::from_decode)
 }
 
 /// The error body of the News app.
@@ -125,7 +122,7 @@ impl Client {
         &self.base
     }
 
-    /// Sends a request and returns the raw response body.
+    /// Sends a `GET` request and returns the raw response body.
     pub fn get_reader(&self, endpoint: &Endpoint) -> Result<impl Read + use<>, Error> {
         let mut request = self
             .agent
@@ -143,7 +140,8 @@ impl Client {
             .reader())
     }
 
-    /// Sends a request and decodes the response while it is being received.
+    /// Sends a `GET` request and decodes the response while it is being
+    /// received.
     pub fn get<T: DeserializeOwned>(&self, endpoint: &Endpoint) -> Result<T, Error> {
         decode(self.get_reader(endpoint)?)
     }
@@ -164,22 +162,59 @@ impl Client {
         self.get(&Endpoint::Feeds)
     }
 
-    /// One page of items; see [`Pager`](crate::Pager) for paging.
-    pub fn items(&self, query: ItemQuery) -> Result<Vec<Item>, Error> {
-        Ok(self.get::<Items>(&Endpoint::Items(query))?.items)
+    /// Decodes an item list while it is received and calls `f` with each
+    /// item. Returns the number of items. An error from `f` stops the
+    /// request and is returned as it is.
+    pub fn each_item<E: From<Error>>(
+        &self,
+        endpoint: &Endpoint,
+        f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        decode_items(self.get_reader(endpoint)?, f)
     }
 
-    /// Items changed since `last_modified` (unix seconds, inclusive).
-    pub fn updated_items(
+    /// One page of items, handed to `f` one by one; see [`Pager`] for
+    /// paging, or [`next_page`](Self::next_page).
+    pub fn items<E: From<Error>>(
+        &self,
+        query: ItemQuery,
+        f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        self.each_item(&Endpoint::Items(query), f)
+    }
+
+    /// Fetches the next page of `pager` and calls `f` with each item that
+    /// wasn't on an earlier page. `None` when all pages were fetched.
+    pub fn next_page<E: From<Error>>(
+        &self,
+        pager: &mut Pager,
+        mut f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<Option<PageInfo>, E> {
+        let Some(query) = pager.start_page() else {
+            return Ok(None);
+        };
+        self.items(
+            query,
+            |item| {
+                if pager.accept(&item) { f(item) } else { Ok(()) }
+            },
+        )?;
+        Ok(Some(pager.finish_page()))
+    }
+
+    /// Items changed since `last_modified` (unix seconds, inclusive),
+    /// handed to `f` one by one. Not paged: the response can be large.
+    pub fn updated_items<E: From<Error>>(
         &self,
         last_modified: i64,
         selection: Selection,
-    ) -> Result<Vec<Item>, Error> {
+        f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<usize, E> {
         let endpoint = Endpoint::UpdatedItems {
             last_modified,
             selection,
         };
-        Ok(self.get::<Items>(&endpoint)?.items)
+        self.each_item(&endpoint, f)
     }
 }
 
