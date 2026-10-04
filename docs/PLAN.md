@@ -414,7 +414,8 @@ From here on every milestone ships with tests for what it adds.
   queries, upserts, paged queries, purge, and a "new" marker for items
   that arrived in the latest sync (cleared when the next sync starts), for
   the item list colours. A feed `folderId` of 0 (older News versions)
-  is stored as no folder. Single-line fields (folder names, feed titles,
+  is stored as no folder. Items keep the `filtered` flag (News 28.4
+  keyword filters per feed). Single-line fields (folder names, feed titles,
   item titles and authors) are stored with whitespace collapsed: real
   feeds put line breaks into authors and spaces around titles (S3).
   Tests on an in-memory database.
@@ -424,8 +425,11 @@ From here on every milestone ships with tests for what it adds.
   page nor a large `/items/updated` response is ever held in memory as a
   whole. The `NewsApi` trait is defined here, after what the sync needs
   from `Client` (M1 left it out). The server marks items read or starred
-  one by one per `*/multiple` request, so the queue is pushed in batches
-  of bounded size. "Mark all read" for feeds outside of folders goes feed
+  one by one per `*/multiple` request, so the queue is pushed in
+  batches of at most 1,000 ids per request: some databases behind
+  Nextcloud reject longer value lists in one query. Not verified against
+  a server; real use (e.g. marking thousands of items read) will show
+  whether it holds. "Mark all read" for feeds outside of folders goes feed
   by feed (`/folders/0/read` fails with HTTP 500, see 0003). Unit tests
   with a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
@@ -446,6 +450,7 @@ From here on every milestone ships with tests for what it adds.
   feed tree with unread counts, item list, plain-text article pane, mark read
   on open, star toggle, manual refresh, sync status, background sync thread
   (`slint::invoke_from_event_loop`). View models unit-tested.
+  Filtered items (`filtered`) are hidden, as in the News web interface.
 - **M6 — Article view.** The S3 result made production-ready behind the
   `html-view` feature, including the image cache. From S3: freed image
   memory returned to the system (glibc keeps it; `malloc_trim` or the
