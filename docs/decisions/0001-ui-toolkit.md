@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0001 — UI toolkit: Slint (spike S1)
 
-**Status:** accepted (2026-09-28). The default renderer is provisional
-until S4.
+**Status:** accepted (2026-09-28). S4 confirmed the software renderer as
+the default (see [0005](0005-web-tabs.md)).
 
 ## Context
 
@@ -139,6 +139,9 @@ small.
   Skia/wgpu with zero-copy Servo frames against software with CPU readback;
   the plan's option of making the renderer a setting stays open. Blitz (S3)
   paints on the CPU into a Slint image and works with any renderer.
+  *S4 result:* software stays. Servo's frames are read back to the CPU;
+  the zero-copy path (tried with femtovg on wgpu) cost 60 MiB more for the
+  whole session and wasn't faster ([0005](0005-web-tabs.md)).
 
 ## Consequences
 

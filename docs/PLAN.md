@@ -92,10 +92,14 @@ Open questions for the prototypes (spikes S3 and S4):
   idle memory even when no tab is open. Alternative: Servo renders into a
   software/offscreen context and frames are read back into a Slint image
   (a GPU→CPU copy per frame; acceptable for reading, less smooth scrolling).
-  Measure both and pick; possibly make it a setting.
+  Measure both and pick; possibly make it a setting. *S4: readback, from a
+  Servo helper process; the wgpu renderer cost 60 MiB more and wasn't
+  faster (0005).*
 - **Dependency overlap.** Blitz and Servo both depend on `stylo` and related
   crates. Check that the versions can be unified; two copies would inflate
   the binary and compile time (not RSS, as unused code pages are not loaded).
+  *S4: unified with Servo 0.5 and Blitz 0.3.0-beta.2 (stylo 0.20); Servo
+  0.6 already needs stylo 0.21, so upgrades go together (0005).*
 
 ## Architecture
 
@@ -374,7 +378,9 @@ this is a single command.
   varied set of real items, and RSS delta, render time per item and CSS
   coverage are recorded.
   *Decides:* Blitz vs. litehtml vs. native rich text.
-- **S4 — Full page in a Servo tab.** A button opens an item's URL in a tab;
+- **S4 — Full page in a Servo tab.** *(done: Servo 0.5 in a helper process
+  with CPU readback, software renderer stays; see
+  `docs/decisions/0005-web-tabs.md`)* A button opens an item's URL in a tab;
   closing the last tab drops Servo. Try both frame paths (wgpu texture
   sharing, CPU readback) and check `stylo` unification with Blitz.
   *Done when:* RSS before opening, with one and three tabs, and after
