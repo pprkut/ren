@@ -5,7 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0005 — Web pages in Servo tabs (spike S4)
 
-**Status:** proposed; the measurements on real hardware are pending.
+**Status:** accepted (2026-10-04). The licence exception for `webpki-roots`
+awaits approval.
 
 ## Context
 
@@ -114,38 +115,79 @@ speed (debug build, software GL); only the shape:
 
 ## Measurements
 
-To be run on real hardware (release build, real pages from the dump):
+`just measure-tabs DUMP_DIR` on an i7-1185G7 laptop (Iris Xe, Mesa), Linux
+7.2, KDE on X11, release builds, the links of the first three items of the
+real dump. Binary size: 31.1 MiB without Servo, 137.6 MiB with it,
+142.9 MiB with `servo-wgpu`.
 
-```
-just measure-tabs DUMP_DIR [URL...]
-```
+RSS in MiB; with the helper: total (UI process + helper).
 
-| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | scrolling frames in 3 s | frame to UI ms |
-|---|---|---|---|---|---|---|---|---|
-| helper process, readback | | | | | | | | |
-| in-process, readback | | | | | | | | |
-| in-process, wgpu texture | | | | | | | | |
+| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | UI anon before / after closing | scrolling frames in 3 s | frame to UI ms (mean / max) | Servo start / stop ms |
+|---|---|---|---|---|---|---|---|---|---|---|
+| helper process, readback | 56.9 | 288.5 (76.4 + 212.2) | 418.0 (82.5 + 335.5) | 64.0 | 283.2 (76.5 + 206.7) | 64.0 | 10.5 / 16.8 | 127 | 6.87 / 20.83 | 6.1 / 30.2 |
+| in-process, readback | 58.5 | 242.7 | 364.7 | 271.1 | - | - | 10.5 / 117.1 | 134 | 4.12 / 16.76 | 40.0 / 10.2 |
+| in-process, wgpu texture | 116.9 | 251.5 | 372.0 | 287.5 | - | - | 34.0 / 133.1 | 129 | 5.41 / 23.72 | 39.1 / 9.0 |
 
-Scrolling smoothness (subjective): pending.
+- **Closing the tabs only gives the memory back with the helper:** 64.0 MiB
+  afterwards, and the same again after a second round, so nothing
+  accumulates. In-process, dropping Servo leaves 271–288 MiB (about
+  107 MiB of it anonymous memory in the UI process), and Servo can't be
+  started again there anyway.
+- **The helper costs about 40–50 MiB more while tabs are open** (288.5 vs.
+  242.7 MiB with one tab): a second process with its own heap and
+  libraries, and in the UI process the two frame buffers and the frames
+  coming in over the socket (+19.5 MiB with one tab). After closing, the
+  UI process keeps 6.3 MiB more anonymous memory than before, freed frame
+  buffers glibc doesn't return (as in S3); it doesn't grow with more rounds.
+- **The wgpu renderer costs 60 MiB before any tab is open** (116.9 vs.
+  56.9 MiB, 34 vs. 10.5 MiB anonymous) for the whole session, and the
+  shared texture isn't even faster here: the GPU blit plus `glFinish` takes
+  5.4 ms per frame, the readback 4.1 ms in-process and 6.9 ms with the
+  transfer from the helper.
+- **Scrolling:** 127–134 frames in 3 s in all three, and it feels fine in
+  all three; the helper a bit smoother than the others (Servo's work doesn't
+  run on the UI thread).
+- **Starting and stopping:** the helper accepts tabs 6 ms after it is
+  started (Servo itself then starts in the helper), and exits in 30 ms.
 
-## Decision (proposed, pending the measurements)
+## Review (2026-10-04)
+
+Found while trying it, fixed in this spike:
+
+- After resizing the window the page kept its first size, and with the
+  helper it stopped repainting until another tab was shown: the engine
+  resized the GL context before the web views, and Servo only updates its
+  viewport when it resizes the context itself. Now only the web view is
+  resized.
+- Selecting another item showed its article only in the hidden Article tab;
+  the Article tab now comes to the front, and the page in the background is
+  hidden and throttled.
+- Links in the article did nothing. Now a click (any button, with or
+  without modifiers) opens the link in a tab; the link's context menu has
+  Open Link in Tab, Open Link in Browser (`xdg-open`) and Copy Link Address.
+  Only `http`, `https` and `mailto` links are opened.
+
+## Decision
 
 - **Servo runs in a helper process**, started with the first tab and ended
-  with the last: it is the only way to both free Servo's memory and open
-  tabs again, and it keeps Servo's crashes out of the UI.
-- **Frames are read back to the CPU**, so the default software renderer
-  stays and nothing GPU-related is loaded until a tab opens. The wgpu path
-  would make femtovg-wgpu (a GPU stack, loaded at startup) the renderer and
-  require Servo in the UI process; it only wins if readback scrolling is
-  noticeably worse on real hardware.
-- **Servo 0.5.0**, pinned with Blitz's stylo, pending the licence decision.
+  with the last. It is the only variant that gives the memory back and can
+  open tabs again, it keeps Servo's crashes out of the UI, and it scrolls a
+  bit more smoothly. It costs 40–50 MiB more while tabs are open.
+- **Frames are read back to the CPU**, and **the software renderer stays the
+  default** (0001): the wgpu path would cost 60 MiB for the whole session,
+  needs Servo in the UI process, and wasn't faster.
+- **Servo 0.5.0**, pinned so that it shares stylo with Blitz 0.3.0-beta.2;
+  upgrades of the two have to be coordinated.
+- The `servo` feature stays off by default until M7 makes the tabs
+  production-ready; the wgpu path (`servo-wgpu`, `--tabs wgpu`) and
+  `--tabs in-process` are spike code that M7 removes.
 
 ## Open points
 
 - Approve or reject the `webpki-roots` (CDLA-Permissive-2.0) exception.
-- Readback cost per frame at full window size, and whether scrolling feels
-  smooth enough (the helper adds a copy through the socket; shared memory
-  would avoid it).
+- M7: frames through shared memory instead of the socket (one copy less),
+  and giving the UI process's frame buffers back after the last tab closes
+  (`malloc_trim` or buffers outside the heap).
 - Not done in the spike: popups (`target=_blank`, `window.open`) are
   ignored, no navigation buttons, no IME, context menu or file dialogs, keys
   with modifiers also go to the window's shortcuts.
