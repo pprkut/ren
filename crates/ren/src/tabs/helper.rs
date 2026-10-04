@@ -12,12 +12,18 @@
 //! `E`: a little-endian u32 length and a JSON [`Event`]; `F`: little-endian
 //! u32 width, height and the microseconds the readback took, then the
 //! frame as RGBA, top row first.
+//!
+//! The helper runs web content, so the UI doesn't trust what it sends: a
+//! frame may be at most as large as the largest size the UI asked for, and
+//! an event at most [`MAX_EVENT_BYTES`] long. Anything else ends the
+//! connection, as if the helper had crashed.
 
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command as Process, Stdio};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -36,6 +42,8 @@ pub const HELPER_ARG: &str = "--servo-helper";
 const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 /// How long the helper may take to connect after it was started.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Longest event message (a page title, mostly).
+const MAX_EVENT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Command {
@@ -75,6 +83,10 @@ pub struct Helper {
     child: Child,
     stdin: Option<BufWriter<ChildStdin>>,
     inbox: Arc<Mutex<Inbox>>,
+    /// The largest frame, in pixels, the reader accepts: the largest size
+    /// requested so far, as frames of an older size may still arrive
+    /// after a resize.
+    max_pixels: Arc<AtomicU64>,
     next_tab: TabId,
     frame: Option<Image>,
     stats: FrameStats,
@@ -106,10 +118,13 @@ impl Helper {
         let stdin = child.stdin.take().expect("piped");
         let inbox = Arc::new(Mutex::new(Inbox::default()));
         let reader_inbox = inbox.clone();
+        let max_pixels = Arc::new(AtomicU64::new(pixels(size)));
+        let reader_max = max_pixels.clone();
         std::thread::Builder::new()
             .name("servo-helper-reader".to_owned())
             .spawn(move || {
-                let result = read_messages(BufReader::new(stream), &reader_inbox, &waker);
+                let result =
+                    read_messages(BufReader::new(stream), &reader_inbox, &reader_max, &waker);
                 let reason = match result {
                     Ok(()) => "the Servo helper exited".to_owned(),
                     Err(err) => format!("reading from the Servo helper failed: {err}"),
@@ -122,6 +137,7 @@ impl Helper {
             child,
             stdin: Some(BufWriter::new(stdin)),
             inbox,
+            max_pixels,
             next_tab: 0,
             frame: None,
             stats: FrameStats::default(),
@@ -176,6 +192,16 @@ fn accept(listener: &UnixListener, child: &mut Child) -> io::Result<UnixStream> 
     }
 }
 
+/// The pixels of a frame of `size`; the helper never makes a context
+/// smaller than 1×1.
+fn pixels(size: Size) -> u64 {
+    u64::from(size.width.max(1)) * u64::from(size.height.max(1))
+}
+
+fn invalid(message: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
 fn lock(inbox: &Mutex<Inbox>) -> std::sync::MutexGuard<'_, Inbox> {
     inbox.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -186,8 +212,14 @@ fn read_u32(input: &mut impl Read) -> io::Result<u32> {
     Ok(u32::from_le_bytes(bytes))
 }
 
-/// Reads the helper's messages until it exits.
-fn read_messages(mut input: impl Read, inbox: &Mutex<Inbox>, waker: &Waker) -> io::Result<()> {
+/// Reads the helper's messages until it exits. A frame may have at most
+/// `max_pixels` pixels.
+fn read_messages(
+    mut input: impl Read,
+    inbox: &Mutex<Inbox>,
+    max_pixels: &AtomicU64,
+    waker: &Waker,
+) -> io::Result<()> {
     loop {
         let mut tag = [0];
         if input.read(&mut tag)? == 0 {
@@ -196,6 +228,9 @@ fn read_messages(mut input: impl Read, inbox: &Mutex<Inbox>, waker: &Waker) -> i
         match tag[0] {
             b'E' => {
                 let len = read_u32(&mut input)? as usize;
+                if len > MAX_EVENT_BYTES {
+                    return Err(invalid(format!("event of {len} bytes")));
+                }
                 let mut json = vec![0; len];
                 input.read_exact(&mut json)?;
                 let event = serde_json::from_slice(&json)
@@ -206,6 +241,10 @@ fn read_messages(mut input: impl Read, inbox: &Mutex<Inbox>, waker: &Waker) -> i
                 let width = read_u32(&mut input)?;
                 let height = read_u32(&mut input)?;
                 let readback = Duration::from_micros(read_u32(&mut input)?.into());
+                let pixels = u64::from(width) * u64::from(height);
+                if pixels == 0 || pixels > max_pixels.load(Ordering::Acquire) {
+                    return Err(invalid(format!("frame of {width}x{height} pixels")));
+                }
                 let started = Instant::now();
                 let mut buffer = SharedPixelBuffer::<Rgba8Pixel>::new(width, height);
                 input.read_exact(buffer.make_mut_bytes())?;
@@ -213,12 +252,7 @@ fn read_messages(mut input: impl Read, inbox: &Mutex<Inbox>, waker: &Waker) -> i
                 inbox.frame = Some(buffer);
                 inbox.frame_time = Some(readback + started.elapsed());
             }
-            other => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("unknown message {other}"),
-                ));
-            }
+            other => return Err(invalid(format!("unknown message {other}"))),
         }
         waker();
     }
@@ -261,6 +295,8 @@ impl Engine for Helper {
     }
 
     fn resize(&mut self, size: Size) {
+        // Allow frames of the new size before the helper can send them.
+        self.max_pixels.fetch_max(pixels(size), Ordering::AcqRel);
         self.send(&Command::Resize(size));
     }
 
@@ -443,7 +479,7 @@ mod tests {
         let wakes = Arc::new(Mutex::new(0));
         let counter = wakes.clone();
         let waker: Waker = Arc::new(move || *counter.lock().unwrap() += 1);
-        read_messages(stream.as_slice(), &inbox, &waker).unwrap();
+        read_messages(stream.as_slice(), &inbox, &AtomicU64::new(2), &waker).unwrap();
 
         let inbox = inbox.into_inner().unwrap();
         assert_eq!(
@@ -459,6 +495,60 @@ mod tests {
         assert!(inbox.frame_time.unwrap() >= Duration::from_micros(1500));
         assert_eq!(*wakes.lock().unwrap(), 2);
 
-        assert!(read_messages(b"X".as_slice(), &Mutex::default(), &waker).is_err());
+        assert!(
+            read_messages(
+                b"X".as_slice(),
+                &Mutex::default(),
+                &AtomicU64::new(2),
+                &waker
+            )
+            .is_err()
+        );
+    }
+
+    /// A frame header: tag, width, height, readback time; no pixels.
+    fn frame_header(width: u32, height: u32) -> Vec<u8> {
+        let mut message = vec![b'F'];
+        for n in [width, height, 0] {
+            message.extend_from_slice(&n.to_le_bytes());
+        }
+        message
+    }
+
+    #[test]
+    fn rejects_oversized_messages() {
+        let waker: Waker = Arc::new(|| {});
+        let read = |message: &[u8], max_pixels| {
+            read_messages(
+                message,
+                &Mutex::default(),
+                &AtomicU64::new(max_pixels),
+                &waker,
+            )
+        };
+        // Larger than requested, or with a size that would overflow 32 bits.
+        let err = read(&frame_header(801, 600), 800 * 600).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(read(&frame_header(u32::MAX, u32::MAX), 800 * 600).is_err());
+        assert!(read(&frame_header(0, 600), 800 * 600).is_err());
+        // An exact fit is read (and then fails on the missing pixels).
+        let err = read(&frame_header(800, 600), 800 * 600).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
+
+        let mut event = vec![b'E'];
+        event.extend_from_slice(&u32::MAX.to_le_bytes());
+        let err = read(&event, 800 * 600).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn frame_limit() {
+        let size = |width, height| Size {
+            width,
+            height,
+            scale: 1.0,
+        };
+        assert_eq!(pixels(size(800, 600)), 480_000);
+        assert_eq!(pixels(size(0, 0)), 1);
     }
 }
