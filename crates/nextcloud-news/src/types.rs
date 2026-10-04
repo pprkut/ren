@@ -118,6 +118,10 @@ pub struct Item {
     pub unread: bool,
     #[serde(default)]
     pub starred: bool,
+    /// Matched a keyword filter of its feed (News 28.4); the web interface
+    /// hides such items.
+    #[serde(default)]
+    pub filtered: bool,
     #[serde(default)]
     pub rtl: bool,
     /// Unix seconds. Documented as a string, sent as a number.
@@ -180,6 +184,7 @@ mod tests {
         assert_eq!(item.last_modified, Some(1_367_273_003));
         assert_eq!(item.body.as_deref(), Some("<p>Text</p>"));
         assert!(item.unread);
+        assert!(!item.filtered);
     }
 
     #[test]
