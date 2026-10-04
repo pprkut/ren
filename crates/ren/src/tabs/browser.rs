@@ -162,10 +162,15 @@ impl Browser {
             return;
         }
         self.size = size;
-        self.context.resize(physical(size));
         for (_, webview) in &self.tabs {
             webview.set_hidpi_scale_factor(Scale::new(size.scale));
-            webview.resize(physical(size));
+        }
+        // Servo resizes the shared rendering context and the web views'
+        // viewport together, but only if the context's size differs: so
+        // resize through a web view, not the context first.
+        match self.tabs.first() {
+            Some((_, webview)) => webview.resize(physical(size)),
+            None => self.context.resize(physical(size)),
         }
     }
 
