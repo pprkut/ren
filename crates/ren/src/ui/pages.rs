@@ -155,11 +155,21 @@ impl Pages {
         Ok(())
     }
 
+    /// Shows the article instead of a page; the tabs stay open.
+    pub fn show_article(&mut self) {
+        if self.window().get_current_tab() >= 0 {
+            self.select(-1);
+        }
+    }
+
     /// Shows tab `index`, or the article for -1.
     fn select(&mut self, index: i32) {
         let window = self.window();
         window.set_current_tab(index);
-        if let (Some(engine), Some(&tab)) = (&mut self.engine, self.tabs.get(index as usize)) {
+        let tab = usize::try_from(index)
+            .ok()
+            .and_then(|i| self.tabs.get(i).copied());
+        if let Some(engine) = &mut self.engine {
             engine.activate(tab);
             self.request_pump();
         }

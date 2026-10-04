@@ -71,7 +71,7 @@ impl Engine for InProcess {
         self.browser.close(tab);
     }
 
-    fn activate(&mut self, tab: TabId) {
+    fn activate(&mut self, tab: Option<TabId>) {
         self.browser.activate(tab);
     }
 
