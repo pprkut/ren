@@ -8,9 +8,11 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use ureq::Agent;
+use ureq::http::Response;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+use ureq::{Agent, Body};
 
 use crate::error::Error;
 use crate::request::{Endpoint, ItemQuery, Selection};
@@ -19,6 +21,9 @@ use crate::types::{Feeds, Folder, Folders, Item, Items, Status, Version};
 /// Upper bound for a response body. `GET /items/updated` is not paged, so
 /// this has to be generous.
 const BODY_LIMIT: u64 = 512 * 1024 * 1024;
+
+/// How much of an error response is read for the News app's message.
+const ERROR_BODY_LIMIT: u64 = 64 * 1024;
 
 /// User name and (app) password for HTTP basic auth.
 #[derive(Clone)]
@@ -46,7 +51,13 @@ pub fn api_base(server: &str) -> String {
 
 /// Decodes a JSON response body.
 pub fn decode<T: DeserializeOwned>(reader: impl Read) -> Result<T, Error> {
-    Ok(serde_json::from_reader(BufReader::new(reader))?)
+    serde_json::from_reader(BufReader::new(reader)).map_err(Error::from_decode)
+}
+
+/// The error body of the News app.
+#[derive(Deserialize)]
+struct ErrorBody {
+    message: Option<String>,
 }
 
 pub struct Client {
@@ -70,6 +81,9 @@ impl Client {
             .timeout_connect(Some(Duration::from_secs(15)))
             .timeout_recv_response(Some(Duration::from_secs(60)))
             .timeout_recv_body(Some(Duration::from_secs(300)))
+            // Unsuccessful responses are handled here, to keep the
+            // server's message.
+            .http_status_as_error(false)
             .build()
             .new_agent();
         let token = STANDARD.encode(format!("{}:{}", credentials.user, credentials.password));
@@ -94,7 +108,7 @@ impl Client {
         for (name, value) in endpoint.query() {
             request = request.query(name, value);
         }
-        let response = request.call()?;
+        let response = check(request.call()?)?;
         Ok(response
             .into_body()
             .into_with_config()
@@ -140,6 +154,31 @@ impl Client {
         };
         Ok(self.get::<Items>(&endpoint)?.items)
     }
+}
+
+/// Turns an unsuccessful response into an error.
+fn check(response: Response<Body>) -> Result<Response<Body>, Error> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+    if status.as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    let message = response
+        .into_body()
+        .into_with_config()
+        .limit(ERROR_BODY_LIMIT)
+        .read_to_vec()
+        .ok()
+        .and_then(|body| serde_json::from_slice::<ErrorBody>(&body).ok())
+        .and_then(|body| body.message)
+        .map(|message| message.trim().to_owned())
+        .filter(|message| !message.is_empty());
+    Err(Error::Status {
+        code: status.as_u16(),
+        message,
+    })
 }
 
 #[cfg(test)]
