@@ -534,6 +534,10 @@ The project is licensed under **GPL-3.0-or-later** (trivial files under
   GPL-3.0. Slint is used under its `GPL-3.0-only` option, so the combined
   binary is distributed under GPLv3. Not acceptable: GPL-2.0-only,
   proprietary or non-commercial licenses, and anything unclear.
+  Exceptions are decided one crate at a time and listed in `deny.toml`:
+  `webpki-roots` (CDLA-Permissive-2.0, Mozilla's CA certificates as data,
+  pulled in by Servo; approved in the S4 review, its text ships with the
+  third-party notices).
 - With the first real dependency (spike S1), add a `deny.toml` for
   `cargo deny check licenses` encoding the list above, and run it whenever
   dependencies change.
