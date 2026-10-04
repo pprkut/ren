@@ -89,8 +89,8 @@ impl<R: Read> Read for Counting<R> {
     }
 }
 
-/// Fetches all unread items page by page, decoding each page while it is
-/// received and dropping it, like the sync will do before storing it.
+/// Fetches all unread items page by page, decoding each item while it is
+/// received and dropping it, like the sync will do after storing it.
 /// Prints one line of measurements.
 fn fetch_unread(client: &Client, batch_size: Option<u32>) -> CmdResult<()> {
     let rss_before = proc_status_kib("VmRSS:");
@@ -99,19 +99,19 @@ fn fetch_unread(client: &Client, batch_size: Option<u32>) -> CmdResult<()> {
     let mut pager = Pager::new(ItemQuery::unread(batch_size));
     let (mut pages, mut items, mut repeated, mut bytes) = (0, 0, 0, 0);
     let mut body_bytes = 0;
-    while let Some(query) = pager.next_query() {
+    while let Some(query) = pager.start_page() {
         let mut reader = Counting {
             inner: client.get_reader(&Endpoint::Items(query))?,
             bytes: 0,
         };
-        let mut page = nextcloud_news::decode::<Items>(&mut reader)?.items;
+        nextcloud_news::decode_items(&mut reader, |item| {
+            if pager.accept(&item) {
+                body_bytes += item.body.map_or(0, |body| body.len() as u64);
+            }
+            Ok::<_, nextcloud_news::Error>(())
+        })?;
         bytes += reader.bytes;
-        let info = pager.advance(&mut page);
-        body_bytes += page
-            .iter()
-            .filter_map(|item| item.body.as_ref())
-            .map(|body| body.len() as u64)
-            .sum::<u64>();
+        let info = pager.finish_page();
         pages += 1;
         items += info.new;
         repeated += info.repeated;
@@ -201,19 +201,18 @@ fn dump_items(client: &Client, dir: &Path, batch_size: Option<u32>) -> CmdResult
     ] {
         let mut pager = Pager::new(query);
         let (mut page_no, mut count) = (0, 0);
-        while let Some(query) = pager.next_query() {
+        while let Some(query) = pager.start_page() {
             page_no += 1;
             let body = fetch(
                 &Endpoint::Items(query),
                 &format!("{name}-{page_no:04}.json"),
             )?;
-            let mut page = serde_json::from_slice::<Items>(&body)?.items;
-            newest_change = page
-                .iter()
-                .filter_map(|item| item.last_modified)
-                .chain(newest_change)
-                .max();
-            count += pager.advance(&mut page).new;
+            for item in serde_json::from_slice::<Items>(&body)?.items {
+                if pager.accept(&item) {
+                    newest_change = item.last_modified.max(newest_change);
+                }
+            }
+            count += pager.finish_page().new;
         }
         eprintln!("{name}: {count} items in {page_no} pages");
     }
