@@ -8,6 +8,13 @@ path = "Cargo.lock"
 SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
 SPDX-License-Identifier = "CC0-1.0"
 
+# Test data: responses in the News API's form, hand-written or anonymised
+# (scripts/anonymise-dump.py); JSON can't carry a header.
+[[annotations]]
+path = "crates/nextcloud-news/tests/fixtures/**"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "CC0-1.0"
+
 # Fallback icons from Lucide (https://lucide.dev).
 [[annotations]]
 path = [
