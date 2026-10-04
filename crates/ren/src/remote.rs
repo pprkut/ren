@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Command line modes that talk to the server: `--check`, `--fetch-unread`
-//! and `--dump-items` (spike S2).
+//! and `--dump-items` (spike S2), `--check-writes` (M1).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use nextcloud_news::types::Items;
-use nextcloud_news::{Client, Config, Credentials, Endpoint, ItemQuery, Pager, Selection};
+use nextcloud_news::types::{Item, Items};
+use nextcloud_news::{
+    Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
+    Selection, Update,
+};
 
 use crate::cli::{Mode, Options};
 use crate::procstat::{cpu_seconds, proc_status_kib};
@@ -37,6 +40,7 @@ pub fn run(options: &Options) -> Result<(), String> {
         Mode::Check => check(&client),
         Mode::FetchUnread => fetch_unread(&client, options.batch_size),
         Mode::DumpItems(dir) => dump_items(&client, dir, options.batch_size),
+        Mode::CheckWrites => check_writes(&client),
     };
     result.map_err(|err| format!("{}: {err}", client.base_url()))
 }
@@ -229,6 +233,163 @@ fn dump_items(client: &Client, dir: &Path, batch_size: Option<u32>) -> CmdResult
         eprintln!("updated in the last day: {count} items");
     }
     eprintln!("raw responses written to {}", dir.display());
+    Ok(())
+}
+
+/// An item as the server has it now: `GET /items` for its feed, starting
+/// right above its id.
+fn fetch_item(client: &Client, feed_id: u64, id: u64) -> CmdResult<Item> {
+    let query = ItemQuery {
+        selection: Selection::Feed(feed_id),
+        get_read: true,
+        // Two, in case the offset is inclusive and the feed has the next id.
+        batch_size: Some(2),
+        offset: id + 1,
+    };
+    let mut found = None;
+    client.items(query, |item| {
+        if item.id == id {
+            found = Some(item);
+        }
+        Ok::<_, Error>(())
+    })?;
+    Ok(found.ok_or(format!("item {id} is gone"))?)
+}
+
+fn describe(unread: bool, starred: bool) -> String {
+    format!(
+        "{}, {}",
+        if unread { "unread" } else { "read" },
+        if starred { "starred" } else { "not starred" }
+    )
+}
+
+/// Sends the write requests against the real server: the read and starred
+/// state of the newest item is toggled and checked, "mark all as read" is
+/// sent for items up to id 0, which matches none. The item's state is
+/// restored at the end, also after a failure.
+fn check_writes(client: &Client) -> CmdResult<()> {
+    let newest = ItemQuery {
+        selection: Selection::All,
+        get_read: true,
+        batch_size: Some(1),
+        offset: 0,
+    };
+    let mut original = None;
+    client.items(newest, |item| {
+        original = Some(item);
+        Ok::<_, Error>(())
+    })?;
+    let original = original.ok_or("there are no items on the server")?;
+    println!(
+        "Item {} of feed {}: {}",
+        original.id,
+        original.feed_id,
+        describe(original.unread, original.starred)
+    );
+
+    let result = write_checks(client, &original);
+    // Restore the state, whatever happened.
+    let restore = |action| {
+        client.update(&Update::Items {
+            action,
+            ids: &[original.id],
+        })
+    };
+    restore(if original.unread {
+        ItemAction::Unread
+    } else {
+        ItemAction::Read
+    })?;
+    restore(if original.starred {
+        ItemAction::Star
+    } else {
+        ItemAction::Unstar
+    })?;
+    let item = fetch_item(client, original.feed_id, original.id)?;
+    if (item.unread, item.starred) != (original.unread, original.starred) {
+        return Err(format!(
+            "item {} is {} instead of {}",
+            item.id,
+            describe(item.unread, item.starred),
+            describe(original.unread, original.starred)
+        )
+        .into());
+    }
+    println!(
+        "Restored item {}: {}",
+        item.id,
+        describe(item.unread, item.starred)
+    );
+    result
+}
+
+fn write_checks(client: &Client, original: &Item) -> CmdResult<()> {
+    use ItemAction::{Read, Star, Unread, Unstar};
+
+    let (unread, starred) = (original.unread, original.starred);
+    let steps = [
+        if unread { Read } else { Unread },
+        if unread { Unread } else { Read },
+        if starred { Unstar } else { Star },
+        if starred { Star } else { Unstar },
+    ];
+    for action in steps {
+        let update = Update::Items {
+            action,
+            ids: &[original.id],
+        };
+        client.update(&update)?;
+        let expected = match action {
+            Read => (false, starred),
+            Unread => (true, starred),
+            Star => (unread, true),
+            Unstar => (unread, false),
+        };
+        let item = fetch_item(client, original.feed_id, original.id)?;
+        let now = (item.unread, item.starred);
+        if now != expected {
+            return Err(format!(
+                "POST {}: the item is {}, expected {}",
+                update.path(),
+                describe(now.0, now.1),
+                describe(expected.0, expected.1)
+            )
+            .into());
+        }
+        println!("POST {}: ok, now {}", update.path(), describe(now.0, now.1));
+    }
+
+    let folder = client
+        .feeds()?
+        .feeds
+        .iter()
+        .find(|feed| feed.id == original.feed_id)
+        .and_then(|feed| feed.folder_id)
+        .filter(|&id| id != 0);
+    let mut scopes = vec![ReadScope::All, ReadScope::Feed(original.feed_id)];
+    scopes.extend(folder.map(ReadScope::Folder));
+    for scope in scopes {
+        let update = Update::MarkRead {
+            scope,
+            newest_item_id: 0,
+        };
+        client.update(&update)?;
+        println!("POST {} up to item 0: ok", update.path());
+    }
+    // Whether feeds outside of folders can be marked as read as a folder.
+    let update = Update::MarkRead {
+        scope: ReadScope::Folder(0),
+        newest_item_id: 0,
+    };
+    match client.update(&update) {
+        Ok(()) => println!("POST {} up to item 0: ok", update.path()),
+        Err(err) => println!("POST {} up to item 0: {err} (not used)", update.path()),
+    }
+    let item = fetch_item(client, original.feed_id, original.id)?;
+    if (item.unread, item.starred) != (unread, starred) {
+        return Err("marking all items up to id 0 as read changed the item".into());
+    }
     Ok(())
 }
 
