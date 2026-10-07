@@ -164,9 +164,9 @@ time while fetching):
   - Whether RSS returns to the baseline after a sync, or the allocator
     keeps the freed pages (then `malloc_trim` after a sync, or a smaller
     batch size). To check in M3, when the pages go into the store.
-    *M3: flat during the sync; a sync leaves about 1 MiB more than an
-    empty one, and `malloc_trim` gives back 0.5 MiB (synthetic server,
-    `0007`); the real server is still to be measured.*
+    *M3: flat during the sync; on the real server a sync ends at about
+    18 MiB whatever its size, a resync 2.5 MiB above that, of which
+    `malloc_trim` gives back 2.2 MiB (`0007`).*
   - Whether the server sends `lastModified` as a number or a string; both
     are accepted. The dump answers it, and M1's fixtures should cover the
     form the server uses. *M1: a number (see below).*
