@@ -17,7 +17,10 @@
 #   STARTUP_RUNS  number of startup measurements per renderer (default 5)
 #   SETTLE_SECS   wait after startup before idle sampling starts (default 5)
 #   IDLE_SECS     length of the idle measurement (default 30)
-#   ITEMS         number of dummy items (default 10000)
+#   ITEMS         number of generated items (default 10000)
+#   DATABASE      measure with a copy of this database (e.g. ren's own,
+#                 ~/.local/share/ren/ren.db, with ren closed) instead of
+#                 generated items; the copy goes to a temporary directory
 #   OUT_DIR       logs and samples (default target/measure/<timestamp>)
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md.
@@ -30,6 +33,22 @@ SETTLE_SECS=${SETTLE_SECS:-5}
 IDLE_SECS=${IDLE_SECS:-30}
 ITEMS=${ITEMS:-10000}
 OUT_DIR=${OUT_DIR:-target/measure/$(date +%Y%m%d-%H%M%S)}
+
+# What the window shows. A database holds real feed data, so its copy
+# stays outside the repository.
+if [[ -n ${DATABASE:-} ]]; then
+    db_dir=$(mktemp -d -t ren-measure.XXXXXX)
+    trap 'rm -rf "$db_dir"' EXIT
+    cp "$DATABASE" "$db_dir/ren.db"
+    if [[ -e $DATABASE-wal ]]; then
+        cp "$DATABASE-wal" "$db_dir/ren.db-wal"
+    fi
+    data=(--database "$db_dir/ren.db")
+    data_note="a copy of a database ($(du -m "$DATABASE" | cut -f1) MiB)"
+else
+    data=(--items "$ITEMS")
+    data_note="$ITEMS generated items"
+fi
 
 renderers=("$@")
 if [[ ${#renderers[@]} -eq 0 ]]; then
@@ -169,7 +188,7 @@ summary=$OUT_DIR/summary.md
 {
     echo "## ren measurements, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
-    echo "- ren: $(git describe --always --dirty), $ITEMS items"
+    echo "- ren: $(git describe --always --dirty), $data_note"
     echo "- slint: $(awk '/^name = "slint"$/ { getline; print $3 }' Cargo.lock | tr -d '"')"
     echo "- kernel: $(uname -sr)"
     echo "- CPU: $(awk -F': ' '/^model name/ { print $2; exit }' /proc/cpuinfo)"
@@ -190,7 +209,7 @@ for r in "${renderers[@]}"; do
     created=() first=() first_note=""
     for ((i = 1; i <= STARTUP_RUNS; i++)); do
         slog=$OUT_DIR/$r-startup-$i.log
-        "${run[@]}" --items "$ITEMS" --measure 2>"$slog" &
+        "${run[@]}" "${data[@]}" --measure 2>"$slog" &
         pid=$!
         wait_for_line "$slog" "event loop running" || log "no startup line in $slog"
         # Not every renderer reports frames; give it some time.
@@ -203,7 +222,7 @@ for r in "${renderers[@]}"; do
 
     log "== $r: idle"
     ilog=$OUT_DIR/$r-idle.log
-    "${run[@]}" --items "$ITEMS" 2>"$ilog" &
+    "${run[@]}" "${data[@]}" 2>"$ilog" &
     pid=$!
     sleep "$SETTLE_SECS"
     read -r idle_cpu rss anon file shmem pss threads < <(sample "$pid" "$OUT_DIR/$r-idle.csv" 1 "$IDLE_SECS")
@@ -213,7 +232,7 @@ for r in "${renderers[@]}"; do
     log "== $r: scroll"
     clog=$OUT_DIR/$r-scroll.log
     SLINT_DEBUG_PERFORMANCE=refresh_lazy,console \
-        "${run[@]}" --items "$ITEMS" --autoscroll 2>"$clog" &
+        "${run[@]}" "${data[@]}" --autoscroll 2>"$clog" &
     pid=$!
     wait_for_line "$clog" "autoscroll started" || log "autoscroll did not start, see $clog"
     read -r scroll_cpu scroll_rss _ < <(sample "$pid" "$OUT_DIR/$r-scroll.csv" 0.5 0)

@@ -123,6 +123,8 @@ struct App {
     /// The settings file; `None` for demo data.
     settings: RefCell<Option<SettingsFile>>,
     sync: RefCell<SyncState>,
+    /// Print what syncs take.
+    measure: bool,
 }
 
 #[derive(Default)]
@@ -601,6 +603,9 @@ impl App {
                     self.window().set_syncing(false);
                     self.reload_view();
                     let text = sync_thread::result_text(&result);
+                    if self.measure {
+                        eprintln!("ren: sync result: {text}");
+                    }
                     if result.is_ok() {
                         self.status(text);
                     } else {
@@ -615,8 +620,16 @@ impl App {
     /// changed them, keeping the selection.
     fn reload_view(&self) {
         let selected = self.reader.borrow().selected();
+        let started = Instant::now();
         if self.with_reader(Reader::reload).is_none() {
             return;
+        }
+        if self.measure {
+            eprintln!(
+                "ren: lists read again in {:.1} ms ({} items listed)",
+                started.elapsed().as_secs_f64() * 1_000.0,
+                self.reader.borrow().len()
+            );
         }
         self.refresh_tree();
         self.items.notify.reset();
@@ -828,6 +841,76 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
     timer
 }
 
+/// Time before `--measure-sync` starts, and after the last sync.
+const MEASURE_SYNC_DELAY: Duration = Duration::from_secs(2);
+/// The syncs of `--measure-sync`: into a new database, the first one is
+/// a full sync.
+const MEASURED_SYNCS: u32 = 2;
+
+/// Runs `MEASURED_SYNCS` syncs one after the other, logging time, CPU and
+/// memory use before and after each, then quits.
+fn start_sync_measurement(app: std::rc::Weak<App>) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let created = Instant::now();
+    let mut started = 0;
+    let mut sync_started = Instant::now();
+    let mut cpu_before = None;
+    let mut done_at = None;
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(100),
+        move || {
+            let Some(app) = app.upgrade() else {
+                return;
+            };
+            if created.elapsed() < MEASURE_SYNC_DELAY {
+                return;
+            }
+            if let Some(done_at) = done_at {
+                if Instant::now() >= done_at {
+                    log_rss("idle after the syncs");
+                    let _ = slint::quit_event_loop();
+                }
+                return;
+            }
+            if app.sync.borrow().running.is_some() {
+                return;
+            }
+            if started > 0 {
+                let cpu = crate::procstat::cpu_seconds().zip(cpu_before).map_or(
+                    "?".to_owned(),
+                    |((user, sys), (user0, sys0))| {
+                        format!("{:.2} s user, {:.2} s system", user - user0, sys - sys0)
+                    },
+                );
+                eprintln!(
+                    "ren: sync {started} took {:.1} s, CPU {cpu}",
+                    sync_started.elapsed().as_secs_f64()
+                );
+                log_rss(&format!("after sync {started}"));
+            } else {
+                log_rss("before the syncs");
+            }
+            if started == MEASURED_SYNCS {
+                done_at = Some(Instant::now() + MEASURE_SYNC_DELAY);
+                return;
+            }
+            started += 1;
+            sync_started = Instant::now();
+            cpu_before = crate::procstat::cpu_seconds();
+            app.start_sync();
+            if app.sync.borrow().running.is_none() {
+                eprintln!(
+                    "ren: --measure-sync: the sync didn't start: {}",
+                    app.window().get_status_text()
+                );
+                let _ = slint::quit_event_loop();
+            }
+        },
+    );
+    timer
+}
+
 /// The message about a settings file that was read, if there is one: its
 /// first problem (all of them go to stderr).
 fn settings_message(path: &std::path::Path, reload: &Reload) -> Option<String> {
@@ -1003,6 +1086,7 @@ fn run_window(
         database,
         settings: RefCell::new(None),
         sync: RefCell::default(),
+        measure: options.measure || options.measure_sync,
     });
     app.refresh_tree();
     app.show_sort();
@@ -1101,6 +1185,9 @@ fn run_window(
     });
 
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
+    let _measure_sync = options
+        .measure_sync
+        .then(|| start_sync_measurement(Rc::downgrade(&app)));
     let _cycle = options
         .cycle_articles
         .map(|count| start_article_cycle(Rc::downgrade(&app), count));
