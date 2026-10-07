@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "ren-settings"
+description = "Settings, UI state and the app password of ren"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Reads and changes single values of the settings file, keeping the user's
+# comments and formatting. Already built for Slint and zbus (proc-macro-crate).
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
