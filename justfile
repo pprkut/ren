@@ -50,6 +50,11 @@ survey-articles dump:
 anonymise-dump dump *out:
     scripts/anonymise-dump.py {{dump}} {{out}}
 
+# Measure the store with a synthetic account: writing, list queries, purging
+measure-store items="63000":
+    mkdir -p target/measure
+    cargo run --release --locked -p ren-store --example measure -- {{items}} target/measure
+
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}
