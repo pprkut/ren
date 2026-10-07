@@ -48,7 +48,7 @@ impl Store {
 
     fn set_flag(&mut self, ids: &[u64], field: i64, value: bool) -> Result<usize> {
         let column = if field == UNREAD { "unread" } else { "starred" };
-        let tx = self.conn.transaction()?;
+        let tx = self.write_transaction()?;
         let mut changed = 0;
         {
             let mut update = tx.prepare_cached(&format!(
@@ -87,7 +87,7 @@ impl Store {
     /// these items. Items changed again since are kept in the queue.
     pub fn remove_pending(&mut self, action: ItemAction, ids: &[u64]) -> Result<()> {
         let (field, value) = field_value(action);
-        let tx = self.conn.transaction()?;
+        let tx = self.write_transaction()?;
         {
             let mut delete = tx.prepare_cached(
                 "DELETE FROM pending_changes WHERE item_id = ?1 AND field = ?2 AND value = ?3",

@@ -7,7 +7,7 @@
 //! migration runs in a transaction with the version update, so a database
 //! is never left half migrated. Migrations are only ever appended.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 
 use crate::{Error, Result};
 
@@ -110,19 +110,26 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
     migrate_with(conn, MIGRATIONS)
 }
 
+/// Applies the missing migrations, one transaction each. The version is
+/// read inside the transaction, which holds the write lock from the start:
+/// when two connections open a new database at the same time (the UI and
+/// the sync thread), the second waits for the first and then finds its
+/// migrations applied.
 fn migrate_with(conn: &mut Connection, migrations: &[&str]) -> Result<()> {
     let supported = migrations.len() as u32;
-    let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version > supported {
-        return Err(Error::TooNew { version, supported });
-    }
-    for (index, sql) in migrations.iter().enumerate().skip(version as usize) {
-        let tx = conn.transaction()?;
+    loop {
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let version: u32 = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if version > supported {
+            return Err(Error::TooNew { version, supported });
+        }
+        let Some(sql) = migrations.get(version as usize) else {
+            return Ok(());
+        };
         tx.execute_batch(sql)?;
-        tx.pragma_update(None, "user_version", index as u32 + 1)?;
+        tx.pragma_update(None, "user_version", version + 1)?;
         tx.commit()?;
     }
-    Ok(())
 }
 
 #[cfg(test)]
