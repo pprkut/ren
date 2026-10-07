@@ -67,6 +67,10 @@ measure-store items="63000":
 measure-sync:
     scripts/measure-sync.sh
 
+# Measure syncing in the window: a full and an incremental sync into a new database (needs a display and the real server)
+measure-window-sync:
+    scripts/measure-window-sync.sh
+
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}

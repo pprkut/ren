@@ -61,6 +61,9 @@ Window options:
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
+  --measure-sync     After 2 s, sync twice (into a new database, a full
+                     and an incremental sync), print time, CPU and memory
+                     use, and quit
 
 Web page tabs (with the servo feature):
   --tabs <MODE>      Where Servo runs: helper (a helper process, started
@@ -143,6 +146,7 @@ pub struct Options {
     pub color_scheme: Option<ColorScheme>,
     pub measure: bool,
     pub autoscroll: bool,
+    pub measure_sync: bool,
     pub tabs: TabMode,
     pub tab_urls: Vec<String>,
     pub measure_tabs: bool,
@@ -168,6 +172,7 @@ impl Default for Options {
             color_scheme: None,
             measure: false,
             autoscroll: false,
+            measure_sync: false,
             tabs: TabMode::default(),
             tab_urls: Vec::new(),
             measure_tabs: false,
@@ -254,6 +259,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             }
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
+            "--measure-sync" => options.measure_sync = true,
             "--tabs" => {
                 options.tabs = match value("--tabs")?.as_str() {
                     "helper" => TabMode::Helper,
@@ -304,6 +310,7 @@ mod tests {
             color_scheme: Some(ColorScheme::Light),
             measure: true,
             autoscroll: true,
+            measure_sync: true,
             tabs: TabMode::InProcess,
             tab_urls: vec!["https://a/".to_owned(), "https://b/".to_owned()],
             measure_tabs: true,
@@ -331,6 +338,7 @@ mod tests {
                 "light",
                 "--measure",
                 "--autoscroll",
+                "--measure-sync",
                 "--tabs",
                 "in-process",
                 "--tab-url",
