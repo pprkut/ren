@@ -48,14 +48,14 @@ pub fn settings(options: &Options) -> Result<Settings, String> {
     }
 }
 
-fn default_path() -> Result<PathBuf, String> {
+pub fn default_path() -> Result<PathBuf, String> {
     paths::settings(|name| std::env::var(name).ok()).ok_or_else(|| {
         "cannot find the settings file: neither XDG_CONFIG_HOME nor HOME is set".into()
     })
 }
 
 /// `file:line:column: message`, or `file: message` without a position.
-fn located(path: &Path, problem: &Problem) -> String {
+pub fn located(path: &Path, problem: &Problem) -> String {
     let separator = if problem.position.is_some() {
         ":"
     } else {

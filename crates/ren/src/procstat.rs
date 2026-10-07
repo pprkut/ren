@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Memory and CPU use of this process, from `/proc` (Linux), for the
-//! measurement modes.
+//! measurement modes, and giving freed memory back to the system.
 
 /// A `/proc/self/status` field in KiB, e.g. `VmHWM:` (peak RSS).
 pub fn proc_status_kib(field: &str) -> Option<u64> {
@@ -31,6 +31,23 @@ pub fn cpu_seconds() -> Option<(f64, f64)> {
     let user: u64 = fields.next()?.parse().ok()?;
     let sys: u64 = fields.next()?.parse().ok()?;
     Some((user as f64 / 100.0, sys as f64 / 100.0))
+}
+
+/// Gives the memory the allocator keeps after freeing back to the system,
+/// where that is possible (glibc). Returns whether it was tried.
+pub fn trim_heap() -> bool {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> std::ffi::c_int;
+        }
+        // SAFETY: malloc_trim only releases free memory of glibc's heap;
+        // it takes no pointers.
+        unsafe { malloc_trim(0) };
+        true
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    false
 }
 
 #[cfg(test)]

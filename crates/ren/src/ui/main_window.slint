@@ -102,10 +102,24 @@ export component MainWindow inherits Window {
     in property <bool> sort-ascending: false;
 
     in property <string> status-text;
+    // A sync is running.
+    in property <bool> syncing;
+    // The sync thread has news for the UI thread (from a wake-up).
+    callback sync-event();
+    // The window became the active one.
+    callback window-activated();
     in property <string> unread-text;
     in-out property <bool> show-toolbar: true;
     // Overrides the desktop's colour scheme unless `unknown`.
     in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+
+    // Called by the focus scopes: the one with the focus hears when the
+    // window is activated.
+    function check-activation(reason: FocusReason) {
+        if reason == FocusReason.window-activation {
+            root.window-activated();
+        }
+    }
 
     changed forced-color-scheme => {
         Palette.color-scheme = root.forced-color-scheme;
@@ -126,6 +140,7 @@ export component MainWindow inherits Window {
     callback sort-clicked(column: int);
 
     title: "ren";
+    forward-focus: tree;
     preferred-width: 1280px;
     preferred-height: 800px;
     background: Palette.background;
@@ -381,7 +396,10 @@ export component MainWindow inherits Window {
             ToolButton {
                 icon: Icons.cancel;
                 text: "Cancel Feed Fetches";
-                enabled: false;
+                enabled: root.syncing;
+                clicked => {
+                    root.action("cancel-sync");
+                }
             }
 
             ToolButton {
@@ -394,7 +412,7 @@ export component MainWindow inherits Window {
         }
 
     HorizontalLayout {
-        FeedTree {
+        tree := FeedTree {
             width: root.tree-width;
             rows: root.feeds;
             current: root.current-feed;
@@ -409,6 +427,9 @@ export component MainWindow inherits Window {
             }
             menu(row, action) => {
                 root.feed-menu(row, action);
+            }
+            focus-gained(reason) => {
+                root.check-activation(reason);
             }
         }
 
@@ -478,6 +499,9 @@ export component MainWindow inherits Window {
                 }
                 menu(row, action) => {
                     root.item-menu(row, action);
+                }
+                focus-gained(reason) => {
+                    root.check-activation(reason);
                 }
             }
 
@@ -581,6 +605,10 @@ export component MainWindow inherits Window {
                 }
 
                 html-focus := FocusScope {
+                    focus-gained(reason) => {
+                        root.check-activation(reason);
+                    }
+
                     // Scrolling by keyboard; deltas are positive towards the
                     // top, as for the mouse wheel.
                     property <length> line: 40px;
@@ -710,6 +738,10 @@ export component MainWindow inherits Window {
                 }
 
                 page-focus := FocusScope {
+                    focus-gained(reason) => {
+                        root.check-activation(reason);
+                    }
+
                     // All keys go to the page; with modifiers they also
                     // stay available as the window's shortcuts.
                     key-pressed(event) => {
