@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "ren-sync"
+description = "Sync engine of ren: local changes to the server, the server's state into the store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nextcloud-news = { path = "../nextcloud-news" }
+ren-store = { path = "../ren-store" }
+
+[dev-dependencies]
+# To build network errors in the fake server.
+ureq = { version = "3.4", default-features = false }
