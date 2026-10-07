@@ -10,6 +10,8 @@ license.workspace = true
 
 [dependencies]
 base64 = "0.23"
+# The server's clock from the `Date` header, for the sync cursor.
+httpdate = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

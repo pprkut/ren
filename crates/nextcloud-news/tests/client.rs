@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use nextcloud_news::{
-    Client, Config, Credentials, Error, ItemAction, ItemQuery, Pager, ReadScope, Selection, Update,
+    Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
+    Selection, Update,
 };
 
 use mock::{MockServer, Request, Response, closed_port_url};
@@ -463,4 +464,27 @@ fn recorded_requests() {
         ]
     );
     assert!(request.body.is_empty());
+}
+
+#[test]
+fn server_time_from_the_date_header() {
+    let server = MockServer::start(|request| {
+        let date = match request.api_path() {
+            Some("version") => Some("Wed, 07 Oct 2026 16:44:09 GMT"),
+            Some("status") => Some("not a date"),
+            _ => None,
+        };
+        Response {
+            date: date.map(str::to_owned),
+            ..Response::json(fixture("version.json"))
+        }
+    });
+    let client = client(&server);
+    assert_eq!(client.server_time(), None);
+    client.version().unwrap();
+    assert_eq!(client.server_time(), Some(1_791_391_449));
+    // Responses without a valid date keep the last one.
+    client.get::<serde_json::Value>(&Endpoint::Status).unwrap();
+    client.get::<serde_json::Value>(&Endpoint::Feeds).unwrap();
+    assert_eq!(client.server_time(), Some(1_791_391_449));
 }
