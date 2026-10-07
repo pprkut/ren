@@ -7008,6 +7008,7 @@ dependencies = [
  "nextcloud-news",
  "parley",
  "percent-encoding",
+ "ren-settings",
  "ren-store",
  "ren-sync",
  "rustls",
@@ -7017,7 +7018,6 @@ dependencies = [
  "slint",
  "slint-build",
  "surfman",
- "toml",
  "ureq",
  "url",
 ]

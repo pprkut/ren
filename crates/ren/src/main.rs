@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod account;
 mod article;
 mod cli;
 mod dummy;
@@ -9,7 +10,6 @@ mod feed_tree;
 mod item_list;
 mod procstat;
 mod remote;
-mod settings;
 #[cfg(feature = "servo")]
 mod tabs;
 mod ui;
@@ -49,6 +49,8 @@ fn main() -> ExitCode {
 
     let result = match options.mode {
         cli::Mode::Window => ui::run(&options, started).map_err(|err| err.to_string()),
+        cli::Mode::SetPassword => account::set_password(&options),
+        cli::Mode::CheckSecretService => account::check_secret_service(&options),
         _ => remote::run(&options),
     };
     match result {

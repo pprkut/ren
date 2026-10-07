@@ -15,24 +15,21 @@ use nextcloud_news::{
     Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
     Selection, Update,
 };
+use ren_settings::Settings;
 use ren_store::Store;
 use ren_sync::{NewsApi, Progress, SystemClock};
 
+use crate::account;
 use crate::cli::{Mode, Options};
 use crate::procstat::{cpu_seconds, proc_status_kib};
-use crate::settings;
 
-const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
 
 /// Runs one of the remote modes.
 pub fn run(options: &Options) -> Result<(), String> {
-    let path = match &options.settings {
-        Some(path) => path.clone(),
-        None => settings::default_path(|name| std::env::var(name).ok())
-            .ok_or("cannot find the settings file: neither XDG_CONFIG_HOME nor HOME is set")?,
-    };
-    let account = settings::load_account(&path, options.settings.is_some())?;
-    let password = settings::password(&account, std::env::var(settings::PASSWORD_VAR).ok())?;
+    let settings = account::settings(options)?;
+    let account = settings.account()?;
+    let password = account::password(&account)?;
     let credentials = Credentials {
         user: account.user.clone(),
         password,
@@ -40,12 +37,14 @@ pub fn run(options: &Options) -> Result<(), String> {
     let client = Client::new(&account.server, &credentials, &Config::new(USER_AGENT));
 
     let result = match &options.mode {
-        Mode::Window => unreachable!("the window is not a remote mode"),
+        Mode::Window | Mode::SetPassword | Mode::CheckSecretService => {
+            unreachable!("not a remote mode")
+        }
         Mode::Check => check(&client),
         Mode::FetchUnread => fetch_unread(&client, options.batch_size),
         Mode::DumpItems(dir) => dump_items(&client, dir, options.batch_size),
         Mode::CheckWrites => check_writes(&client),
-        Mode::Sync(db) => sync(&client, db, options),
+        Mode::Sync(db) => sync(&client, db, options, &settings),
     };
     result.map_err(|err| format!("{}: {err}", client.base_url()))
 }
@@ -473,7 +472,7 @@ fn trim_heap() -> bool {
 
 /// Syncs into the database `db` and prints one line of measurements. A
 /// new database has no local changes, so this only reads from the server.
-fn sync(client: &Client, db: &Path, options: &Options) -> CmdResult<()> {
+fn sync(client: &Client, db: &Path, options: &Options, settings: &Settings) -> CmdResult<()> {
     let batch_size = options
         .batch_size
         .ok_or("--sync pages through the items and needs a batch size")?;
@@ -496,6 +495,7 @@ fn sync(client: &Client, db: &Path, options: &Options) -> CmdResult<()> {
         } else {
             ren_sync::Options::default().resync_after
         },
+        purge_after: settings.keep_read(),
         ..ren_sync::Options::default()
     };
     let mut next_note = 10_000;
