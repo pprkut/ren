@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0008 — Settings, UI state and the app password (M4)
 
-**Status:** done (2026-10-07), for review; the check with KWallet on
-Plasma is still to be run (see "Open").
+**Status:** done (2026-10-07), for review; checked with KWallet on
+Plasma.
 
 ## Context
 
@@ -173,18 +173,12 @@ The release binary without the rendering engines grows from 22.3 MiB
 crypto, `toml_edit` for ren itself). Code that isn't run isn't loaded,
 so this is no RSS.
 
-On Plasma, `just check-secret-service` shows whether KWallet answers;
-see "Open".
+On Plasma, `just check-secret-service` reports `Secret Service:
+ksecretd (pid …)`: KWallet answers the Secret Service API. Newer KWallet
+releases run it as `ksecretd` instead of `kwalletd6`.
 
 ## Open
 
-- **KWallet on Plasma:** run `just check-secret-service` on the Plasma
-  desktop (KWallet must be enabled, and KWallet 5.97 or later, Plasma 6
-  ships it). Expected: `Secret Service: kwalletd6 (pid …)`, the test
-  password ok, and the app password "not stored" until
-  `ren --set-password` (from a terminal) stores it. KWallet may ask to
-  open the wallet the first time. If something answers but isn't
-  `kwalletd6`, another program (e.g. KeePassXC) owns the name.
 - **Settings in the app** are M5 (load at start, reload on focus) and
   M8b (the dialog, with the descriptors; arrangement and item colours
   join the table then). `sync.interval-minutes` waits for M8's periodic
