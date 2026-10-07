@@ -24,6 +24,10 @@ check-light:
     cargo test --locked --no-default-features --features renderer-software
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
+# Test the app password in the Secret Service, with GNOME Keyring on a private session bus
+test-secret-service *args:
+    scripts/test-secret-service.sh {{args}}
+
 # Run the checks of CI's Servo job (a long build)
 check-servo:
     cargo clippy --all-targets --locked --features servo -- -D warnings
