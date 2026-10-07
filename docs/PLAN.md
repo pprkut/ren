@@ -457,9 +457,11 @@ From here on every milestone ships with tests for what it adds.
   read" on the web). Full syncs resume after an interruption; the
   resync corrects states page by page. A refused change stays queued
   without stopping the sync. Memory stays flat at about 6 MiB above the
-  start for 62,000 items (synthetic server); `malloc_trim` after a sync
-  gives back 0.5 MiB, not worth it. The real-server numbers are still
-  to come from `just measure-sync`.
+  start for 62,000 items. On the real server (63,247 items): the initial
+  sync and a resync take 2 minutes (the server's time; 1.9 s of CPU),
+  an incremental one 4.6 s for three requests; peak RSS 20–21 MiB,
+  18 MiB after any sync (TLS, the open database); `malloc_trim` after a
+  full sync gives back up to 2.2 MiB (M5).
 - **M4 — Settings & credentials.** As described in "Settings, state and
   credentials": the setting descriptor table, loading with defaults and
   validation, writing single values with `toml_edit` (comments and order
