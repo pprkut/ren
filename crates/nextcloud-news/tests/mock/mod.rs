@@ -57,6 +57,8 @@ pub struct Response {
     /// Announce this many more bytes than the body has, and close the
     /// connection after the body: a connection lost mid-response.
     pub missing: usize,
+    /// The `Date` header, if any.
+    pub date: Option<String>,
 }
 
 impl Response {
@@ -71,6 +73,7 @@ impl Response {
             body: body.into(),
             delay: Duration::ZERO,
             missing: 0,
+            date: None,
         }
     }
 
@@ -135,8 +138,12 @@ fn serve(stream: TcpStream, handler: &Handler, recorded: &Mutex<Vec<Request>>) {
     let response = handler(&request);
     thread::sleep(response.delay);
     let mut stream = stream;
+    let date = response
+        .date
+        .map(|date| format!("Date: {date}\r\n"))
+        .unwrap_or_default();
     let head = format!(
-        "HTTP/1.1 {} Mock\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} Mock\r\nContent-Type: {}\r\nContent-Length: {}\r\n{date}Connection: close\r\n\r\n",
         response.status,
         response.content_type,
         response.body.len() + response.missing,

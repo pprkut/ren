@@ -4,7 +4,8 @@
 use std::fmt;
 use std::io::Read;
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::{Duration, UNIX_EPOCH};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -82,11 +83,16 @@ struct ErrorBody {
     message: Option<String>,
 }
 
+/// [`Client::server_time`] before a response with a date.
+const NO_TIME: i64 = i64::MIN;
+
 pub struct Client {
     agent: Agent,
     base: String,
     authorization: String,
     body_limit: u64,
+    /// The `Date` of the latest response, unix seconds, or [`NO_TIME`].
+    server_time: AtomicI64,
 }
 
 impl Client {
@@ -115,11 +121,30 @@ impl Client {
             base: api_base(server),
             authorization: format!("Basic {token}"),
             body_limit: config.body_limit,
+            server_time: AtomicI64::new(NO_TIME),
         }
     }
 
     pub fn base_url(&self) -> &str {
         &self.base
+    }
+
+    /// The server's clock at its latest response, in unix seconds, from the
+    /// `Date` header. `None` before the first response with a valid date.
+    ///
+    /// The sync needs the server's "now" for its cursor: item timestamps
+    /// are the server's, and the local clock may be off.
+    pub fn server_time(&self) -> Option<i64> {
+        Some(self.server_time.load(Ordering::Relaxed)).filter(|&t| t != NO_TIME)
+    }
+
+    /// Notes the response's date and turns an unsuccessful response into
+    /// an error.
+    fn check(&self, response: Response<Body>) -> Result<Response<Body>, Error> {
+        if let Some(time) = response_date(&response) {
+            self.server_time.store(time, Ordering::Relaxed);
+        }
+        check(response)
     }
 
     /// Sends a `GET` request and returns the raw response body.
@@ -132,7 +157,7 @@ impl Client {
         for (name, value) in endpoint.query() {
             request = request.query(name, value);
         }
-        let response = check(request.call()?)?;
+        let response = self.check(request.call()?)?;
         Ok(response
             .into_body()
             .into_with_config()
@@ -229,7 +254,7 @@ impl Client {
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .send(&update.body()[..])?;
-        let response = check(response)?;
+        let response = self.check(response)?;
         // The body is empty or `[]`. Reading it lets the connection be
         // reused; the change is made, whatever happens to the rest.
         let _ = std::io::copy(
@@ -242,6 +267,14 @@ impl Client {
         );
         Ok(())
     }
+}
+
+/// The `Date` header of a response, in unix seconds.
+fn response_date(response: &Response<Body>) -> Option<i64> {
+    let date = response.headers().get("date")?.to_str().ok()?;
+    let time = httpdate::parse_http_date(date).ok()?;
+    let seconds = time.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    i64::try_from(seconds).ok()
 }
 
 /// Turns an unsuccessful response into an error.
