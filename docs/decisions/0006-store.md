@@ -191,9 +191,11 @@ Re-run with `just measure-store [ITEMS]` on the target machine.
   the space back, if that matters.
 - **Mark all read** (by `newestItemId` per feed, folder or everything)
   isn't queued yet: M3 or M8 decide whether it goes into the queue as
-  such or as the item ids it marks.
+  such or as the item ids it marks. *M3: as such, in
+  `pending_mark_read` (schema version 2; see `0007`).*
 - **More sync state** (e.g. resuming an interrupted initial sync) goes
-  into `sync_state` with M3, as it needs it.
+  into `sync_state` with M3, as it needs it. *M3: the progress of a full
+  sync and the time of the last sync, as numbers by key (`0007`).*
 - **Locale-aware sorting** ("Ä" with "A") would need ICU or a collation
   crate; not planned.
 - The write-ahead log stays at its peak size on disk after the initial

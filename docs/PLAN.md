@@ -150,18 +150,26 @@ Initial sync:
 1. `GET /folders`, `GET /feeds`.
 2. Page unread items (`type=3, getRead=false, batchSize=1000, offset=<lowest id>`)
    until a page comes back short; then starred items the same way.
-   Each page is written in one transaction. Never `batchSize=-1`: the
-   server fails on large accounts (S2).
-3. Store `max(lastModified)` as the sync cursor.
+   Items are written in chunks of 200, one transaction each, while a
+   page is received. Never `batchSize=-1`: the server fails on large
+   accounts (S2). The progress is stored after each page, so an
+   interrupted sync resumes there.
+3. Store the server's time when paging started (its `Date`, a minute
+   earlier) as the sync cursor, so that changes made while paging are
+   fetched next time (M3, `0007`).
 
 Incremental sync:
-1. Push the pending-change queue (read/unread/star/unstar, batched per
-   action). Remove entries only after a 2xx response.
+1. Push the pending-change queue: queued "mark all as read" requests
+   first, then read/unread/star/unstar, batched per action. Remove
+   entries only after a 2xx response; a refused change stays queued and
+   the sync goes on.
 2. `GET /folders`, `GET /feeds` — upsert, delete what disappeared.
 3. `GET /items/updated?lastModified=<cursor>` — upsert, but do not overwrite
    read/starred state for items that still have a pending local change.
-   This endpoint is not paged; if it fails or the cursor is very old, fall
-   back to a paged resync of unread and starred items.
+   This endpoint is not paged; if it fails or the last sync was 30 days
+   ago or more, fall back to a paged resync of unread and starred items,
+   which also marks local items no longer in these lists read or
+   unstarred, page by page.
 4. Advance the cursor to the max `lastModified` seen. Re-fetching items
    from the same second is harmless because upserts are idempotent.
 5. Purge locally: read, unstarred items older than N days.
@@ -426,7 +434,8 @@ From here on every milestone ships with tests for what it adds.
   pages or as all ids in order plus rows by id; M5 picks (the ids suit
   the item table: pages from the middle of a list sorted by feed or
   title cost up to about 140 ms each, all ids 40–65 ms once).
-- **M3 — Sync engine.** `ren-sync`: initial and incremental sync and the
+- **M3 — Sync engine.** *(done; see `docs/decisions/0007-sync.md`)*
+  `ren-sync`: initial and incremental sync and the
   pending-change queue as described above. Items from the streaming
   decode are written in chunks (one transaction per chunk), so neither a
   page nor a large `/items/updated` response is ever held in memory as a
@@ -441,6 +450,16 @@ From here on every milestone ships with tests for what it adds.
   with a fake `NewsApi`
   (including conflicts: local pending change vs. remote update), one
   integration test with the real client against the mock server.
+  *Result:* `sync(api, store, clock, options, progress)` with a fake
+  server in the tests. "Mark all as read" is queued as one request. The
+  cursor after a full sync is the server's time when it started (the
+  newest `lastModified` can be far in the past, e.g. after "mark all
+  read" on the web). Full syncs resume after an interruption; the
+  resync corrects states page by page. A refused change stays queued
+  without stopping the sync. Memory stays flat at about 6 MiB above the
+  start for 62,000 items (synthetic server); `malloc_trim` after a sync
+  gives back 0.5 MiB, not worth it. The real-server numbers are still
+  to come from `just measure-sync`.
 - **M4 — Settings & credentials.** As described in "Settings, state and
   credentials": the setting descriptor table, loading with defaults and
   validation, writing single values with `toml_edit` (comments and order
