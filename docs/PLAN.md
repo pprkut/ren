@@ -491,11 +491,27 @@ From here on every milestone ships with tests for what it adds.
 
 ### Phase 3 — The application
 
-- **M5 — UI wired to real data.** The S1 window on top of store and sync:
+- **M5 — UI wired to real data.** *(done; see `docs/decisions/0009-app.md`)*
+  The S1 window on top of store and sync:
   feed tree with unread counts, item list, plain-text article pane, mark read
   on open, star toggle, manual refresh, sync status, background sync thread
   (`slint::invoke_from_event_loop`). View models unit-tested.
   Filtered items (`filtered`) are hidden, as in the News web interface.
+  *Result:* the window shows `$XDG_DATA_HOME/ren/ren.db` through a view
+  model in plain Rust (`reader.rs`, tested on a store in memory); the
+  item list holds the ids in order and fetches visible rows by id; a
+  "Starred" entry; tree rows updated in place. A thread per sync at
+  `nice` 10, which fetches the app password, refuses a database of
+  another account and trims the heap after a full sync; progress,
+  results and cancelling in the status and tool bar; the lists fill up
+  during the first sync. Settings are read at start, on window
+  activation and before each sync. `--items`/`--dump` go through a
+  temporary database. In the container (mock server, Xvfb):
+  idle RSS 29.5 MiB with 63,000 items, the same as with 10,000
+  generated ones; a full sync of them in the window adds 6 MiB, reading
+  the lists again takes 30–40 ms at that size (up to 144 ms while the
+  sync writes). Measurements on the desktop and with the real server
+  are prepared (`just measure-window-sync`, `DATABASE=… just measure`).
 - **M6 — Article view.** The S3 result made production-ready behind the
   `html-view` feature, including the image cache. From S3: freed image
   memory returned to the system (glibc keeps it; `malloc_trim` or the
