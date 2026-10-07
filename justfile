@@ -24,6 +24,10 @@ check-light:
     cargo test --locked --no-default-features --features renderer-software
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
+# Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored
+check-secret-service:
+    cargo run --release --locked --no-default-features --features renderer-software -- --check-secret-service
+
 # Test the app password in the Secret Service, with GNOME Keyring on a private session bus
 test-secret-service *args:
     scripts/test-secret-service.sh {{args}}

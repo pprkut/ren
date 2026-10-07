@@ -25,8 +25,17 @@ Server commands (instead of opening the window):
   --batch-size <N>     Items per request, or \"all\" (default: 1000)
   --settings <FILE>    Settings file (default:
                        $XDG_CONFIG_HOME/ren/settings.toml)
-  The app password comes from $REN_APP_PASSWORD or from password-command
-  in the [account] table of the settings file.
+  The app password comes from $REN_APP_PASSWORD, else from password-command
+  in the [account] table of the settings file if set, else from the Secret
+  Service.
+
+App password:
+  --set-password       Read the app password from stdin, check it with the
+                       server and store it in the Secret Service
+  --check-secret-service
+                       Show which program answers the Secret Service, store,
+                       read and remove a test password, and tell whether
+                       the app password is stored
 
 Window options:
   --backend <NAME>   Slint backend: winit or qt (default: qt when built
@@ -97,6 +106,8 @@ pub enum Mode {
     DumpItems(PathBuf),
     CheckWrites,
     Sync(PathBuf),
+    SetPassword,
+    CheckSecretService,
 }
 
 /// Items per request of the server commands, see
@@ -172,13 +183,15 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--dump-items" => Some(Mode::DumpItems(value("--dump-items")?.into())),
             "--check-writes" => Some(Mode::CheckWrites),
             "--sync" => Some(Mode::Sync(value("--sync")?.into())),
+            "--set-password" => Some(Mode::SetPassword),
+            "--check-secret-service" => Some(Mode::CheckSecretService),
             _ => None,
         };
         if let Some(mode) = mode {
             if options.mode != Mode::Window {
                 return Err(
-                    "only one of --check, --fetch-unread, --dump-items, --check-writes and \
-                     --sync"
+                    "only one of --check, --fetch-unread, --dump-items, --check-writes, \
+                     --sync, --set-password and --check-secret-service"
                         .to_owned(),
                 );
             }
@@ -365,5 +378,16 @@ mod tests {
         assert_eq!(options.mode, Mode::Sync("/tmp/ren.db".into()));
         assert!(options.resync);
         assert!(parse_args(&["--sync"]).is_err());
+
+        for (arg, mode) in [
+            ("--set-password", Mode::SetPassword),
+            ("--check-secret-service", Mode::CheckSecretService),
+        ] {
+            let Ok(Command::Run(options)) = parse_args(&[arg]) else {
+                panic!("parse failed");
+            };
+            assert_eq!(options.mode, mode);
+        }
+        assert!(parse_args(&["--set-password", "--check"]).is_err());
     }
 }
