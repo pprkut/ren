@@ -55,6 +55,10 @@ measure-store items="63000":
     mkdir -p target/measure
     cargo run --release --locked -p ren-store --example measure -- {{items}} target/measure
 
+# Measure syncing into a new database: initial, incremental, resync (needs the real server)
+measure-sync:
+    scripts/measure-sync.sh
+
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}

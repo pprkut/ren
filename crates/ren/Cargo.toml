@@ -72,6 +72,8 @@ percent-encoding = { version = "2", optional = true }
 url = { version = "2.5", optional = true }
 freedesktop-icons = "0.4"
 nextcloud-news = { path = "../nextcloud-news" }
+ren-store = { path = "../ren-store" }
+ren-sync = { path = "../ren-sync" }
 # 0.5: the last release on the stylo version Blitz 0.3.0-beta.2 uses.
 servo = { version = "=0.5.0", optional = true }
 # Types in Servo's RenderingContext API, at the versions it uses.
