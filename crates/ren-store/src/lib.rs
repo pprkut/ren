@@ -26,6 +26,7 @@ use std::time::Duration;
 
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 
+pub use changes::{MarkReadScope, PendingMarkRead};
 pub use error::Error;
 pub use feeds::{Feed, FeedChanges, FeedSettings, Folder};
 pub use items::{ItemDetails, ItemQuery, ItemSummary, Selection, Sort, SortColumn, Status};
