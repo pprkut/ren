@@ -4,11 +4,11 @@
 mod account;
 mod article;
 mod cli;
-mod dummy;
-mod dump;
+mod demo;
 mod feed_tree;
 mod item_list;
 mod procstat;
+mod reader;
 mod remote;
 #[cfg(feature = "servo")]
 mod tabs;
@@ -48,7 +48,7 @@ fn main() -> ExitCode {
     };
 
     let result = match options.mode {
-        cli::Mode::Window => ui::run(&options, started).map_err(|err| err.to_string()),
+        cli::Mode::Window => ui::run(&options, started),
         cli::Mode::SetPassword => account::set_password(&options),
         cli::Mode::CheckSecretService => account::check_secret_service(&options),
         _ => remote::run(&options),

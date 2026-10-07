@@ -38,14 +38,18 @@ App password:
                        the app password is stored
 
 Window options:
+  --database <FILE>  The database to show and sync (default:
+                     $XDG_DATA_HOME/ren/ren.db)
   --backend <NAME>   Slint backend: winit or qt (default: qt when built
                      with the Qt style, else winit)
   --renderer <NAME>  Slint renderer for winit: software, femtovg or skia
                      (default: $SLINT_BACKEND, else software)
-  --items <N>        Number of dummy items, or the most items loaded with
-                     --dump (default: 10000)
+  --items <N>        Show N generated items instead of the database, or
+                     at most N items with --dump (default: 10000)
   --dump <DIR>       Show the items of a --dump-items directory instead
-                     of dummy data
+                     of the database
+  Generated and dumped items go into a temporary database, which is
+  removed at the end and never synced.
   --plain-text       Show articles as plain text, not rendered HTML
   --no-images        Don't fetch images in articles
   --cycle-articles <N>
@@ -114,6 +118,9 @@ pub enum Mode {
 /// `docs/decisions/0003-nextcloud-client.md`.
 pub const DEFAULT_BATCH_SIZE: u32 = 1000;
 
+/// The most items shown from a `--dump` directory without `--items`.
+pub const DEFAULT_DUMP_ITEMS: usize = 10_000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
     pub mode: Mode,
@@ -122,9 +129,11 @@ pub struct Options {
     pub batch_size: Option<u32>,
     /// `--sync` resyncs instead of fetching the changes.
     pub resync: bool,
+    pub database: Option<PathBuf>,
     pub backend: Option<String>,
     pub renderer: Option<String>,
-    pub items: usize,
+    /// Generated items, or the most items of `dump`.
+    pub items: Option<usize>,
     pub dump: Option<PathBuf>,
     pub plain_text: bool,
     pub no_images: bool,
@@ -146,9 +155,10 @@ impl Default for Options {
             settings: None,
             batch_size: Some(DEFAULT_BATCH_SIZE),
             resync: false,
+            database: None,
             backend: None,
             renderer: None,
-            items: 10_000,
+            items: None,
             dump: None,
             plain_text: false,
             no_images: false,
@@ -167,7 +177,7 @@ impl Default for Options {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
-    Run(Options),
+    Run(Box<Options>),
     Help,
 }
 
@@ -210,11 +220,12 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                     },
                 }
             }
+            "--database" => options.database = Some(value("--database")?.into()),
             "--backend" => options.backend = Some(value("--backend")?),
             "--renderer" => options.renderer = Some(value("--renderer")?),
             "--items" => {
                 let n = value("--items")?;
-                options.items = n.parse().map_err(|_| format!("invalid item count: {n}"))?;
+                options.items = Some(n.parse().map_err(|_| format!("invalid item count: {n}"))?);
             }
             "--arrangement" => {
                 options.arrangement = match value("--arrangement")?.as_str() {
@@ -257,7 +268,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             _ => return Err(format!("unknown argument: {arg}")),
         }
     }
-    Ok(Command::Run(options))
+    Ok(Command::Run(Box::new(options)))
 }
 
 #[cfg(test)]
@@ -270,7 +281,7 @@ mod tests {
 
     #[test]
     fn defaults() {
-        assert_eq!(parse_args(&[]), Ok(Command::Run(Options::default())));
+        assert_eq!(parse_args(&[]), Ok(Command::Run(Box::default())));
     }
 
     #[test]
@@ -280,9 +291,10 @@ mod tests {
             settings: None,
             batch_size: Some(DEFAULT_BATCH_SIZE),
             resync: false,
+            database: Some("/tmp/ren.db".into()),
             backend: Some("winit".to_owned()),
             renderer: Some("skia".to_owned()),
-            items: 500,
+            items: Some(500),
             dump: Some("/tmp/dump".into()),
             plain_text: true,
             no_images: true,
@@ -298,6 +310,8 @@ mod tests {
         };
         assert_eq!(
             parse_args(&[
+                "--database",
+                "/tmp/ren.db",
                 "--backend",
                 "winit",
                 "--renderer",
@@ -325,7 +339,7 @@ mod tests {
                 "https://b/",
                 "--measure-tabs"
             ]),
-            Ok(Command::Run(expected))
+            Ok(Command::Run(Box::new(expected)))
         );
     }
 

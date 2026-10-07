@@ -4,7 +4,7 @@
 //! The article as an HTML document with ren's stylesheet, for the Blitz
 //! view.
 
-use super::{Article, Body};
+use super::Article;
 
 /// Colours for the article stylesheet, taken from the UI's palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,13 +42,7 @@ impl Article {
             Some(url) => format!(r#"<a href="{}">{title}</a>"#, escape(url)),
             None => title.clone(),
         };
-        let body = match &self.body {
-            Body::Html(html) => replace_iframes(html),
-            Body::Text(text) => text
-                .split("\n\n")
-                .map(|p| format!("<p>{}</p>", escape(p)))
-                .collect(),
-        };
+        let body = replace_iframes(&self.body);
         format!(
             "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title>\
              <style>{}</style></head><body><article>\
@@ -159,28 +153,22 @@ mod tests {
         dark: false,
     };
 
-    fn article(body: Body) -> Article {
+    fn article(body: &str) -> Article {
         Article {
             title: "Tom & <Jerry>".to_owned(),
             meta: "Feed · Someone".to_owned(),
             url: Some(r#"https://example.org/?a=1&b="2""#.to_owned()),
-            body,
+            body: body.to_owned(),
         }
     }
 
     #[test]
     fn unsanitised_fields_are_escaped() {
-        let doc = article(Body::Html("<p>Body</p>".to_owned())).html_document(&STYLE);
+        let doc = article("<p>Body</p>").html_document(&STYLE);
         assert!(doc.contains("<h1><a href=\"https://example.org/?a=1&amp;b=&quot;2&quot;\">"));
         assert!(doc.contains("Tom &amp; &lt;Jerry&gt;</a></h1>"));
         assert!(doc.contains("<div class=\"content\"><p>Body</p></div>"));
         assert!(!doc.contains("<Jerry>"));
-    }
-
-    #[test]
-    fn plain_text_bodies_become_paragraphs() {
-        let doc = article(Body::Text("One <x>\n\nTwo".to_owned())).html_document(&STYLE);
-        assert!(doc.contains("<p>One &lt;x&gt;</p><p>Two</p>"));
     }
 
     #[test]
