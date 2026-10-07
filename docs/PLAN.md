@@ -108,12 +108,14 @@ crates/
   nextcloud-news/   API v1-3 client: types + blocking HTTP client. No UI, no DB.
   ren-store/        SQLite schema, migrations, queries, pending-change queue.
   ren-sync/         Sync engine: pushes local changes, pulls remote changes.
+  ren-settings/     Settings model and file, UI state file, app password
+                    (Secret Service, password-command). No UI, no server.
   ren/              The application binary (Slint UI, Blitz article view,
                     Servo tabs, glue).
 ```
 
-During phase 1 only `nextcloud-news` and `ren` exist; `ren-store` and
-`ren-sync` are added in phase 2.
+During phase 1 only `nextcloud-news` and `ren` exist; `ren-store`,
+`ren-sync` and `ren-settings` are added in phase 2.
 
 Data flow: UI → `ren-store` (mark read locally, enqueue change) → UI updates
 immediately. The sync thread drains the queue to the server and pulls
@@ -262,6 +264,7 @@ coverage is cheap to add later and pivots stay local:
   - `Clock`: for sync cursors and purge ages.
   - `ArticleRenderer`: plain text / Blitz (/ whatever we pivot to).
   - `PageOpener`: Servo tab / system browser.
+  - `SecretStore`: the Secret Service, an in-memory fake in tests.
 - **No hidden global state or I/O.** The API client takes its base URL and
   credentials as parameters (so tests can point it at a local mock server);
   the store can be opened in memory; config paths are passed in, not looked
@@ -462,7 +465,8 @@ From here on every milestone ships with tests for what it adds.
   an incremental one 4.6 s for three requests; peak RSS 20–21 MiB,
   18 MiB after any sync (TLS, the open database); `malloc_trim` after a
   full sync gives back up to 2.2 MiB (M5).
-- **M4 — Settings & credentials.** As described in "Settings, state and
+- **M4 — Settings & credentials.** *(done; see
+  `docs/decisions/0008-settings.md`)* As described in "Settings, state and
   credentials": the setting descriptor table, loading with defaults and
   validation, writing single values with `toml_edit` (comments and order
   preserved), the state file, reloading on change with error reporting,
@@ -471,6 +475,20 @@ From here on every milestone ships with tests for what it adds.
   Slint already brings, and that KWallet answers the Secret Service API on
   Plasma. Tests for parsing, defaults, validation, round-trips that keep
   comments, and the secret store fake.
+  *Result:* a new crate, `ren-settings`. The table has the account and
+  two sync settings so far; unknown keys are warnings, invalid values
+  errors with line and column that keep the last good settings. The
+  file is reloaded when its stamp (time, size, inode) changed, checked
+  when the window gains focus (M5), not watched. The Secret Service goes
+  through `keyring-core` and its zbus store, on Slint's zbus 5 and
+  async-io (the other store needs libdbus); five new small crates.
+  Lookup order: `REN_APP_PASSWORD`, `password-command`, Secret Service.
+  `ren --set-password` and `ren --check-secret-service` until M8b's
+  account page; the Secret Service tests run against GNOME Keyring on a
+  private bus (`just test-secret-service`, also in CI). Connecting costs
+  about 7.5 ms and 1–1.5 MiB RSS while the password is fetched; the
+  binary grows by 1.1 MiB. KWallet
+  on Plasma is still to be checked (`just check-secret-service`).
 
 ### Phase 3 — The application
 
