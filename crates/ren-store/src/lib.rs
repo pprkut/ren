@@ -35,6 +35,25 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// How long a write waits for another connection's transaction to end.
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Switches the database to the write-ahead log. Switching a new database
+/// fails at once, without waiting for the busy timeout, while another
+/// connection switches it too; the mode is stored in the file, so trying
+/// again succeeds once the other connection is done.
+fn set_wal(conn: &Connection) -> Result<()> {
+    let started = std::time::Instant::now();
+    loop {
+        match conn.pragma_update(None, "journal_mode", "WAL") {
+            Err(rusqlite::Error::SqliteFailure(err, _))
+                if err.code == rusqlite::ErrorCode::DatabaseBusy
+                    && started.elapsed() < BUSY_TIMEOUT =>
+            {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            result => return Ok(result?),
+        }
+    }
+}
+
 /// The local database.
 pub struct Store {
     conn: Connection,
@@ -45,10 +64,13 @@ impl Store {
     /// brings its schema up to date. The directory must exist.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        // Before anything else, so that opening a new database while the
+        // other connection sets it up waits instead of failing.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
         // The write-ahead log lets the UI read while the sync writes, and
         // with it `NORMAL` is safe against corruption (a power loss can
         // lose the last transactions, which the next sync fetches again).
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        set_wal(&conn)?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         Self::setup(conn)
     }
@@ -80,6 +102,7 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Barrier};
     use std::time::Duration;
 
     use super::*;
@@ -110,6 +133,26 @@ mod tests {
 
         // Once the sync is done, the UI's write goes through.
         assert_eq!(ui.set_unread(&[1], false).unwrap(), 1);
+    }
+
+    #[test]
+    fn two_connections_can_create_the_database_together() {
+        for _ in 0..10 {
+            let db = Arc::new(TempDb::new());
+            let barrier = Arc::new(Barrier::new(2));
+            let threads: Vec<_> = (0..2)
+                .map(|_| {
+                    let (db, barrier) = (db.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        Store::open(&db.0).map(|_| ())
+                    })
+                })
+                .collect();
+            for thread in threads {
+                thread.join().unwrap().unwrap();
+            }
+        }
     }
 }
 
