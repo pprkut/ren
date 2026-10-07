@@ -6990,6 +6990,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ren-settings"
+version = "0.1.0"
+dependencies = [
+ "toml_edit",
+]
+
+[[package]]
 name = "ren-store"
 version = "0.1.0"
 dependencies = [
