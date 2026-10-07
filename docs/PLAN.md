@@ -487,8 +487,7 @@ From here on every milestone ships with tests for what it adds.
   account page; the Secret Service tests run against GNOME Keyring on a
   private bus (`just test-secret-service`, also in CI). Connecting costs
   about 7.5 ms and 1–1.5 MiB RSS while the password is fetched; the
-  binary grows by 1.1 MiB. KWallet
-  on Plasma is still to be checked (`just check-secret-service`).
+  binary grows by 1.1 MiB. KWallet answers on Plasma (as `ksecretd`).
 
 ### Phase 3 — The application
 

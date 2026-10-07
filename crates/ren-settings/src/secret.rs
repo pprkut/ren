@@ -94,7 +94,7 @@ impl SecretService {
     }
 
     /// The program that answers the Secret Service on the session bus,
-    /// e.g. `kwalletd6` or `gnome-keyring-d`, as the kernel names it.
+    /// e.g. `ksecretd` (KWallet) or `gnome-keyring-d`, as the kernel names it.
     pub fn provider() -> Result<String, SecretError> {
         use zbus::blocking::{Connection, fdo::DBusProxy};
         use zbus::names::BusName;
