@@ -13,12 +13,15 @@
 //!   it has errors, which come with line and column.
 //! - **UI state** (`$XDG_STATE_HOME/ren/state.toml`), written by ren alone
 //!   ([`State`]).
+//! - **The app password**, never in a file: from the Secret Service, or
+//!   from `password-command` on systems without one ([`app_password`]).
 
 mod edit;
 mod error;
 mod file;
 pub mod paths;
 pub mod schema;
+mod secret;
 mod settings;
 mod state;
 
@@ -26,5 +29,9 @@ pub use edit::{reset, set};
 pub use error::Error;
 pub use file::{Reload, SettingsFile, write_atomically};
 pub use schema::{Category, Colour, Kind, Setting, Value};
+pub use secret::{
+    MemoryStore, PASSWORD_VAR, PasswordError, SecretError, SecretService, SecretStore, Source,
+    app_password, run_password_command,
+};
 pub use settings::{Account, Loaded, Position, Problem, Problems, Settings, Severity};
 pub use state::{Columns, Layout, List, Selection, Sort, SortColumn, State};
