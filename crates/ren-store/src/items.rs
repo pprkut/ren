@@ -8,6 +8,9 @@
 //! rows it shows. Filtered items (keyword filters of News
 //! 28.4) are stored but never listed, as in the News web interface.
 
+use std::collections::HashSet;
+use std::ops::Range;
+
 use nextcloud_news::types;
 use rusqlite::types::Value;
 use rusqlite::{OptionalExtension, Row, ToSql, params, params_from_iter};
@@ -33,6 +36,13 @@ impl Status {
             (true, false) => Status::Unread,
         }
     }
+}
+
+/// A state the server lists items by, for [`Store::reconcile`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Listed {
+    Unread,
+    Starred,
 }
 
 /// The fields of an item shown in the item list.
@@ -260,6 +270,45 @@ impl Store {
         }
         tx.commit()?;
         Ok(added)
+    }
+
+    /// Corrects the read or starred state after the server listed all its
+    /// unread (or starred) items with ids in `ids`: local items in that
+    /// range that are unread (starred) but weren't `listed` were changed on
+    /// the server, and become read (unstarred). Items with a pending local
+    /// change of that state keep it. Returns the number of items changed.
+    ///
+    /// For a resync with the paged lists of unread and starred items, which
+    /// don't say which items stopped being unread or starred. A page
+    /// covers the ids from its lowest one up to the previous page's lowest,
+    /// the last page down to 0.
+    pub fn reconcile(&mut self, state: Listed, ids: Range<u64>, listed: &[u64]) -> Result<usize> {
+        let (column, field) = match state {
+            Listed::Unread => ("unread", UNREAD),
+            Listed::Starred => ("starred", STARRED),
+        };
+        let max = i64::MAX.cast_unsigned();
+        let (low, high) = (ids.start.min(max), ids.end.min(max));
+        let listed: HashSet<u64> = listed.iter().copied().collect();
+        let tx = self.write_transaction()?;
+        let mut changed = 0;
+        {
+            let stale: Vec<u64> = tx
+                .prepare_cached(&format!(
+                    "SELECT id FROM items WHERE id >= ?1 AND id < ?2 AND {column} = 1
+                         AND NOT EXISTS (SELECT 1 FROM pending_changes
+                             WHERE item_id = items.id AND field = {field})"
+                ))?
+                .query_map(params![low, high], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let mut clear =
+                tx.prepare_cached(&format!("UPDATE items SET {column} = 0 WHERE id = ?1"))?;
+            for id in stale.into_iter().filter(|id| !listed.contains(id)) {
+                changed += clear.execute([id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(changed)
     }
 
     /// An item with its body.
@@ -840,5 +889,47 @@ mod tests {
             Vec::new(),
         );
         assert!(new.contains("items_new"), "{new}");
+    }
+
+    #[test]
+    fn reconcile() {
+        let mut store = Store::open_in_memory().unwrap();
+        let items: Vec<_> = (1..=9)
+            .map(|id| types::Item {
+                starred: true,
+                ..api_item(id, 1)
+            })
+            .collect();
+        store.upsert_items(&items, false).unwrap();
+        // Read and unread again: a pending change.
+        store.set_unread(&[3], false).unwrap();
+        store.set_unread(&[3], true).unwrap();
+        let state = |store: &Store, starred: bool| -> Vec<u64> {
+            (1..=9)
+                .filter(|&id| {
+                    let item = store.item(id).unwrap().unwrap().summary;
+                    if starred {
+                        item.starred
+                    } else {
+                        item.status != Status::Read
+                    }
+                })
+                .collect()
+        };
+
+        // The server listed 7 and 6 as unread between 6 and 8: 8 was read
+        // on the server.
+        assert_eq!(store.reconcile(Listed::Unread, 6..9, &[7, 6]).unwrap(), 1);
+        assert_eq!(state(&store, false), [1, 2, 3, 4, 5, 6, 7, 9]);
+        // Below 6 only 2; 3 has a pending change.
+        assert_eq!(store.reconcile(Listed::Unread, 0..6, &[2]).unwrap(), 3);
+        assert_eq!(state(&store, false), [2, 3, 6, 7, 9]);
+        // Up to the end, nothing starred is left.
+        assert_eq!(
+            store.reconcile(Listed::Starred, 0..u64::MAX, &[]).unwrap(),
+            9
+        );
+        assert!(state(&store, true).is_empty());
+        assert_eq!(state(&store, false), [2, 3, 6, 7, 9]);
     }
 }
