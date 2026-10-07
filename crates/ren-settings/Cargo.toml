@@ -12,3 +12,6 @@ license.workspace = true
 # Reads and changes single values of the settings file, keeping the user's
 # comments and formatting. Already built for Slint and zbus (proc-macro-crate).
 toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
+# The state file, which only ren writes: read and written whole.
+serde = { version = "1", features = ["derive"] }
+toml = { version = "1", default-features = false, features = ["std", "parse", "display", "serde"] }
