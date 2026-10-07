@@ -4,16 +4,19 @@
 //! Slint glue: binds the view models to the main window.
 
 use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use ren_store::{Status, Store};
 use slint::language::ColorScheme;
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
 use crate::cli::{self, Options};
-use crate::dummy::{DummyData, Status, format_date};
-use crate::feed_tree::{self, FeedTree, Node};
-use crate::item_list::{self, Column, ItemList};
+use crate::demo::DemoDb;
+use crate::feed_tree::{self, Node, Row, changed_rows};
+use crate::item_list::{self, Column, format_date};
+use crate::reader::{Changes, Reader};
 
 mod article;
 mod icons;
@@ -34,12 +37,11 @@ const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
 const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 
-/// Item list model that builds each row only when the list view asks for
-/// it, so only the visible rows ever exist as Slint values.
+/// Item list model that fetches each row from the store only when the
+/// list view asks for it, so only the visible rows ever exist as Slint
+/// values.
 struct ItemListModel {
-    data: Rc<RefCell<DummyData>>,
-    list: Rc<RefCell<ItemList>>,
-    feed_titles: Vec<SharedString>,
+    reader: Rc<RefCell<Reader>>,
     notify: ModelNotify,
 }
 
@@ -47,14 +49,27 @@ impl Model for ItemListModel {
     type Data = ItemRow;
 
     fn row_count(&self) -> usize {
-        self.list.borrow().ids().len()
+        self.reader.borrow().len()
     }
 
     fn row_data(&self, row: usize) -> Option<ItemRow> {
-        let item = self.data.borrow().item(self.list.borrow().id(row)?);
+        if row >= self.row_count() {
+            return None;
+        }
+        let reader = self.reader.borrow();
+        // An item deleted since the list was loaded shows as an empty row
+        // until the list is loaded again.
+        let item = match reader.row(row) {
+            Ok(Some(item)) => item,
+            Ok(None) => return Some(ItemRow::default()),
+            Err(err) => {
+                eprintln!("ren: reading row {row}: {err}");
+                return Some(ItemRow::default());
+            }
+        };
         Some(ItemRow {
             title: item.title.into(),
-            feed: self.feed_titles[item.feed_id as usize].clone(),
+            feed: reader.feed_title(item.feed_id).into(),
             author: item.author.into(),
             date: format_date(item.pub_date).into(),
             status: match item.status {
@@ -71,17 +86,26 @@ impl Model for ItemListModel {
     }
 }
 
+fn feed_row(row: &Row) -> FeedRow {
+    FeedRow {
+        title: row.title.as_str().into(),
+        depth: row.depth.into(),
+        count: row.count.try_into().unwrap_or(i32::MAX),
+        starred: row.node == Node::Starred,
+        is_folder: row.expanded.is_some(),
+        expanded: row.expanded == Some(true),
+        last: row.last,
+        guides: ModelRc::new(VecModel::from(row.guides.clone())),
+    }
+}
+
 struct App {
     window: slint::Weak<MainWindow>,
-    data: Rc<RefCell<DummyData>>,
-    tree: RefCell<FeedTree>,
-    tree_nodes: RefCell<Vec<Node>>,
-    selected_node: Cell<Node>,
+    reader: Rc<RefCell<Reader>>,
+    /// The rows the feed tree shows, to update only those that changed.
+    tree_rows: RefCell<Vec<Row>>,
     feeds: Rc<VecModel<FeedRow>>,
-    list: Rc<RefCell<ItemList>>,
     items: Rc<ItemListModel>,
-    /// The item shown in the article pane.
-    current_item: Cell<Option<u32>>,
     article: Rc<RefCell<article::ArticlePane>>,
     #[cfg(feature = "servo")]
     pages: Rc<RefCell<pages::Pages>>,
@@ -96,28 +120,61 @@ impl App {
             .expect("callbacks only run while the window exists")
     }
 
+    /// Runs `f` on the reader; a database error goes to the status bar.
+    fn with_reader<T>(&self, f: impl FnOnce(&mut Reader) -> ren_store::Result<T>) -> Option<T> {
+        let result = f(&mut self.reader.borrow_mut());
+        result
+            .map_err(|err| self.status(format!("Database error: {err}")))
+            .ok()
+    }
+
+    /// Updates the feed tree: only the rows that changed, unless rows were
+    /// added or removed.
     fn refresh_tree(&self) {
-        let rows = self.tree.borrow().rows();
-        let selected = self.selected_node.get();
+        let (rows, selected, unread) = {
+            let reader = self.reader.borrow();
+            (reader.tree_rows(), reader.selected(), reader.unread())
+        };
+        let changed = changed_rows(&self.tree_rows.borrow(), &rows);
+        match changed {
+            Some(changed) => {
+                for i in changed {
+                    self.feeds.set_row_data(i, feed_row(&rows[i]));
+                }
+            }
+            None => self
+                .feeds
+                .set_vec(rows.iter().map(feed_row).collect::<Vec<_>>()),
+        }
         let current = rows.iter().position(|r| r.node == selected);
-        *self.tree_nodes.borrow_mut() = rows.iter().map(|r| r.node).collect();
-        self.feeds.set_vec(
-            rows.into_iter()
-                .map(|r| FeedRow {
-                    title: r.title.into(),
-                    depth: r.depth.into(),
-                    unread: r.unread.try_into().unwrap_or(i32::MAX),
-                    is_folder: r.expanded.is_some(),
-                    expanded: r.expanded == Some(true),
-                    last: r.last,
-                    guides: ModelRc::new(VecModel::from(r.guides)),
-                })
-                .collect::<Vec<_>>(),
-        );
+        *self.tree_rows.borrow_mut() = rows;
         let window = self.window();
         window.set_current_feed(current.map_or(-1, |i| i as i32));
-        let total = self.tree.borrow().rows().first().map_or(0, |r| r.unread);
-        window.set_unread_text(format!("{total} unread articles").into());
+        window.set_unread_text(format!("{unread} unread articles").into());
+    }
+
+    /// Updates what an operation of the reader changed.
+    fn apply(&self, changes: Changes) {
+        if changes.counts {
+            self.refresh_tree();
+        }
+        if changes.list {
+            self.items.notify.reset();
+            self.keep_current_item();
+        } else {
+            for row in changes.rows {
+                self.items.notify.row_changed(row);
+            }
+        }
+        self.update_current_starred();
+    }
+
+    fn update_current_starred(&self) {
+        let current = self.reader.borrow().current();
+        let starred = current
+            .and_then(|id| self.with_reader(|reader| reader.is_starred(id)))
+            .unwrap_or(false);
+        self.window().set_current_starred(starred);
     }
 
     /// Shows a message in the status bar for a few seconds.
@@ -133,78 +190,41 @@ impl App {
     }
 
     fn not_implemented(&self, action: &str) {
-        self.status(format!(
-            "Not implemented in the spike: {}",
-            action.replace('-', " ")
-        ));
+        self.status(format!("Not implemented yet: {}", action.replace('-', " ")));
     }
 
-    /// Recounts the unread items of all feeds.
-    fn refresh_counts(&self) {
-        {
-            let data = self.data.borrow();
-            let mut tree = self.tree.borrow_mut();
-            for feed in data.feeds() {
-                tree.set_unread(feed.id, data.unread_count(feed.id));
-            }
+    /// Marks an item read or unread.
+    fn set_read(&self, id: u64, read: bool) {
+        if let Some(changes) = self.with_reader(|reader| reader.set_read(id, read)) {
+            self.apply(changes);
         }
-        self.refresh_tree();
     }
 
-    /// Marks an item read or unread and updates its row and the counts.
-    fn set_read(&self, id: u32, read: bool) {
-        let changed = {
-            let mut data = self.data.borrow_mut();
-            if read {
-                data.mark_read(id)
-            } else {
-                data.mark_unread(id)
-            }
-        };
-        if !changed {
-            return;
+    fn toggle_star(&self, id: u64) {
+        if let Some(changes) = self.with_reader(|reader| reader.toggle_star(id)) {
+            self.apply(changes);
         }
-        if let Some(row) = self.list.borrow().row_of(id) {
-            self.items.notify.row_changed(row);
-        }
-        let feed_id = self.data.borrow().feed_of(id);
-        let unread = self.data.borrow().unread_count(feed_id);
-        self.tree.borrow_mut().set_unread(feed_id, unread);
-        self.refresh_tree();
     }
 
     /// Marks all items of a node read.
     fn mark_node_read(&self, node: Node) {
-        let feeds = self.tree.borrow().feeds_of(node);
-        let count = {
-            let mut data = self.data.borrow_mut();
-            let ids = data.item_ids(feeds.as_deref());
-            ids.into_iter().filter(|&id| data.mark_read(id)).count()
-        };
-        self.items.notify.reset();
-        self.refresh_counts();
-        self.status(format!("Marked {count} articles as read"));
+        if let Some((count, changes)) = self.with_reader(|reader| reader.mark_all_read(node)) {
+            self.apply(changes);
+            self.status(format!("Marked {count} articles as read"));
+        }
     }
 
     /// Selects the next unread item after the current one.
     fn next_unread(&self) {
-        let start = usize::try_from(self.window().get_current_item()).map_or(0, |r| r + 1);
-        let next = {
-            let data = self.data.borrow();
-            let list = self.list.borrow();
-            list.ids()
-                .iter()
-                .skip(start)
-                .position(|&id| data.item(id).status != Status::Read)
-                .map(|offset| start + offset)
-        };
-        match next {
-            Some(row) => self.item_clicked(row),
-            None => self.status("No more unread articles"),
+        match self.with_reader(|reader| reader.next_unread()) {
+            Some(Some(row)) => self.item_clicked(row),
+            Some(None) => self.status("No more unread articles"),
+            None => {}
         }
     }
 
     fn action(&self, name: &str) {
+        let current = self.reader.borrow().current();
         match name {
             "quit" => {
                 let _ = slint::quit_event_loop();
@@ -216,18 +236,23 @@ impl App {
             "previous-article" => self.item_key("up", 1),
             "next-article" => self.item_key("down", 1),
             "next-unread" => self.next_unread(),
-            "mark-feed-read" => self.mark_node_read(self.selected_node.get()),
+            "mark-feed-read" => self.mark_node_read(self.reader.borrow().selected()),
             "mark-read" | "mark-unread" => {
-                if let Some(id) = self.current_item.get() {
+                if let Some(id) = current {
                     self.set_read(id, name == "mark-read");
                 }
             }
+            "toggle-star" => {
+                if let Some(id) = current {
+                    self.toggle_star(id);
+                }
+            }
             "open-tab" | "open-browser" => {
-                if let Some(id) = self.current_item.get() {
+                if let Some(id) = current {
                     self.open_item(id, name == "open-browser");
                 }
             }
-            "about" => self.status("ren: a native Nextcloud News reader (spike S1b)"),
+            "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
     }
@@ -240,19 +265,23 @@ impl App {
     }
 
     fn item_menu(&self, row: usize, action: &str) {
-        let Some(id) = self.list.borrow().id(row) else {
+        let Some(id) = self.reader.borrow().id(row) else {
             return;
         };
         match action {
             "mark-read" | "mark-unread" => self.set_read(id, action == "mark-read"),
+            "toggle-star" => self.toggle_star(id),
             "open-tab" | "open-browser" => self.open_item(id, action == "open-browser"),
             _ => self.not_implemented(action),
         }
     }
 
     /// Opens the item's web page in a tab, or in the system browser.
-    fn open_item(&self, id: u32, browser: bool) {
-        let Some(url) = self.data.borrow().url(id) else {
+    fn open_item(&self, id: u64, browser: bool) {
+        let Some(url) = self.with_reader(|reader| reader.url(id)) else {
+            return;
+        };
+        let Some(url) = url else {
             self.status("This article has no link");
             return;
         };
@@ -311,26 +340,21 @@ impl App {
     }
 
     fn search_edited(&self, text: &str) {
-        {
-            let data = self.data.borrow();
-            self.list.borrow_mut().set_search(text, |id| data.item(id));
+        if self.with_reader(|reader| reader.search(text)).is_some() {
+            self.items.notify.reset();
+            self.keep_current_item();
         }
-        self.items.notify.reset();
-        self.keep_current_item();
     }
 
     /// Selects the current item's row again after the list changed, or
     /// nothing if it is no longer shown.
     fn keep_current_item(&self) {
-        let row = self
-            .current_item
-            .get()
-            .and_then(|id| self.list.borrow().row_of(id));
+        let row = self.reader.borrow().current_row();
         self.window().set_current_item(row.map_or(-1, |r| r as i32));
     }
 
     fn node(&self, row: usize) -> Option<Node> {
-        self.tree_nodes.borrow().get(row).copied()
+        self.tree_rows.borrow().get(row).map(|r| r.node)
     }
 
     fn feed_clicked(&self, row: usize) {
@@ -341,7 +365,7 @@ impl App {
 
     fn feed_toggled(&self, row: usize) {
         if let Some(Node::Folder(id)) = self.node(row) {
-            self.tree.borrow_mut().toggle(id);
+            self.reader.borrow_mut().toggle_folder(id);
         }
         self.refresh_tree();
     }
@@ -356,10 +380,7 @@ impl App {
             "end" => feed_tree::Key::End,
             _ => return,
         };
-        let next = self
-            .tree
-            .borrow_mut()
-            .navigate(self.selected_node.get(), key);
+        let next = self.reader.borrow_mut().navigate(key);
         match next {
             Some(node) => self.select_node(node),
             // Expanding or collapsing a folder.
@@ -367,22 +388,16 @@ impl App {
         }
     }
 
-    /// Selects a feed, a folder or "All items" and shows its items.
+    /// Selects a feed, a folder, "All items" or "Starred" and shows its
+    /// items.
     fn select_node(&self, node: Node) {
-        self.selected_node.set(node);
+        self.with_reader(|reader| reader.select(node));
         self.refresh_tree();
-
-        let feeds = self.tree.borrow().feeds_of(node);
-        {
-            let data = self.data.borrow();
-            let ids = data.item_ids(feeds.as_deref());
-            self.list.borrow_mut().set_source(ids, |id| data.item(id));
-        }
         self.items.notify.reset();
-        self.current_item.set(None);
         let window = self.window();
         window.set_item_list_content_y(0.0);
         window.set_current_item(-1);
+        window.set_current_starred(false);
         self.article.borrow_mut().clear();
     }
 
@@ -393,17 +408,20 @@ impl App {
     }
 
     fn sort_by(&self, column: Column) {
-        {
-            let data = self.data.borrow();
-            self.list.borrow_mut().sort_by(column, |id| data.item(id));
+        if self.with_reader(|reader| reader.sort_by(column)).is_none() {
+            return;
         }
         self.items.notify.reset();
-        let window = self.window();
-        let sort = self.list.borrow().sort();
-        window.set_sort_column(sort.column.index() as i32);
-        window.set_sort_ascending(sort.ascending);
+        self.show_sort();
         // Keep the current item selected, wherever it moved.
         self.keep_current_item();
+    }
+
+    fn show_sort(&self) {
+        let sort = self.reader.borrow().sort();
+        let window = self.window();
+        window.set_sort_column(Column::of(sort.column).index() as i32);
+        window.set_sort_ascending(sort.ascending);
     }
 
     fn item_key(&self, key: &str, page: usize) {
@@ -417,35 +435,27 @@ impl App {
             _ => return,
         };
         let current = usize::try_from(self.window().get_current_item()).ok();
-        let len = self.list.borrow().ids().len();
+        let len = self.reader.borrow().len();
         if let Some(row) = item_list::step(current, key, len, page) {
             self.item_clicked(row);
         }
     }
 
+    /// Shows the item of a row and marks it read.
     fn item_clicked(&self, row: usize) {
-        let Some(id) = self.list.borrow().id(row) else {
-            return;
-        };
         let window = self.window();
         window.set_current_item(row as i32);
-        self.current_item.set(Some(id));
-
-        let (item, article, newly_read) = {
-            let mut data = self.data.borrow_mut();
-            let newly_read = data.mark_read(id);
-            (data.item(id), data.article(id), newly_read)
+        let Some(opened) = self.with_reader(|reader| reader.open(row)) else {
+            return;
+        };
+        let Some((article, changes)) = opened else {
+            self.article.borrow_mut().clear();
+            return;
         };
         self.article.borrow_mut().show(article);
         #[cfg(feature = "servo")]
         self.pages.borrow_mut().show_article();
-
-        if newly_read {
-            self.items.notify.row_changed(row);
-            let unread = self.data.borrow().unread_count(item.feed_id);
-            self.tree.borrow_mut().set_unread(item.feed_id, unread);
-            self.refresh_tree();
-        }
+        self.apply(changes);
     }
 }
 
@@ -612,7 +622,7 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
             }
             return;
         }
-        let rows = app.list.borrow().ids().len();
+        let rows = app.reader.borrow().len();
         if opened == 0 {
             log_rss("before articles");
         }
@@ -631,7 +641,56 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
     timer
 }
 
-pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformError> {
+/// The database the window shows: the one given, else the default one.
+/// Its directory is created if needed.
+fn database_path(options: &Options) -> Result<PathBuf, String> {
+    let path = match &options.database {
+        Some(path) => path.clone(),
+        None => ren_settings::paths::database(|name| std::env::var(name).ok())
+            .ok_or("cannot find the database: neither XDG_DATA_HOME nor HOME is set".to_owned())?,
+    };
+    if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    }
+    Ok(path)
+}
+
+/// Demo data, if asked for: generated items, or those of a dump.
+fn demo_data(options: &Options) -> Result<Option<DemoDb>, String> {
+    match (&options.dump, options.items) {
+        (Some(dir), items) => {
+            DemoDb::from_dump(dir, items.unwrap_or(cli::DEFAULT_DUMP_ITEMS)).map(Some)
+        }
+        (None, Some(items)) => DemoDb::generated(items).map(Some),
+        (None, None) => Ok(None),
+    }
+}
+
+pub fn run(options: &Options, started: Instant) -> Result<(), String> {
+    // Demo data is written before the window is made; the startup times
+    // are measured from when it is ready.
+    let demo = demo_data(options)?;
+    let started = match &demo {
+        Some(_) if options.measure => {
+            log_elapsed(started, "demo data written");
+            Instant::now()
+        }
+        _ => started,
+    };
+    let path = match &demo {
+        Some(demo) => demo.path().to_owned(),
+        None => database_path(options)?,
+    };
+    let store = Store::open(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let reader = Reader::new(store).map_err(|err| format!("{}: {err}", path.display()))?;
+    run_window(options, started, reader).map_err(|err| err.to_string())
+}
+
+fn run_window(
+    options: &Options,
+    started: Instant,
+    reader: Reader,
+) -> Result<(), slint::PlatformError> {
     #[cfg(feature = "servo-wgpu")]
     let wgpu_tabs = options.tabs == cli::TabMode::Wgpu;
     #[cfg(not(feature = "servo-wgpu"))]
@@ -679,36 +738,9 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
         report_startup(&window, started);
     }
 
-    let data = match &options.dump {
-        Some(dir) => DummyData::from_dump(
-            crate::dump::Dump::load(dir, options.items).map_err(slint::PlatformError::Other)?,
-        ),
-        None => DummyData::new(options.items),
-    };
-    let data = Rc::new(RefCell::new(data));
-    let list = Rc::new(RefCell::new(ItemList::default()));
-    let (tree, feed_titles) = {
-        let data = data.borrow();
-        let tree = FeedTree::new(
-            data.folders(),
-            data.feeds()
-                .iter()
-                .map(|feed| (feed.clone(), data.unread_count(feed.id))),
-        );
-        let titles = data
-            .feeds()
-            .iter()
-            .map(|f| SharedString::from(f.title.as_str()))
-            .collect();
-        list.borrow_mut()
-            .set_source(data.item_ids(None), |id| data.item(id));
-        (tree, titles)
-    };
-
+    let reader = Rc::new(RefCell::new(reader));
     let items = Rc::new(ItemListModel {
-        data: data.clone(),
-        list: list.clone(),
-        feed_titles,
+        reader: reader.clone(),
         notify: ModelNotify::default(),
     });
     let feeds = Rc::new(VecModel::default());
@@ -736,20 +768,17 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
 
     let app = Rc::new(App {
         window: window.as_weak(),
-        data,
-        tree: RefCell::new(tree),
-        tree_nodes: RefCell::new(Vec::new()),
-        selected_node: Cell::new(Node::All),
+        reader,
+        tree_rows: RefCell::new(Vec::new()),
         feeds,
-        list,
         items,
-        current_item: Cell::new(None),
         article,
         #[cfg(feature = "servo")]
         pages,
         status_timer: slint::Timer::default(),
     });
     app.refresh_tree();
+    app.show_sort();
 
     let weak = Rc::downgrade(&app);
     window.on_feed_clicked(move |row| {
@@ -828,11 +857,9 @@ pub fn run(options: &Options, started: Instant) -> Result<(), slint::PlatformErr
     #[cfg(feature = "servo")]
     let _measure_tabs = options.measure_tabs.then(|| {
         let urls = if options.tab_urls.is_empty() {
-            let data = app.data.borrow();
-            let list = app.list.borrow();
-            list.ids()
-                .iter()
-                .filter_map(|&id| data.url(id))
+            let reader = app.reader.borrow();
+            (0..reader.len())
+                .filter_map(|row| reader.url(reader.id(row)?).ok().flatten())
                 .take(3)
                 .collect()
         } else {

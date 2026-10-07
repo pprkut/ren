@@ -78,6 +78,11 @@ const ICONS: &[Icon] = &[
         set: |icons, image| icons.set_all_items(image),
     },
     Icon {
+        names: &["starred", "rating", "emblem-favorite"],
+        fallback: bundled!("star"),
+        set: |icons, image| icons.set_starred(image),
+    },
+    Icon {
         names: &["folder"],
         fallback: bundled!("folder"),
         set: |icons, image| icons.set_folder(image),

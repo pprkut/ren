@@ -7,10 +7,13 @@ import { Icons } from "icons.slint";
 
 export struct FeedRow {
     title: string,
-    // 0 for the root ("All items"), 1 for folders and top-level feeds, 2 for
-    // feeds in folders.
+    // 0 for the root ("All items"), 1 for "Starred", folders and top-level
+    // feeds, 2 for feeds in folders.
     depth: int,
-    unread: int,
+    // Unread items; for "Starred", the starred items.
+    count: int,
+    // The "Starred" entry.
+    starred: bool,
     is-folder: bool,
     expanded: bool,
     // Last child of its parent: the branch line ends at this row.
@@ -40,6 +43,7 @@ component FeedTreeRow inherits Rectangle {
     callback menu(action: string);
 
     property <length> indent: Theme.tree-indent;
+    property <bool> is-feed: root.entry.depth > 0 && !root.entry.is-folder && !root.entry.starred;
     // Centre of the column with this row's own branch line or chevron.
     property <length> branch-x: Theme.row-padding + (root.entry.depth - 1) * root.indent + root.indent / 2;
     // Gap around the chevron, so the branch line doesn't run through it.
@@ -142,32 +146,32 @@ component FeedTreeRow inherits Rectangle {
                     root.menu("fetch-all");
                 }
             }
-            if root.entry.depth > 0: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
                 title: root.entry.is-folder ? "Fetch Feeds in Folder" : "Fetch Feed";
                 activated => {
                     root.menu("fetch-feed");
                 }
             }
             MenuItem {
-                title: root.entry.depth == 0 ? "Mark All Articles as Read" : root.entry.is-folder ? "Mark Folder as Read" : "Mark Feed as Read";
+                title: root.entry.depth == 0 ? "Mark All Articles as Read" : root.entry.starred ? "Mark Starred Articles as Read" : root.entry.is-folder ? "Mark Folder as Read" : "Mark Feed as Read";
                 activated => {
                     root.menu("mark-feed-read");
                 }
             }
-            MenuSeparator { }
-            if !root.entry.is-folder && root.entry.depth > 0: MenuItem {
+            if !root.entry.starred: MenuSeparator { }
+            if root.is-feed: MenuItem {
                 title: "Open Homepage";
                 activated => {
                     root.menu("open-homepage");
                 }
             }
-            if root.entry.depth > 0: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
                 title: root.entry.is-folder ? "Rename Folder…" : "Edit Feed…";
                 activated => {
                     root.menu(root.entry.is-folder ? "rename-folder" : "edit-feed");
                 }
             }
-            if root.entry.depth > 0: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
                 title: root.entry.is-folder ? "Delete Folder…" : "Delete Feed…";
                 activated => {
                     root.menu(root.entry.is-folder ? "delete-folder" : "delete-feed");
@@ -191,7 +195,7 @@ component FeedTreeRow inherits Rectangle {
             width: Theme.tree-icon-size;
             height: Theme.tree-icon-size;
             y: (parent.height - self.height) / 2;
-            source: root.entry.depth == 0 ? Icons.all-items : root.entry.is-folder ? Icons.folder : Icons.feed;
+            source: root.entry.depth == 0 ? Icons.all-items : root.entry.starred ? Icons.starred : root.entry.is-folder ? Icons.folder : Icons.feed;
             colorize: Icons.monochrome ? Palette.foreground : transparent;
         }
 
@@ -200,12 +204,12 @@ component FeedTreeRow inherits Rectangle {
             text: root.entry.title;
             overflow: elide;
             vertical-alignment: center;
-            font-weight: root.entry.unread > 0 ? 700 : 400;
+            font-weight: root.entry.count > 0 && !root.entry.starred ? 700 : 400;
             color: Palette.foreground;
         }
 
         Text {
-            text: root.entry.unread > 0 ? "\{root.entry.unread}" : "";
+            text: root.entry.count > 0 ? "\{root.entry.count}" : "";
             vertical-alignment: center;
             color: Palette.foreground;
             opacity: 0.75;

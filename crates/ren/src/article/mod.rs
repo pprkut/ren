@@ -13,15 +13,6 @@ pub mod text;
 #[cfg_attr(not(feature = "html-view"), allow(unused_imports))]
 pub use document::{Rgb, Style};
 
-/// An item body.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Body {
-    /// Plain text; paragraphs separated by an empty line.
-    Text(String),
-    /// Sanitised HTML, as the News app sends it.
-    Html(String),
-}
-
 /// What the article pane shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Article {
@@ -32,16 +23,14 @@ pub struct Article {
     /// The original page; links and images are resolved against it. Not
     /// sanitised.
     pub url: Option<String>,
-    pub body: Body,
+    /// Sanitised HTML, as the News app sends it.
+    pub body: String,
 }
 
 impl Article {
     /// The body as plain text, without markup.
     pub fn plain_text(&self) -> String {
-        match &self.body {
-            Body::Text(text) => text.clone(),
-            Body::Html(html) => text::html_to_text(html),
-        }
+        text::html_to_text(&self.body)
     }
 }
 
@@ -49,20 +38,14 @@ impl Article {
 mod tests {
     use super::*;
 
-    fn article(body: Body) -> Article {
-        Article {
+    #[test]
+    fn plain_text() {
+        let article = Article {
             title: "Title".to_owned(),
             meta: "Feed".to_owned(),
             url: None,
-            body,
-        }
-    }
-
-    #[test]
-    fn plain_text() {
-        let html = article(Body::Html("<p>One</p><p>Two</p>".to_owned()));
-        assert_eq!(html.plain_text(), "One\n\nTwo");
-        let text = article(Body::Text("Already text".to_owned()));
-        assert_eq!(text.plain_text(), "Already text");
+            body: "<p>One</p><p>Two</p>".to_owned(),
+        };
+        assert_eq!(article.plain_text(), "One\n\nTwo");
     }
 }

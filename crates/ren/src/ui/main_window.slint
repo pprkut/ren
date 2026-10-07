@@ -25,6 +25,8 @@ export component MainWindow inherits Window {
     in property <[ItemRow]> items;
     in-out property <int> current-feed: 0;
     in-out property <int> current-item: -1;
+    // The article shown is starred.
+    in property <bool> current-starred;
     in property <string> article-title;
     in property <string> article-meta;
     in property <string> article-body;
@@ -309,6 +311,12 @@ export component MainWindow inherits Window {
                 shortcut: @keys(Control + U);
                 activated => {
                     root.action("mark-unread");
+                }
+            }
+            MenuItem {
+                title: root.current-starred ? "Remove Star" : "Star";
+                activated => {
+                    root.action("toggle-star");
                 }
             }
         }
