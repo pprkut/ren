@@ -10,6 +10,7 @@ mod item_list;
 mod procstat;
 mod reader;
 mod remote;
+mod sync_thread;
 #[cfg(feature = "servo")]
 mod tabs;
 mod ui;

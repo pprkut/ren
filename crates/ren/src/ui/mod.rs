@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use ren_settings::{Reload, Settings, SettingsFile};
 use ren_store::{Status, Store};
+use ren_sync::Progress;
 use slint::language::ColorScheme;
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
@@ -17,6 +19,7 @@ use crate::demo::DemoDb;
 use crate::feed_tree::{self, Node, Row, changed_rows};
 use crate::item_list::{self, Column, format_date};
 use crate::reader::{Changes, Reader};
+use crate::sync_thread::{self, Event, Running};
 
 mod article;
 mod icons;
@@ -36,6 +39,10 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
 const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
+
+/// How often the lists are read again while a full sync stores items, so
+/// that they fill up during the first sync.
+const SYNC_REFRESH: Duration = Duration::from_secs(2);
 
 /// Item list model that fetches each row from the store only when the
 /// list view asks for it, so only the visible rows ever exist as Slint
@@ -111,6 +118,22 @@ struct App {
     pages: Rc<RefCell<pages::Pages>>,
     /// Clears the status bar message after `STATUS_TIMEOUT`.
     status_timer: slint::Timer,
+    /// The database to sync; `None` for demo data, which isn't synced.
+    database: Option<PathBuf>,
+    /// The settings file; `None` for demo data.
+    settings: RefCell<Option<SettingsFile>>,
+    sync: RefCell<SyncState>,
+}
+
+#[derive(Default)]
+struct SyncState {
+    running: Option<Running>,
+    /// The account the running sync is for.
+    account: Option<ren_settings::Account>,
+    /// The app password from the last sync, with the account it is for.
+    password: Option<(ren_settings::Account, String)>,
+    /// When the lists were last read again during a sync.
+    refreshed: Option<Instant>,
 }
 
 impl App {
@@ -189,6 +212,12 @@ impl App {
             });
     }
 
+    /// Shows a message in the status bar until the next one.
+    fn status_until_next(&self, text: impl Into<SharedString>) {
+        self.status_timer.stop();
+        self.window().set_status_text(text.into());
+    }
+
     fn not_implemented(&self, action: &str) {
         self.status(format!("Not implemented yet: {}", action.replace('-', " ")));
     }
@@ -252,6 +281,8 @@ impl App {
                     self.open_item(id, name == "open-browser");
                 }
             }
+            "fetch-feed" | "fetch-all" => self.start_sync(),
+            "cancel-sync" => self.cancel_sync(),
             "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
@@ -260,6 +291,8 @@ impl App {
     fn feed_menu(&self, row: usize, action: &str) {
         match (action, self.node(row)) {
             ("mark-feed-read", Some(node)) => self.mark_node_read(node),
+            // The server fetches the feeds; ren syncs everything.
+            ("fetch-feed" | "fetch-all", _) => self.start_sync(),
             _ => self.not_implemented(action),
         }
     }
@@ -438,6 +471,160 @@ impl App {
         let len = self.reader.borrow().len();
         if let Some(row) = item_list::step(current, key, len, page) {
             self.item_clicked(row);
+        }
+    }
+
+    /// Reads the settings file again if it changed. Returns the settings
+    /// in effect: the last good ones if the file has errors.
+    fn reload_settings(&self) -> Option<Settings> {
+        let mut file = self.settings.borrow_mut();
+        let file = file.as_mut()?;
+        let reload = file.reload();
+        if let Some(message) = settings_message(file.path(), &reload) {
+            self.status(message);
+        } else if reload != Reload::Unchanged {
+            self.status("Settings reloaded");
+        }
+        Some(file.settings().clone())
+    }
+
+    fn window_activated(&self) {
+        self.reload_settings();
+    }
+
+    /// Starts a sync, unless one is running.
+    fn start_sync(&self) {
+        let Some(database) = self.database.clone() else {
+            self.status("Demo data isn't synced");
+            return;
+        };
+        if self.sync.borrow().running.is_some() {
+            self.status("A sync is already running");
+            return;
+        }
+        let Some(settings) = self.reload_settings() else {
+            return;
+        };
+        let account = match settings.account() {
+            Ok(account) => account,
+            Err(err) => {
+                let first = err.lines().next().unwrap_or_default();
+                self.status_until_next(format!("No account: {first} (settings.toml)"));
+                return;
+            }
+        };
+        let password = self
+            .sync
+            .borrow()
+            .password
+            .as_ref()
+            .filter(|(of, _)| *of == account)
+            .map(|(_, password)| password.clone());
+        let job = sync_thread::Job {
+            database,
+            account: account.clone(),
+            password,
+            options: ren_sync::Options {
+                purge_after: settings.keep_read(),
+                ..ren_sync::Options::default()
+            },
+        };
+        let weak = self.window.clone();
+        let wake = move || {
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    window.invoke_sync_event();
+                }
+            });
+        };
+        match sync_thread::start(job, wake) {
+            Ok(running) => {
+                let mut sync = self.sync.borrow_mut();
+                sync.running = Some(running);
+                sync.account = Some(account);
+                sync.refreshed = Some(Instant::now());
+                self.window().set_syncing(true);
+                self.status_until_next(sync_thread::progress_text(None));
+            }
+            Err(err) => self.status(format!("Starting the sync failed: {err}")),
+        }
+    }
+
+    fn cancel_sync(&self) {
+        if let Some(running) = &self.sync.borrow().running {
+            running.cancel();
+            self.status_until_next("Cancelling the sync…");
+        }
+    }
+
+    /// Handles what the sync thread reported.
+    fn sync_events(&self) {
+        let events: Vec<Event> = match &self.sync.borrow().running {
+            Some(running) => running.events().collect(),
+            None => return,
+        };
+        for event in events {
+            match event {
+                Event::Password(password) => {
+                    let mut sync = self.sync.borrow_mut();
+                    sync.password = sync.account.clone().map(|account| (account, password));
+                }
+                Event::Progress(progress) => {
+                    self.status_until_next(sync_thread::progress_text(Some(progress)));
+                    // During a full sync, show the items as they arrive.
+                    let full = matches!(
+                        progress,
+                        Progress::Items {
+                            expected: Some(_),
+                            ..
+                        }
+                    );
+                    let due = self
+                        .sync
+                        .borrow()
+                        .refreshed
+                        .is_none_or(|at| at.elapsed() >= SYNC_REFRESH);
+                    if full && due {
+                        self.sync.borrow_mut().refreshed = Some(Instant::now());
+                        self.reload_view();
+                    }
+                }
+                Event::Finished(result) => {
+                    {
+                        let mut sync = self.sync.borrow_mut();
+                        sync.running = None;
+                        if result.as_ref().is_err_and(|err| err.unauthorized()) {
+                            sync.password = None;
+                        }
+                    }
+                    self.window().set_syncing(false);
+                    self.reload_view();
+                    let text = sync_thread::result_text(&result);
+                    if result.is_ok() {
+                        self.status(text);
+                    } else {
+                        self.status_until_next(text);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reads folders, feeds, counts and the list again after the sync
+    /// changed them, keeping the selection.
+    fn reload_view(&self) {
+        let selected = self.reader.borrow().selected();
+        if self.with_reader(Reader::reload).is_none() {
+            return;
+        }
+        self.refresh_tree();
+        self.items.notify.reset();
+        self.keep_current_item();
+        self.update_current_starred();
+        if self.reader.borrow().selected() != selected {
+            // The feed or folder is gone.
+            self.window().set_item_list_content_y(0.0);
         }
     }
 
@@ -641,6 +828,33 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
     timer
 }
 
+/// The message about a settings file that was read, if there is one: its
+/// first problem (all of them go to stderr).
+fn settings_message(path: &std::path::Path, reload: &Reload) -> Option<String> {
+    let problems = match reload {
+        Reload::Unchanged => return None,
+        Reload::Loaded(warnings) => warnings.as_slice(),
+        Reload::Failed(problems) => problems.0.as_slice(),
+    };
+    for problem in problems {
+        eprintln!("ren: {}", crate::account::located(path, problem));
+    }
+    let first = crate::account::located(path, problems.first()?);
+    Some(match reload {
+        Reload::Failed(_) => format!("Settings not applied: {first}"),
+        _ => first,
+    })
+}
+
+/// The settings file given, else the default one.
+fn settings_path(options: &Options) -> Result<PathBuf, String> {
+    match &options.settings {
+        Some(path) if !path.exists() => Err(format!("{}: no such file", path.display())),
+        Some(path) => Ok(path.clone()),
+        None => crate::account::default_path(),
+    }
+}
+
 /// The database the window shows: the one given, else the default one.
 /// Its directory is created if needed.
 fn database_path(options: &Options) -> Result<PathBuf, String> {
@@ -683,13 +897,23 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
     };
     let store = Store::open(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let reader = Reader::new(store).map_err(|err| format!("{}: {err}", path.display()))?;
-    run_window(options, started, reader).map_err(|err| err.to_string())
+    // Demo data has neither settings nor a sync.
+    let (settings, database) = match demo {
+        Some(_) => (None, None),
+        None => (
+            Some(SettingsFile::open(settings_path(options)?)),
+            Some(path),
+        ),
+    };
+    run_window(options, started, reader, settings, database).map_err(|err| err.to_string())
 }
 
 fn run_window(
     options: &Options,
     started: Instant,
     reader: Reader,
+    settings: Option<(SettingsFile, Reload)>,
+    database: Option<PathBuf>,
 ) -> Result<(), slint::PlatformError> {
     #[cfg(feature = "servo-wgpu")]
     let wgpu_tabs = options.tabs == cli::TabMode::Wgpu;
@@ -776,9 +1000,23 @@ fn run_window(
         #[cfg(feature = "servo")]
         pages,
         status_timer: slint::Timer::default(),
+        database,
+        settings: RefCell::new(None),
+        sync: RefCell::default(),
     });
     app.refresh_tree();
     app.show_sort();
+    if let Some((file, reload)) = settings {
+        if let Some(message) = settings_message(file.path(), &reload) {
+            app.status_until_next(message);
+        }
+        *app.settings.borrow_mut() = Some(file);
+    }
+    if app.database.is_some() && app.reader.borrow().tree_rows().len() <= 2 {
+        app.status_until_next(
+            "No feeds yet: Feed → Fetch All Feeds (Ctrl+L) syncs with the server",
+        );
+    }
 
     let weak = Rc::downgrade(&app);
     window.on_feed_clicked(move |row| {
@@ -840,6 +1078,18 @@ fn run_window(
     window.on_article_link_action(move |url, action| {
         if let Some(app) = weak.upgrade() {
             app.article_link(&url, &action);
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_sync_event(move || {
+        if let Some(app) = weak.upgrade() {
+            app.sync_events();
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_window_activated(move || {
+        if let Some(app) = weak.upgrade() {
+            app.window_activated();
         }
     });
     window.set_tabs_available(cfg!(feature = "servo"));

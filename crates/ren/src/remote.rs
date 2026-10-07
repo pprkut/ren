@@ -21,7 +21,7 @@ use ren_sync::{NewsApi, Progress, SystemClock};
 
 use crate::account;
 use crate::cli::{Mode, Options};
-use crate::procstat::{cpu_seconds, proc_status_kib};
+use crate::procstat::{cpu_seconds, proc_status_kib, trim_heap};
 
 pub const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
 
@@ -451,23 +451,6 @@ impl NewsApi for CountingApi<'_> {
     fn server_time(&self) -> Option<i64> {
         self.client.server_time()
     }
-}
-
-/// Gives the memory the allocator keeps after freeing back to the system,
-/// where that is possible (glibc). Returns whether it was tried.
-fn trim_heap() -> bool {
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    {
-        unsafe extern "C" {
-            fn malloc_trim(pad: usize) -> std::ffi::c_int;
-        }
-        // SAFETY: malloc_trim only releases free memory of glibc's heap;
-        // it takes no pointers.
-        unsafe { malloc_trim(0) };
-        true
-    }
-    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
-    false
 }
 
 /// Syncs into the database `db` and prints one line of measurements. A
