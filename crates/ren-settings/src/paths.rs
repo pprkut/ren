@@ -17,6 +17,13 @@ pub fn state(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_STATE_HOME", ".local/state")?.join("ren/state.toml"))
 }
 
+/// `$XDG_DATA_HOME/ren/ren.db`, falling back to `~/.local/share`: the
+/// local database, which also holds the changes not yet sent to the
+/// server, so it isn't a cache.
+pub fn database(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    Some(base(&var, "XDG_DATA_HOME", ".local/share")?.join("ren/ren.db"))
+}
+
 /// The directory in `variable`, else `fallback` in the home directory.
 /// Relative paths are invalid in the specification and ignored.
 fn base(var: &impl Fn(&str) -> Option<String>, variable: &str, fallback: &str) -> Option<PathBuf> {
@@ -48,6 +55,7 @@ mod tests {
         let vars = env(&[
             ("XDG_CONFIG_HOME", "/xdg/config"),
             ("XDG_STATE_HOME", "/xdg/state"),
+            ("XDG_DATA_HOME", "/xdg/data"),
             ("HOME", "/home/u"),
         ]);
         assert_eq!(
@@ -55,6 +63,7 @@ mod tests {
             Some("/xdg/config/ren/settings.toml".into())
         );
         assert_eq!(state(&vars), Some("/xdg/state/ren/state.toml".into()));
+        assert_eq!(database(&vars), Some("/xdg/data/ren/ren.db".into()));
     }
 
     #[test]
@@ -67,6 +76,10 @@ mod tests {
         assert_eq!(
             state(&vars),
             Some("/home/u/.local/state/ren/state.toml".into())
+        );
+        assert_eq!(
+            database(&vars),
+            Some("/home/u/.local/share/ren/ren.db".into())
         );
         assert_eq!(settings(env(&[])), None);
         assert_eq!(state(env(&[("HOME", "")])), None);
