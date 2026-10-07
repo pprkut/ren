@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Command line modes that talk to the server: `--check`, `--fetch-unread`
-//! and `--dump-items` (spike S2), `--check-writes` (M1).
+//! and `--dump-items` (spike S2), `--check-writes` (M1), `--sync` (M3).
 
+use std::cell::Cell;
 use std::io::Read;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use nextcloud_news::types::{Item, Items};
+use nextcloud_news::types::{Feeds, Folder, Item, Items};
 use nextcloud_news::{
     Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
     Selection, Update,
 };
+use ren_store::Store;
+use ren_sync::{NewsApi, Progress, SystemClock};
 
 use crate::cli::{Mode, Options};
 use crate::procstat::{cpu_seconds, proc_status_kib};
@@ -41,6 +45,7 @@ pub fn run(options: &Options) -> Result<(), String> {
         Mode::FetchUnread => fetch_unread(&client, options.batch_size),
         Mode::DumpItems(dir) => dump_items(&client, dir, options.batch_size),
         Mode::CheckWrites => check_writes(&client),
+        Mode::Sync(db) => sync(&client, db, options),
     };
     result.map_err(|err| format!("{}: {err}", client.base_url()))
 }
@@ -167,15 +172,20 @@ fn resolve(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// Real feed data must not end up in the repository.
-fn prepare_dump_dir(dir: &Path) -> CmdResult<PathBuf> {
-    let dir = resolve(dir)?;
-    if source_tree().is_some_and(|tree| dir.starts_with(tree)) {
+fn outside_source_tree(path: &Path) -> CmdResult<PathBuf> {
+    let path = resolve(path)?;
+    if source_tree().is_some_and(|tree| path.starts_with(tree)) {
         return Err(format!(
-            "{} is inside the source tree; dump outside the repository",
-            dir.display()
+            "{} is inside the source tree; use a place outside the repository",
+            path.display()
         )
         .into());
     }
+    Ok(path)
+}
+
+fn prepare_dump_dir(dir: &Path) -> CmdResult<PathBuf> {
+    let dir = outside_source_tree(dir)?;
     std::fs::create_dir_all(&dir)?;
     if std::fs::read_dir(&dir)?.next().is_some() {
         return Err(format!("{} is not empty", dir.display()).into());
@@ -390,6 +400,170 @@ fn write_checks(client: &Client, original: &Item) -> CmdResult<()> {
     if (item.unread, item.starred) != (unread, starred) {
         return Err("marking all items up to id 0 as read changed the item".into());
     }
+    Ok(())
+}
+
+/// The client, counting its requests.
+struct CountingApi<'a> {
+    client: &'a Client,
+    requests: Cell<usize>,
+}
+
+impl CountingApi<'_> {
+    fn count(&self) {
+        self.requests.set(self.requests.get() + 1);
+    }
+}
+
+impl NewsApi for CountingApi<'_> {
+    fn folders(&self) -> Result<Vec<Folder>, Error> {
+        self.count();
+        self.client.folders()
+    }
+
+    fn feeds(&self) -> Result<Feeds, Error> {
+        self.count();
+        self.client.feeds()
+    }
+
+    fn items<E: From<Error>>(
+        &self,
+        query: ItemQuery,
+        f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        self.count();
+        self.client.items(query, f)
+    }
+
+    fn updated_items<E: From<Error>>(
+        &self,
+        last_modified: i64,
+        f: impl FnMut(Item) -> Result<(), E>,
+    ) -> Result<usize, E> {
+        self.count();
+        NewsApi::updated_items(self.client, last_modified, f)
+    }
+
+    fn update(&self, update: &Update<'_>) -> Result<(), Error> {
+        self.count();
+        self.client.update(update)
+    }
+
+    fn server_time(&self) -> Option<i64> {
+        self.client.server_time()
+    }
+}
+
+/// Gives the memory the allocator keeps after freeing back to the system,
+/// where that is possible (glibc). Returns whether it was tried.
+fn trim_heap() -> bool {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> std::ffi::c_int;
+        }
+        // SAFETY: malloc_trim only releases free memory of glibc's heap;
+        // it takes no pointers.
+        unsafe { malloc_trim(0) };
+        true
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    false
+}
+
+/// Syncs into the database `db` and prints one line of measurements. A
+/// new database has no local changes, so this only reads from the server.
+fn sync(client: &Client, db: &Path, options: &Options) -> CmdResult<()> {
+    let batch_size = options
+        .batch_size
+        .ok_or("--sync pages through the items and needs a batch size")?;
+    let db = outside_source_tree(db)?;
+    if let Some(dir) = db.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let rss_before = proc_status_kib("VmRSS:");
+    let cpu_before = cpu_seconds();
+    let started = Instant::now();
+    let mut store = Store::open(&db)?;
+    let api = CountingApi {
+        client,
+        requests: Cell::new(0),
+    };
+    let sync_options = ren_sync::Options {
+        batch_size,
+        resync_after: if options.resync {
+            Duration::ZERO
+        } else {
+            ren_sync::Options::default().resync_after
+        },
+        ..ren_sync::Options::default()
+    };
+    let mut next_note = 10_000;
+    let report = ren_sync::sync(&api, &mut store, &SystemClock, &sync_options, |progress| {
+        match progress {
+            Progress::Feeds => eprintln!("folders and feeds stored"),
+            Progress::Items { stored, expected } if stored >= next_note => {
+                let of = expected.map_or(String::new(), |n| format!(" of about {n}"));
+                eprintln!("{stored} items stored{of}");
+                next_note += 10_000;
+            }
+            _ => {}
+        }
+        ControlFlow::Continue(())
+    })?;
+    let seconds = started.elapsed().as_secs_f64();
+    let cpu = cpu_seconds()
+        .zip(cpu_before)
+        .map(|((user, sys), (user0, sys0))| (user - user0, sys - sys0));
+    let peak = proc_status_kib("VmHWM:");
+    let rss_after = proc_status_kib("VmRSS:");
+    let rss_trimmed = if trim_heap() {
+        proc_status_kib("VmRSS:")
+    } else {
+        None
+    };
+    let mut wal = db.clone().into_os_string();
+    wal.push("-wal");
+    let db_bytes = [db.as_os_str(), &wal]
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .map(|meta| meta.len())
+        .sum::<u64>();
+
+    if let Some(err) = &report.fallback {
+        eprintln!("fetching the changes failed, resynced instead: {err}");
+    }
+    for err in &report.push_errors {
+        eprintln!("the server refused a change: {err}");
+    }
+    let kind = match report.kind {
+        ren_sync::Kind::Initial => "initial",
+        ren_sync::Kind::Incremental => "incremental",
+        ren_sync::Kind::Resync => "resync",
+    };
+    let or_unknown = |v: Option<String>| v.unwrap_or_else(|| "?".to_owned());
+    let kib = |v: Option<u64>| or_unknown(v.map(|k| k.to_string()));
+    println!(
+        "sync: kind={kind} resumed={} requests={} items={} added={} reconciled={} purged={} \
+         pushed={} marked_read={} push_errors={} seconds={seconds:.3} user_seconds={} \
+         sys_seconds={} rss_before_kib={} peak_rss_kib={} rss_after_kib={} \
+         rss_trimmed_kib={} db_bytes={db_bytes}",
+        report.resumed,
+        api.requests.get(),
+        report.items,
+        report.added,
+        report.reconciled,
+        report.purged,
+        report.pushed,
+        report.marked_read,
+        report.push_errors.len(),
+        or_unknown(cpu.map(|(user, _)| format!("{user:.2}"))),
+        or_unknown(cpu.map(|(_, sys)| format!("{sys:.2}"))),
+        kib(rss_before),
+        kib(peak),
+        kib(rss_after),
+        kib(rss_trimmed),
+    );
     Ok(())
 }
 

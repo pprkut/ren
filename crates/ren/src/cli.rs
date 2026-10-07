@@ -18,6 +18,10 @@ Server commands (instead of opening the window):
   --check-writes       Check the write requests: toggle the read and
                        starred state of the newest item and restore it,
                        and mark all items up to id 0 as read (no change)
+  --sync <DB>          Sync into the database DB, outside the repository
+                       (created if needed), and print time and memory use
+  --resync             With --sync: page through the unread and starred
+                       items again instead of fetching the changes
   --batch-size <N>     Items per request, or \"all\" (default: 1000)
   --settings <FILE>    Settings file (default:
                        $XDG_CONFIG_HOME/ren/settings.toml)
@@ -92,6 +96,7 @@ pub enum Mode {
     FetchUnread,
     DumpItems(PathBuf),
     CheckWrites,
+    Sync(PathBuf),
 }
 
 /// Items per request of the server commands, see
@@ -104,6 +109,8 @@ pub struct Options {
     pub settings: Option<PathBuf>,
     /// `None` fetches all items in one request.
     pub batch_size: Option<u32>,
+    /// `--sync` resyncs instead of fetching the changes.
+    pub resync: bool,
     pub backend: Option<String>,
     pub renderer: Option<String>,
     pub items: usize,
@@ -127,6 +134,7 @@ impl Default for Options {
             mode: Mode::Window,
             settings: None,
             batch_size: Some(DEFAULT_BATCH_SIZE),
+            resync: false,
             backend: None,
             renderer: None,
             items: 10_000,
@@ -163,12 +171,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--fetch-unread" => Some(Mode::FetchUnread),
             "--dump-items" => Some(Mode::DumpItems(value("--dump-items")?.into())),
             "--check-writes" => Some(Mode::CheckWrites),
+            "--sync" => Some(Mode::Sync(value("--sync")?.into())),
             _ => None,
         };
         if let Some(mode) = mode {
             if options.mode != Mode::Window {
                 return Err(
-                    "only one of --check, --fetch-unread, --dump-items and --check-writes"
+                    "only one of --check, --fetch-unread, --dump-items, --check-writes and \
+                     --sync"
                         .to_owned(),
                 );
             }
@@ -177,6 +187,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
         }
         match arg.as_str() {
             "--settings" => options.settings = Some(value("--settings")?.into()),
+            "--resync" => options.resync = true,
             "--batch-size" => {
                 options.batch_size = match value("--batch-size")?.as_str() {
                     "all" => None,
@@ -255,6 +266,7 @@ mod tests {
             mode: Mode::Window,
             settings: None,
             batch_size: Some(DEFAULT_BATCH_SIZE),
+            resync: false,
             backend: Some("winit".to_owned()),
             renderer: Some("skia".to_owned()),
             items: 500,
@@ -346,5 +358,12 @@ mod tests {
             panic!("parse failed");
         };
         assert_eq!(options.mode, Mode::CheckWrites);
+
+        let Ok(Command::Run(options)) = parse_args(&["--resync", "--sync", "/tmp/ren.db"]) else {
+            panic!("parse failed");
+        };
+        assert_eq!(options.mode, Mode::Sync("/tmp/ren.db".into()));
+        assert!(options.resync);
+        assert!(parse_args(&["--sync"]).is_err());
     }
 }
