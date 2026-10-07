@@ -165,6 +165,24 @@ disk; median of 5 runs per query, with a second connection as the UI's.
 
 Re-run with `just measure-store [ITEMS]` on the target machine.
 
+## Review (2026-10-07)
+
+- **Write transactions take the write lock when they start**
+  (`BEGIN IMMEDIATE`). `replace_feeds` began a deferred transaction with a
+  read; if the UI wrote before its first write, the sync's write failed at
+  once with "database is locked": SQLite doesn't wait for the busy
+  timeout when a transaction's snapshot is stale. Reproduced with SQLite
+  directly, fixed and tested with two connections. Migrations take the
+  lock too and read the schema version inside their transaction.
+- **Opening a new database from two connections at once** failed for one
+  of them (19 of 40 tries): switching to the write-ahead log doesn't wait
+  for the busy timeout either. The switch is retried for up to the busy
+  timeout, and the busy timeout is set first.
+- `just measure-store` on the user's machine (i7-1185G7): initial sync
+  1.6 s (25 µs per item), pages up to 20 ms, the slowest a page from the
+  middle sorted by feed at 102 ms, 50 rows by id 0.1 ms, marking 1,000
+  items read 26 ms, purge 196 ms; peak RSS 15.8 MiB.
+
 ## Open
 
 - **Purge age and when to purge** are M8's settings; `purge` takes the
