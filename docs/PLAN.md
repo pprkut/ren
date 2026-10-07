@@ -409,7 +409,8 @@ From here on every milestone ships with tests for what it adds.
   unpaged `GET /items/updated` (S2: about 3× the JSON size in memory when
   decoded at once). Tests: fixture deserialisation (nulls, unknown
   fields), request building, streaming decode, a local mock HTTP server.
-- **M2 — Store.** `ren-store`: schema and migrations (folders, feeds, items,
+- **M2 — Store.** *(done; see `docs/decisions/0006-store.md`)*
+  `ren-store`: schema and migrations (folders, feeds, items,
   pending_changes, sync_state, per-feed settings), indices for the list
   queries, upserts, paged queries, purge, and a "new" marker for items
   that arrived in the latest sync (cleared when the next sync starts), for
@@ -419,6 +420,12 @@ From here on every milestone ships with tests for what it adds.
   item titles and authors) are stored with whitespace collapsed: real
   feeds put line breaks into authors and spaces around titles (S3).
   Tests on an in-memory database.
+  *Result:* rusqlite pinned to 0.38 (Servo links the same SQLite). The
+  upsert already keeps the read and starred state of items with a
+  pending local change (M3's conflict rule). Lists come as count and
+  pages or as all ids in order plus rows by id; M5 picks (the ids suit
+  the item table: pages from the middle of a list sorted by feed or
+  title cost up to about 140 ms each, all ids 40–65 ms once).
 - **M3 — Sync engine.** `ren-sync`: initial and incremental sync and the
   pending-change queue as described above. Items from the streaming
   decode are written in chunks (one transaction per chunk), so neither a
