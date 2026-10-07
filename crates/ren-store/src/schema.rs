@@ -31,7 +31,15 @@ use crate::{Error, Result};
 /// - `items.is_new` marks items that arrived in the latest sync.
 /// - The indices serve the list queries (by date, of a feed, starred), the
 ///   unread counts and clearing the "new" marker.
-const MIGRATIONS: &[&str] = &[r"
+///
+/// Version 2:
+///
+/// - `pending_mark_read` holds the "mark all as read" requests not yet sent
+///   to the server, in the order they were made (`id`): the items up to
+///   `newest_item_id` of everything (`scope` 0), a folder (1, `scope_id`),
+///   the feeds outside of folders (2) or a feed (3, `scope_id`).
+const MIGRATIONS: &[&str] = &[
+    r"
 CREATE TABLE folders (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL
@@ -100,7 +108,16 @@ CREATE INDEX items_feed ON items (feed_id, pub_date);
 CREATE INDEX items_unread ON items (feed_id) WHERE unread = 1 AND filtered = 0;
 CREATE INDEX items_starred ON items (pub_date) WHERE starred = 1;
 CREATE INDEX items_new ON items (id) WHERE is_new = 1;
-"];
+",
+    r"
+CREATE TABLE pending_mark_read (
+    id INTEGER PRIMARY KEY,
+    scope INTEGER NOT NULL,
+    scope_id INTEGER,
+    newest_item_id INTEGER NOT NULL
+);
+",
+];
 
 /// The schema version this build creates and understands.
 #[cfg(test)]
@@ -164,6 +181,7 @@ mod tests {
                 "item_contents",
                 "items",
                 "pending_changes",
+                "pending_mark_read",
                 "sync_state"
             ]
         );

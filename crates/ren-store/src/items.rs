@@ -12,7 +12,7 @@ use nextcloud_news::types;
 use rusqlite::types::Value;
 use rusqlite::{OptionalExtension, Row, ToSql, params, params_from_iter};
 
-use crate::changes::{STARRED, UNREAD};
+use crate::changes::{MARKED_READ, STARRED, UNREAD};
 use crate::text::{collapse, key, search_key};
 use crate::{Result, Store};
 
@@ -192,25 +192,27 @@ impl Store {
     /// set (not in the initial sync, where everything is new). The read and
     /// starred state of an item with a pending local change of that state
     /// is kept: the local change is newer and still has to reach the
-    /// server.
+    /// server. Items covered by a pending "mark all as read" stay read.
     pub fn upsert_items(&mut self, items: &[types::Item], mark_new: bool) -> Result<usize> {
         let tx = self.write_transaction()?;
         let mut added = 0;
         {
-            let mut insert = tx.prepare_cached(
+            let mut insert = tx.prepare_cached(&format!(
                 "INSERT INTO items (id, feed_id, title, author, pub_date, url, enclosure_mime,
                      enclosure_link, media_thumbnail, fingerprint, last_modified, unread,
                      starred, filtered, rtl, title_key, author_key, is_new)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-                     ?17, ?18)
-                 ON CONFLICT (id) DO NOTHING",
-            )?;
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                     CASE WHEN {MARKED_READ} THEN 0 ELSE ?12 END,
+                     ?13, ?14, ?15, ?16, ?17, ?18)
+                 ON CONFLICT (id) DO NOTHING"
+            ))?;
             let mut update = tx.prepare_cached(&format!(
                 "UPDATE items SET feed_id = ?2, title = ?3, author = ?4, pub_date = ?5,
                      url = ?6, enclosure_mime = ?7, enclosure_link = ?8,
                      media_thumbnail = ?9, fingerprint = ?10, last_modified = ?11,
                      unread = CASE WHEN EXISTS (SELECT 1 FROM pending_changes
-                         WHERE item_id = ?1 AND field = {UNREAD}) THEN unread ELSE ?12 END,
+                         WHERE item_id = ?1 AND field = {UNREAD}) THEN unread
+                         WHEN {MARKED_READ} THEN 0 ELSE ?12 END,
                      starred = CASE WHEN EXISTS (SELECT 1 FROM pending_changes
                          WHERE item_id = ?1 AND field = {STARRED}) THEN starred ELSE ?13 END,
                      filtered = ?14, rtl = ?15, title_key = ?16, author_key = ?17
