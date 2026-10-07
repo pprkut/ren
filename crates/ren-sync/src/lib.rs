@@ -66,7 +66,7 @@ pub struct Options {
     /// in one query.
     pub push_batch: usize,
     /// Resync the unread and starred items instead of fetching the changes
-    /// if the last sync was longer ago than this.
+    /// if the last sync was this long ago or longer. Zero always resyncs.
     pub resync_after: Duration,
     /// Delete read, unstarred items that haven't changed for this long
     /// (usually: read this long ago). `None` keeps them.

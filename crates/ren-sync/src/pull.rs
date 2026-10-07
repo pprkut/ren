@@ -137,7 +137,7 @@ impl<A: NewsApi, C: Clock, P: FnMut(Progress) -> ControlFlow<()>> Run<'_, A, C, 
         let stale = self
             .store
             .sync_value(LAST_SYNC)?
-            .is_some_and(|last| self.clock.now().saturating_sub(last) > resync_after);
+            .is_some_and(|last| self.clock.now().saturating_sub(last) >= resync_after);
         if !stale {
             match self.changes(cursor) {
                 Ok(()) => return Ok(()),
