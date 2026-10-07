@@ -208,7 +208,7 @@ pub fn write_atomically(path: &Path, contents: &str) -> io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::settings::tests::TABLE;
 

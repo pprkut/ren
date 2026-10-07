@@ -6993,6 +6993,8 @@ dependencies = [
 name = "ren-settings"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "toml",
  "toml_edit",
 ]
 
