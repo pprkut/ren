@@ -194,7 +194,7 @@ impl Store {
     /// is kept: the local change is newer and still has to reach the
     /// server.
     pub fn upsert_items(&mut self, items: &[types::Item], mark_new: bool) -> Result<usize> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_transaction()?;
         let mut added = 0;
         {
             let mut insert = tx.prepare_cached(

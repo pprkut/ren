@@ -70,7 +70,7 @@ impl Store {
     /// are shown at the top level until [`replace_feeds`](Self::replace_feeds)
     /// moves them.
     pub fn replace_folders(&mut self, folders: &[types::Folder]) -> Result<()> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_transaction()?;
         {
             let mut upsert = tx.prepare_cached(
                 "INSERT INTO folders (id, name) VALUES (?1, ?2)
@@ -96,7 +96,7 @@ impl Store {
     /// deletes the feeds that are not in it, with their items, settings and
     /// pending changes.
     pub fn replace_feeds(&mut self, feeds: &[types::Feed]) -> Result<FeedChanges> {
-        let tx = self.conn.transaction()?;
+        let tx = self.write_transaction()?;
         let mut changes = FeedChanges::default();
         {
             let known: HashSet<u64> = tx

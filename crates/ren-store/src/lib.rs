@@ -24,7 +24,7 @@ mod text;
 use std::path::Path;
 use std::time::Duration;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 
 pub use error::Error;
 pub use feeds::{Feed, FeedChanges, FeedSettings, Folder};
@@ -58,12 +58,58 @@ impl Store {
         Self::setup(Connection::open_in_memory()?)
     }
 
+    /// Starts a transaction that writes. It takes the write lock at once
+    /// (`BEGIN IMMEDIATE`): a transaction that reads first and writes later
+    /// fails at once, without waiting, if the other connection wrote in
+    /// between, since its snapshot is stale then. Taking the lock first
+    /// makes the other connection's writes wait instead.
+    fn write_transaction(&mut self) -> Result<Transaction<'_>> {
+        Ok(self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+    }
+
     fn setup(mut conn: Connection) -> Result<Self> {
         conn.busy_timeout(BUSY_TIMEOUT)?;
         conn.pragma_update(None, "foreign_keys", true)?;
         text::register(&conn)?;
         schema::migrate(&mut conn)?;
         Ok(Self { conn })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::test_util::{TempDb, api_item};
+
+    #[test]
+    fn a_write_transaction_holds_the_lock_from_its_start() {
+        let db = TempDb::new();
+        let mut sync = Store::open(&db.0).unwrap();
+        sync.upsert_items(&[api_item(1, 1)], false).unwrap();
+        let mut ui = Store::open(&db.0).unwrap();
+        ui.conn.busy_timeout(Duration::from_millis(20)).unwrap();
+
+        // The sync reads first, as replace_feeds does. With a deferred
+        // transaction, the UI's write would get through here, and the
+        // sync's own write would then fail at once.
+        let tx = sync.write_transaction().unwrap();
+        let _: u64 = tx
+            .query_row("SELECT count(*) FROM items", [], |row| row.get(0))
+            .unwrap();
+        assert!(
+            ui.set_unread(&[1], false).is_err(),
+            "the UI wrote in between"
+        );
+        tx.execute("UPDATE items SET title = 'x' WHERE id = 1", [])
+            .unwrap();
+        tx.commit().unwrap();
+
+        // Once the sync is done, the UI's write goes through.
+        assert_eq!(ui.set_unread(&[1], false).unwrap(), 1);
     }
 }
 
