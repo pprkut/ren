@@ -502,16 +502,18 @@ From here on every milestone ships with tests for what it adds.
   item list holds the ids in order and fetches visible rows by id; a
   "Starred" entry; tree rows updated in place. A thread per sync at
   `nice` 10, which fetches the app password, refuses a database of
-  another account and trims the heap after a full sync; progress,
+  another account and trims the heap after each sync; progress,
   results and cancelling in the status and tool bar; the lists fill up
   during the first sync. Settings are read at start, on window
   activation and before each sync. `--items`/`--dump` go through a
-  temporary database. In the container (mock server, Xvfb):
-  idle RSS 29.5 MiB with 63,000 items, the same as with 10,000
-  generated ones; a full sync of them in the window adds 6 MiB, reading
-  the lists again takes 30–40 ms at that size (up to 144 ms while the
-  sync writes). Measurements on the desktop and with the real server
-  are prepared (`just measure-window-sync`, `DATABASE=… just measure`).
+  temporary database. On the desktop with the real account (63,510
+  items): idle RSS 48.3 MiB (S1b's dummy data: 43.1), startup 50 ms
+  longer; a full sync in the window takes the server's 2 minutes and
+  5.5 s of CPU, adds 7 MiB, and the lists are read again in 42 ms on
+  average while it runs. Freed memory is trimmed after every sync (the
+  incremental one kept 3 MiB). Scrolling cost more CPU than in S1b
+  (65 % against 48 %), not because of the store (same CPU before and
+  after M5 on the same items); open whether it's the real data.
 - **M6 — Article view.** The S3 result made production-ready behind the
   `html-view` feature, including the image cache. From S3: freed image
   memory returned to the system (glibc keeps it; `malloc_trim` or the
