@@ -529,6 +529,19 @@ From here on every milestone ships with tests for what it adds.
   - A selection colour derived from the accent, readable in dark mode
     (`::selection`, if Blitz supports it).
   - Free the two frame buffers while no article is shown.
+
+  From use (M5):
+  - **Jump links within an article** (`#section`) do nothing: the News
+    app's sanitiser strips `id` and `name` attributes from bodies, so
+    Blitz's fragment navigation (`scroll_to_fragment`, used for links to
+    the same document, also absolute ones to the item's URL) finds no
+    target. Example: "GSoC 2026 Final Update - Jenkins Email
+    Notifications using Outlook SMTP with OAuth", whose table of contents
+    links to its headings. Their text still matches the fragments as
+    slugs (lower case, punctuation removed, words joined by hyphens) in
+    18 of 18 cases there. So: when a fragment has no target, scroll to the
+    heading whose slug matches; failing that, open the original page at
+    the fragment (tab or browser).
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting. Remove the spike-only variants
