@@ -586,6 +586,17 @@ From here on every milestone ships with tests for what it adds.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
+  - **System tray:** an icon with the unread count (tooltip, or a badge
+    if the tray supports it) and a menu (Show/Hide, Fetch All Feeds,
+    Quit), and a setting to close or minimise to the tray instead of
+    quitting, so the periodic sync goes on in the background. Slint 1.18
+    has a `SystemTrayIcon` element (its `system-tray` feature,
+    StatusNotifierItem over D-Bus through `ksni` on the async-io runtime
+    ren already has; works on Plasma, needs the AppIndicator extension on
+    GNOME). `ksni` is under the Unlicense, which isn't on the licence
+    list yet: decide on it like the `webpki-roots` exception. Measure RSS
+    with the window hidden; free what a hidden window doesn't need (the
+    article's frame buffers, the Blitz view, Servo tabs).
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
