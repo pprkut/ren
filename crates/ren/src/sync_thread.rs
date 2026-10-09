@@ -10,7 +10,8 @@
 //! opens its own connection to the database, and runs [`ren_sync::sync`]
 //! at a lower priority. It reports through a channel; the UI is woken up
 //! to read it. Everything the thread opened (the HTTP agent, the database
-//! connection, the D-Bus connection) goes with it.
+//! connection, the D-Bus connection) goes with it, and the memory it
+//! freed is given back to the system.
 
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -204,14 +205,10 @@ fn run(job: Job, cancel: &AtomicBool, send: &impl Fn(Event)) -> Result<Report, F
         },
     );
     drop((store, client));
-    // A full sync leaves freed memory with the allocator; an incremental
-    // one gives nothing back (0007).
-    if result
-        .as_ref()
-        .map_or(true, |report| report.kind != Kind::Incremental)
-    {
-        trim_heap();
-    }
+    // What the thread freed stays with the allocator otherwise: 2–3 MiB
+    // after every incremental sync too, unlike the command line's sync on
+    // the main thread (0007, 0009).
+    trim_heap();
     result.map_err(Failure::Sync)
 }
 
