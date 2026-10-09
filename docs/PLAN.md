@@ -507,13 +507,13 @@ From here on every milestone ships with tests for what it adds.
   during the first sync. Settings are read at start, on window
   activation and before each sync. `--items`/`--dump` go through a
   temporary database. On the desktop with the real account (63,510
-  items): idle RSS 48.3 MiB (S1b's dummy data: 43.1), startup 50 ms
-  longer; a full sync in the window takes the server's 2 minutes and
-  5.5 s of CPU, adds 7 MiB, and the lists are read again in 42 ms on
-  average while it runs. Freed memory is trimmed after every sync (the
-  incremental one kept 3 MiB). Scrolling cost more CPU than in S1b
-  (65 % against 48 %), not because of the store (same CPU before and
-  after M5 on the same items); open whether it's the real data.
+  items): idle RSS 48 MiB, 4.4 MiB above S1b's dummy data at the same
+  item count (the code, not the data); startup 20 ms longer, another
+  20–30 ms with 63,000 items; scrolling as in S1b (47 % of a core with
+  the real data, 41 % with generated items, 48 % in S1b). A full sync in
+  the window takes the server's 2 minutes and 5.5 s of CPU, adds 7 MiB,
+  and the lists are read again in 42 ms on average while it runs. Freed
+  memory is trimmed after every sync (the incremental one kept 3 MiB).
 - **M6 — Article view.** The S3 result made production-ready behind the
   `html-view` feature, including the image cache. From S3: freed image
   memory returned to the system (glibc keeps it; `malloc_trim` or the
