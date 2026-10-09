@@ -586,6 +586,14 @@ From here on every milestone ships with tests for what it adds.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
+  - **Window size, position and maximised state** in the state file too
+    (M4's `State` has no fields for them yet), restored at start and
+    saved when the window closes. Logical pixels, so a change of scale
+    factor keeps the size; clamp to the current screen so a disconnected
+    monitor doesn't leave the window off-screen. Wayland doesn't let
+    applications place their windows, so there only the size and the
+    maximised state apply (the compositor, e.g. KWin's window rules,
+    handles position).
   - **System tray:** an icon with the unread count (tooltip, or a badge
     if the tray supports it) and a menu (Show/Hide, Fetch All Feeds,
     Quit), and a setting to close or minimise to the tray instead of
