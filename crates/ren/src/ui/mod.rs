@@ -288,6 +288,23 @@ impl App {
             }
             "fetch-feed" | "fetch-all" => self.start_sync(),
             "cancel-sync" => self.cancel_sync(),
+            #[cfg(feature = "servo")]
+            "close-tab" => self.pages.borrow_mut().close_current(),
+            #[cfg(feature = "servo")]
+            "page-browser" => {
+                let url = self.pages.borrow().current_url();
+                if let Some(url) = url {
+                    self.open_in_browser(&url);
+                }
+            }
+            #[cfg(feature = "servo")]
+            "clear-site-data" => {
+                let result = self.pages.borrow_mut().clear_site_data();
+                match result {
+                    Ok(()) => self.status("Cookies and site data of web pages removed"),
+                    Err(err) => self.status(format!("Removing the site data failed: {err}")),
+                }
+            }
             "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
@@ -501,6 +518,10 @@ impl App {
         self.article
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
+        #[cfg(feature = "servo")]
+        self.pages
+            .borrow_mut()
+            .set_keep_site_data(settings.keep_site_data());
     }
 
     fn window_activated(&self) {
@@ -720,19 +741,6 @@ fn select_backend(
         selector = selector.renderer_name(renderer.to_owned());
     }
     selector.select()
-}
-
-/// Slint's femtovg renderer on wgpu's Vulkan backend, whose textures Servo's
-/// frames can be shared as.
-#[cfg(feature = "servo-wgpu")]
-fn select_wgpu_backend() -> Result<(), slint::PlatformError> {
-    use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
-    let mut settings = WGPUSettings::default();
-    settings.backends = wgpu::Backends::VULKAN;
-    slint::BackendSelector::new()
-        .backend_name("winit".to_owned())
-        .require_wgpu_30(WGPUConfiguration::Automatic(settings))
-        .select()
 }
 
 fn log_elapsed(started: Instant, what: &str) {
@@ -1014,35 +1022,9 @@ fn run_window(
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
 ) -> Result<(), slint::PlatformError> {
-    #[cfg(feature = "servo-wgpu")]
-    let wgpu_tabs = options.tabs == cli::TabMode::Wgpu;
-    #[cfg(not(feature = "servo-wgpu"))]
-    let wgpu_tabs = false;
-    if wgpu_tabs {
-        #[cfg(feature = "servo-wgpu")]
-        select_wgpu_backend()?;
-    } else {
-        select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
-    }
+    select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
-    #[cfg(feature = "servo-wgpu")]
-    if wgpu_tabs {
-        // Before report_startup, which can only set the notifier if this
-        // didn't.
-        window
-            .window()
-            .set_rendering_notifier(|state, api| {
-                if let (
-                    slint::RenderingState::RenderingSetup,
-                    slint::GraphicsAPI::WGPU30 { device, .. },
-                ) = (state, api)
-                {
-                    crate::tabs::wgpu::set_device(device.clone());
-                }
-            })
-            .map_err(|err| slint::PlatformError::Other(err.to_string()))?;
-    }
     let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
     if let Some(dark) = dark {
         window.set_forced_color_scheme(if dark {
@@ -1082,11 +1064,7 @@ fn run_window(
     );
 
     #[cfg(feature = "servo")]
-    let pages = pages::Pages::new(
-        &window,
-        options.tabs,
-        options.measure || options.measure_tabs,
-    );
+    let pages = pages::Pages::new(&window, options.measure || options.measure_tabs);
 
     let app = Rc::new(App {
         window: window.as_weak(),
@@ -1228,7 +1206,15 @@ fn run_window(
         }
         pages::start_measurement(Rc::downgrade(&app.pages), urls)
     });
-    window.run()
+    let result = window.run();
+    // Closing the tabs ends the helper; it saves the site data before it
+    // exits, which ren's exit would cut short.
+    #[cfg(feature = "servo")]
+    {
+        app.pages.borrow_mut().close_all();
+        crate::tabs::helper::wait_for_helpers();
+    }
+    result
 }
 
 #[cfg(test)]

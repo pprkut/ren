@@ -65,13 +65,8 @@ Window options:
                      and an incremental sync), print time, CPU and memory
                      use, and quit
 
-Web page tabs (with the servo feature):
-  --tabs <MODE>      Where Servo runs: helper (a helper process, started
-                     with the first tab and ended with the last), in-process
-                     (can't be restarted after the last tab closed), or
-                     wgpu (in-process, frames shared as GPU textures; needs
-                     the servo-wgpu feature and the femtovg-wgpu renderer)
-                     (default: helper)
+Web page tabs (with the servo feature; Servo runs in the helper ren-servo,
+next to ren or in ../libexec/ren/, or where $REN_SERVO says):
   --tab-url <URL>    A page for --measure-tabs; repeat for more (default:
                      the links of the first items)
   --measure-tabs     After 2 s, open one page, then three, scroll, close
@@ -92,15 +87,6 @@ pub enum Arrangement {
     #[default]
     Beside,
     Above,
-}
-
-/// Where Servo runs, see `docs/decisions/0005-web-tabs.md`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum TabMode {
-    #[default]
-    Helper,
-    InProcess,
-    Wgpu,
 }
 
 /// What ren does.
@@ -147,7 +133,6 @@ pub struct Options {
     pub measure: bool,
     pub autoscroll: bool,
     pub measure_sync: bool,
-    pub tabs: TabMode,
     pub tab_urls: Vec<String>,
     pub measure_tabs: bool,
 }
@@ -173,7 +158,6 @@ impl Default for Options {
             measure: false,
             autoscroll: false,
             measure_sync: false,
-            tabs: TabMode::default(),
             tab_urls: Vec::new(),
             measure_tabs: false,
         }
@@ -260,14 +244,6 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
             "--measure-sync" => options.measure_sync = true,
-            "--tabs" => {
-                options.tabs = match value("--tabs")?.as_str() {
-                    "helper" => TabMode::Helper,
-                    "in-process" => TabMode::InProcess,
-                    "wgpu" => TabMode::Wgpu,
-                    other => return Err(format!("invalid tab mode: {other}")),
-                }
-            }
             "--tab-url" => options.tab_urls.push(value("--tab-url")?),
             "--measure-tabs" => options.measure_tabs = true,
             "-h" | "--help" => return Ok(Command::Help),
@@ -311,7 +287,6 @@ mod tests {
             measure: true,
             autoscroll: true,
             measure_sync: true,
-            tabs: TabMode::InProcess,
             tab_urls: vec!["https://a/".to_owned(), "https://b/".to_owned()],
             measure_tabs: true,
         };
@@ -339,8 +314,6 @@ mod tests {
                 "--measure",
                 "--autoscroll",
                 "--measure-sync",
-                "--tabs",
-                "in-process",
                 "--tab-url",
                 "https://a/",
                 "--tab-url",
@@ -358,7 +331,6 @@ mod tests {
         assert!(parse_args(&["--bogus"]).is_err());
         assert!(parse_args(&["--arrangement", "below"]).is_err());
         assert!(parse_args(&["--color-scheme", "blue"]).is_err());
-        assert!(parse_args(&["--tabs", "thread"]).is_err());
         assert_eq!(parse_args(&["--help", "--bogus"]), Ok(Command::Help));
         assert!(parse_args(&["--batch-size", "0"]).is_err());
         assert!(parse_args(&["--batch-size", "-1"]).is_err());

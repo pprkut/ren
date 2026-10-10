@@ -10,8 +10,8 @@ check:
     reuse lint
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
-    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-    cargo test --locked --no-default-features --features renderer-software
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
+    cargo test --locked --no-default-features --features renderer-software,servo
     cargo clippy --all-targets --locked -- -D warnings
     cargo test --locked
     cargo deny check licenses
@@ -22,8 +22,8 @@ check-light:
     reuse lint
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
-    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-    cargo test --locked --no-default-features --features renderer-software
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
+    cargo test --locked --no-default-features --features renderer-software,servo
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
 # Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored

@@ -41,7 +41,9 @@ jobs:
           manifest-path: crates/ren-servo/Cargo.toml
           command: check licenses
 
-  # Without the heavy engines (Blitz, Servo), so it stays fast.
+  # Without the heavy engines (Blitz, Servo), so it stays fast. The
+  # `servo` feature is only the window's side of the tabs; Servo itself is
+  # in the helper, crates/ren-servo.
   rust:
     name: Format, lint, test
     runs-on: ubuntu-latest
@@ -59,8 +61,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo fmt --check
         working-directory: crates/ren-servo
-      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-      - run: cargo test --locked --no-default-features --features renderer-software
+      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
+      - run: cargo test --locked --no-default-features --features renderer-software,servo
       - name: Test the Secret Service store
         run: |
           sudo apt-get install -y --no-install-recommends dbus-daemon gnome-keyring
