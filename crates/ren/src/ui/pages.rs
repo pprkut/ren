@@ -603,6 +603,8 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
     let mut wait_until = Instant::now() + MEASURE_DELAY;
     let mut wait_for_load = false;
     let mut scroll_started = (Instant::now(), 0);
+    // CPU seconds of the window and the helper when scrolling started.
+    let mut scroll_cpu = (None, None);
     timer.start(
         slint::TimerMode::Repeated,
         Duration::from_millis(16),
@@ -618,9 +620,22 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
                     return;
                 }
                 let frames = pages.frame_count() - scroll_started.1;
+                let secs = scroll_started.0.elapsed().as_secs_f64();
+                eprintln!("ren: scrolling: {frames} frames in {secs:.1} s");
+                let percent = |before: Option<(f64, f64)>, after: Option<(f64, f64)>| {
+                    before
+                        .zip(after)
+                        .map_or("?".to_owned(), |((u0, s0), (u1, s1))| {
+                            format!("{:.0}", (u1 + s1 - u0 - s0) / secs * 100.0)
+                        })
+                };
                 eprintln!(
-                    "ren: scrolling: {frames} frames in {:.1} s",
-                    scroll_started.0.elapsed().as_secs_f64()
+                    "ren: scrolling CPU: window {} %, helper {} %",
+                    percent(scroll_cpu.0, crate::procstat::cpu_seconds()),
+                    percent(
+                        scroll_cpu.1,
+                        pages.helper_pid().and_then(crate::procstat::cpu_seconds_of)
+                    )
                 );
             } else {
                 if wait_for_load && pages.loading() && now < wait_until + LOAD_TIMEOUT {
@@ -651,6 +666,10 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
                 Step::OneTab => {
                     log_memory("with 1 tab", &pages);
                     scroll_started = (now, pages.frame_count());
+                    scroll_cpu = (
+                        crate::procstat::cpu_seconds(),
+                        pages.helper_pid().and_then(crate::procstat::cpu_seconds_of),
+                    );
                     Step::Scroll
                 }
                 Step::Scroll => {
