@@ -273,8 +273,13 @@ impl ArticlePane {
         set_view_size(&window, &mut html.view);
         let started = Instant::now();
         let document = article.html_document(&style);
-        html.view
-            .show(&document, article.url.as_deref(), style.dark, load_images);
+        html.view.show(
+            &document,
+            article.url.as_deref(),
+            style.dark,
+            style.selection(),
+            load_images,
+        );
         html.pending_timing = Some((started.elapsed(), started));
         html.trim_later();
         window.set_html_view(true);

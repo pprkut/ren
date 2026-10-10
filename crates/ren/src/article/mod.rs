@@ -14,6 +14,8 @@ pub mod fragment;
 pub mod html;
 #[cfg(feature = "html-view")]
 mod images;
+#[cfg(feature = "html-view")]
+mod paint;
 pub mod text;
 
 #[cfg_attr(not(feature = "html-view"), allow(unused_imports))]

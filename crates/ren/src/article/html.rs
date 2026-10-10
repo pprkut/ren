@@ -27,9 +27,11 @@ use blitz_traits::shell::{ClipboardError, ColorScheme, ShellProvider, Viewport};
 use cursor_icon::CursorIcon;
 use keyboard_types::{Code, Key, Location, Modifiers};
 
+use super::Rgb;
 use super::cache::ImageCache;
 use super::document::CONTENT_WIDTH;
 use super::images::{self, Limits};
+use super::paint::SelectionPainter;
 
 const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
 
@@ -403,6 +405,8 @@ pub struct HtmlView {
     size: (u32, u32),
     scale: f32,
     color_scheme: ColorScheme,
+    /// The background of selected text.
+    selection: peniko::Color,
     font_ctx: FontContext,
     shell: Arc<Shell>,
     navigation: Arc<Navigation>,
@@ -455,6 +459,7 @@ impl HtmlView {
             size: (1, 1),
             scale: 1.0,
             color_scheme: ColorScheme::Light,
+            selection: peniko::Color::from_rgb8(180, 213, 255),
             font_ctx,
             net: Arc::new(Net::new(cache, shell.clone())),
             shell,
@@ -471,10 +476,18 @@ impl HtmlView {
         Viewport::new(self.size.0, self.size.1, self.scale, self.color_scheme)
     }
 
-    /// Shows a document; relative URLs resolve against `base_url`. Without
-    /// `load_images`, only images in `data:` URLs and in the cache are
-    /// shown.
-    pub fn show(&mut self, html: &str, base_url: Option<&str>, dark: bool, load_images: bool) {
+    /// Shows a document; relative URLs resolve against `base_url`. Selected
+    /// text is shown on `selection`. Without `load_images`, only images in
+    /// `data:` URLs and in the cache are shown.
+    pub fn show(
+        &mut self,
+        html: &str,
+        base_url: Option<&str>,
+        dark: bool,
+        selection: Rgb,
+        load_images: bool,
+    ) {
+        self.selection = peniko::Color::from_rgb8(selection.0, selection.1, selection.2);
         self.color_scheme = if dark {
             ColorScheme::Dark
         } else {
@@ -581,8 +594,15 @@ impl HtmlView {
         // The renderer keeps the commands of earlier frames until reset; they
         // would be painted again and may refer to images already freed.
         self.renderer.reset();
+        let selection = self.selection;
         self.renderer.render(
-            |scene| blitz_paint::paint_scene(scene, doc, scale, width, height, 0, 0),
+            |scene| {
+                let mut painter = SelectionPainter {
+                    inner: scene,
+                    selection,
+                };
+                blitz_paint::paint_scene(&mut painter, doc, scale, width, height, 0, 0);
+            },
             buffer,
         );
         (resolved, started.elapsed() - resolved)
@@ -806,6 +826,7 @@ mod tests {
             &format!(r#"<html><body style="margin: 0">{body}</body></html>"#),
             Some(PAGE),
             false,
+            Rgb(0, 0, 255),
             load_images,
         );
         render(&mut view);
