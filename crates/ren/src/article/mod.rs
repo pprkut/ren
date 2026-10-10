@@ -8,6 +8,8 @@
 pub mod cache;
 #[cfg_attr(not(feature = "html-view"), allow(dead_code))]
 mod document;
+#[cfg_attr(not(feature = "html-view"), allow(dead_code))]
+pub mod fragment;
 #[cfg(feature = "html-view")]
 pub mod html;
 #[cfg(feature = "html-view")]

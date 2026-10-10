@@ -410,8 +410,11 @@ pub struct HtmlView {
     buttons: MouseEventButtons,
     /// Last pointer position, logical pixels relative to the view.
     pointer: (f32, f32),
-    /// Links clicked with the middle button, which Blitz doesn't follow.
-    middle_clicks: Vec<String>,
+    /// Links Blitz doesn't follow: clicked with the middle button, or to a
+    /// fragment of the article that isn't there.
+    extra_clicks: Vec<String>,
+    /// The link the left button was pressed on.
+    pressed_link: Option<String>,
     started: Instant,
 }
 
@@ -458,7 +461,8 @@ impl HtmlView {
             navigation: Arc::new(Navigation::default()),
             buttons: MouseEventButtons::None,
             pointer: (0.0, 0.0),
-            middle_clicks: Vec::new(),
+            extra_clicks: Vec::new(),
+            pressed_link: None,
             started: Instant::now(),
         }
     }
@@ -609,7 +613,10 @@ impl HtmlView {
         if kind == PointerKind::Up(Button::Middle)
             && let Some(url) = self.link_at(x, y)
         {
-            self.middle_clicks.push(url);
+            self.extra_clicks.push(url);
+        }
+        if kind == PointerKind::Down(Button::Left) {
+            self.pressed_link = self.link_at(x, y);
         }
         let button = match kind {
             PointerKind::Down(b) | PointerKind::Up(b) => match b {
@@ -641,8 +648,52 @@ impl HtmlView {
             PointerKind::Move => UiEvent::PointerMove(event),
         };
         self.handle(event);
+        if kind == PointerKind::Up(Button::Left)
+            && let Some(url) = self.pressed_link.take()
+            && self.link_at(x, y).as_ref() == Some(&url)
+        {
+            self.follow_fragment(&url);
+        }
         if !matches!(kind, PointerKind::Move) {
             self.shell.request_redraw();
+        }
+    }
+
+    /// After Blitz handled a click on `url`: if it is a link to a fragment
+    /// of the article that has no target, scrolls to the heading whose
+    /// slug matches, or else opens the page at the fragment. The News
+    /// app's sanitiser removes the ids links point to (see [`fragment`]).
+    ///
+    /// [`fragment`]: super::fragment
+    fn follow_fragment(&mut self, url: &str) {
+        use url::Position;
+        let Some(doc) = &mut self.doc else {
+            return;
+        };
+        let Ok(target) = url::Url::parse(url) else {
+            return;
+        };
+        let Some(fragment) = target.fragment() else {
+            return;
+        };
+        if target[..Position::AfterQuery] != doc.url()[..Position::AfterQuery] {
+            return;
+        }
+        let fragment = percent_encoding::percent_decode_str(fragment)
+            .decode_utf8_lossy()
+            .into_owned();
+        // Blitz found it, or scrolled to the top.
+        if fragment.is_empty()
+            || fragment.eq_ignore_ascii_case("top")
+            || doc.get_fragment_target(&fragment).is_some()
+        {
+            return;
+        }
+        let slug = super::fragment::slug(&fragment);
+        if !slug.is_empty() && doc.get_fragment_target(&slug).is_some() {
+            doc.scroll_to_fragment(&slug);
+        } else {
+            self.extra_clicks.push(url.to_owned());
         }
     }
 
@@ -712,7 +763,7 @@ impl HtmlView {
             .lock()
             .map(|mut clicks| std::mem::take(&mut *clicks))
             .unwrap_or_default();
-        clicks.append(&mut self.middle_clicks);
+        clicks.append(&mut self.extra_clicks);
         clicks
     }
 
@@ -766,6 +817,14 @@ mod tests {
         view.render(&mut buffer);
     }
 
+    fn click(view: &mut HtmlView, x: f32, y: f32) {
+        let mods = Mods::default();
+        view.pointer(PointerKind::Move, x, y, mods);
+        view.pointer(PointerKind::Down(Button::Left), x, y, mods);
+        view.pointer(PointerKind::Up(Button::Left), x, y, mods);
+        render(view);
+    }
+
     /// Renders until `done` or a few seconds have passed (images load on
     /// other threads).
     fn wait_for(view: &mut HtmlView, mut done: impl FnMut(&HtmlView) -> bool) -> bool {
@@ -778,6 +837,37 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    #[test]
+    fn fragment_links_find_headings_by_their_slug() {
+        let link =
+            |href: &str| format!(r#"<a href="{href}" style="display: block; height: 20px">x</a>"#);
+        let body = format!(
+            r#"{}{}{}{}<div style="height: 1000px"></div><h2 id="getting-started" style="margin: 0">Getting started</h2><div style="height: 1000px"></div>"#,
+            link("#getting-started"),
+            link("#Getting_Started"),
+            link("#missing"),
+            link(&format!("{PAGE}#getting-started")),
+        );
+        let heading = 80.0 + 1000.0;
+        // Clicks the link at `y` in a new view, and returns where it
+        // scrolled to and the links to open.
+        let click_at = |y: f32| {
+            let mut view = view(&body, false);
+            click(&mut view, 5.0, y);
+            let doc = view.doc.as_ref().unwrap();
+            (doc.viewport_scroll().y, view.take_link_clicks())
+        };
+
+        // Blitz finds the id.
+        assert_eq!(click_at(5.0), (heading, vec![]));
+        // Only the slug matches.
+        assert_eq!(click_at(25.0), (heading, vec![]));
+        // No target: the page opens at the fragment.
+        assert_eq!(click_at(45.0), (0.0, vec![format!("{PAGE}#missing")]));
+        // An absolute link to the article's page is a fragment link too.
+        assert_eq!(click_at(65.0), (heading, vec![]));
     }
 
     #[test]
