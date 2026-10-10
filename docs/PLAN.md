@@ -558,8 +558,9 @@ From here on every milestone ships with tests for what it adds.
   links by heading slugs. In the container with synthetic articles:
   after 30 articles with large images 50 instead of 192 MiB RSS, peak 86
   instead of 718 MiB; after 300 articles of text 50 instead of 80 MiB,
-  first frames as fast. The measurement with real articles on the
-  desktop is `just measure-articles ~/ren-dump 100`.
+  first frames as fast. On the desktop with 100 real articles: 76.4 MiB
+  after them with images, peak 90.3 MiB (S3: 108.4 and 122.9), 26 MiB
+  above plain text (S3: 60); creating the view still costs 16 MiB.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting. Remove the spike-only variants
