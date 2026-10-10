@@ -117,8 +117,8 @@ summary=$OUT_DIR/summary.md
     fi
     echo "- binary size: ren $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB (without the tabs $(mib $(($(stat -c %s "$OUT_DIR/ren-without-tabs") / 1024))) MiB), ren-servo $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB"
     echo
-    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | frame to UI ms (mean / max) | Servo start / stop ms |"
-    echo "|---|---|---|---|---|---|---|---|---|---|---|---|"
+    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | frame to UI ms (mean / max) | Servo start / stop ms |"
+    echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 } >"$summary"
 
 for variant in "${variants[@]}"; do
@@ -131,16 +131,17 @@ for variant in "${variants[@]}"; do
         continue
     }
     frames=$(sed -n 's/^ren: scrolling: \([0-9]*\) frames.*/\1/p' "$vlog" | head -n 1)
+    cpu=$(sed -n 's/^ren: scrolling CPU: window \([0-9?]*\) %, helper \([0-9?]*\) %/\1 \/ \2/p' "$vlog" | head -n 1)
     frame_ms=$(sed -n 's/^ren: page frames: [0-9]*, to the UI in \([0-9.]*\) ms on average, \([0-9.]*\) ms at most/\1 \/ \2/p' "$vlog" | head -n 1)
     start_ms=$(sed -n 's/^ren: Servo started in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
     stop_ms=$(sed -n 's/^ren: Servo stopped in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s / %s |\n' \
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s / %s |\n' \
         "$name" "$(memory "$vlog" "before tabs")" "$(memory "$vlog" "with 1 tab")" \
         "$(memory "$vlog" "with 3 tabs")" "$(memory "$vlog" "after closing all tabs")" \
         "$(memory "$vlog" "with 1 tab again")" "$(memory "$vlog" "after closing again")" \
         "$(mib "$(kib "$vlog" rss anon "before tabs")")" \
         "$(mib "$(kib "$vlog" rss anon "after closing all tabs")")" \
-        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" >>"$summary"
+        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" >>"$summary"
 done
 
 {
@@ -148,9 +149,10 @@ done
     echo "RSS in MiB, total (UI process + helper process) while a helper runs. Anon: the UI"
     echo "process's anonymous memory, which shows what stays behind after the helper exits."
     echo "Frame buffer: the shared memory frames go through, in the helper's RSS with one tab"
-    echo "(also counted in the UI process). Frame to UI: reading a painted frame back from the"
-    echo "GPU into the shared buffer, plus copying it out in the UI. Servo start: until the"
-    echo "first tab can be opened (starting the process; Servo itself then starts in the helper)."
+    echo "(also counted in the UI process). CPU: percent of one core during the 3 s of"
+    echo "scrolling. Frame to UI: reading a painted frame back from the GPU into the shared"
+    echo "buffer, plus copying it out in the UI. Servo start: until the first tab can be opened"
+    echo "(starting the process; Servo itself then starts in the helper)."
     echo
     echo "Logs: \`$OUT_DIR\`"
 } >>"$summary"
