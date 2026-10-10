@@ -514,7 +514,8 @@ From here on every milestone ships with tests for what it adds.
   the window takes the server's 2 minutes and 5.5 s of CPU, adds 7 MiB,
   and the lists are read again in 42 ms on average while it runs. Freed
   memory is trimmed after every sync (the incremental one kept 3 MiB).
-- **M6 — Article view.** The S3 result made production-ready behind the
+- **M6 — Article view.** *(done; see `docs/decisions/0010-articles.md`)*
+  The S3 result made production-ready behind the
   `html-view` feature, including the image cache. From S3: freed image
   memory returned to the system (glibc keeps it; `malloc_trim` or the
   mmap threshold), images decoded at display size, the heap growth over
@@ -544,6 +545,21 @@ From here on every milestone ships with tests for what it adds.
     18 of 18 cases there. So: when a fragment has no target, scroll to the
     heading whose slug matches; failing that, open the original page at
     the fragment (tab or browser).
+
+  *Result:* images go through a disk cache (100 MiB), are refused above
+  25 MP from their header and scaled to the content's width before Blitz
+  decodes them (large JPEGs decoded at a fraction with `jpeg-decoder`),
+  one at a time. glibc's mmap threshold is fixed at 1 MiB, the heap is
+  trimmed after article switches and loaded images, and each article
+  gets a new renderer: the "heap Blitz keeps" was vello_cpu's glyph
+  outline cache. `articles.load-images` (a bar and Article → Load
+  Images), author colours replaced in dark mode, the selection in the
+  accent, a scroll indicator, video and audio as poster and link, jump
+  links by heading slugs. In the container with synthetic articles:
+  after 30 articles with large images 50 instead of 192 MiB RSS, peak 86
+  instead of 718 MiB; after 300 articles of text 50 instead of 80 MiB,
+  first frames as fast. The measurement with real articles on the
+  desktop is `just measure-articles ~/ren-dump 100`.
 - **M7 — Full-page tabs.** The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting. Remove the spike-only variants
@@ -569,6 +585,9 @@ From here on every milestone ships with tests for what it adds.
   - **Let the helper die with the UI:** `PR_SET_PDEATHSIG`, and a bound
     on its own shutdown (Servo's can hang once the UI is gone; an
     orphaned helper ran on for 10 minutes).
+  - **glibc's mmap threshold in the helper:** the UI process fixes it at
+    1 MiB since M6 (`0010`), the helper keeps glibc's dynamic one; check
+    with the tab measurements whether fixing it helps there too.
 
   Scrolling heavy pages (0005, "Scrolling heavy pages"); check each with
   `REN_TAB_STATS=1`:
