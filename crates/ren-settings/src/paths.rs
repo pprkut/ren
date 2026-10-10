@@ -24,6 +24,12 @@ pub fn database(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_DATA_HOME", ".local/share")?.join("ren/ren.db"))
 }
 
+/// `$XDG_CACHE_HOME/ren/images`, falling back to `~/.cache`: the images
+/// of articles, which can be removed at any time.
+pub fn image_cache(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/images"))
+}
+
 /// The directory in `variable`, else `fallback` in the home directory.
 /// Relative paths are invalid in the specification and ignored.
 fn base(var: &impl Fn(&str) -> Option<String>, variable: &str, fallback: &str) -> Option<PathBuf> {
@@ -56,6 +62,7 @@ mod tests {
             ("XDG_CONFIG_HOME", "/xdg/config"),
             ("XDG_STATE_HOME", "/xdg/state"),
             ("XDG_DATA_HOME", "/xdg/data"),
+            ("XDG_CACHE_HOME", "/xdg/cache"),
             ("HOME", "/home/u"),
         ]);
         assert_eq!(
@@ -64,6 +71,7 @@ mod tests {
         );
         assert_eq!(state(&vars), Some("/xdg/state/ren/state.toml".into()));
         assert_eq!(database(&vars), Some("/xdg/data/ren/ren.db".into()));
+        assert_eq!(image_cache(&vars), Some("/xdg/cache/ren/images".into()));
     }
 
     #[test]
@@ -81,6 +89,7 @@ mod tests {
             database(&vars),
             Some("/home/u/.local/share/ren/ren.db".into())
         );
+        assert_eq!(image_cache(&vars), Some("/home/u/.cache/ren/images".into()));
         assert_eq!(settings(env(&[])), None);
         assert_eq!(state(env(&[("HOME", "")])), None);
     }
