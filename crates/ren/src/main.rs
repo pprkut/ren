@@ -6,6 +6,7 @@ mod article;
 mod cli;
 mod demo;
 mod feed_tree;
+mod hash;
 mod item_list;
 mod procstat;
 mod reader;

@@ -14,11 +14,17 @@ use slint::{ComponentHandle, SharedString};
 use super::MainWindow;
 use crate::article::Article;
 #[cfg(feature = "html-view")]
+use crate::article::cache::ImageCache;
+#[cfg(feature = "html-view")]
 use crate::article::html::{Button, Cursor, HtmlView, Mods, PointerKind};
 #[cfg(feature = "html-view")]
 use crate::article::{Rgb, Style};
 
 const PLACEHOLDER: &str = "No article selected";
+
+/// The most disk space for the images of articles.
+#[cfg(feature = "html-view")]
+const IMAGE_CACHE_BYTES: u64 = 100 * 1024 * 1024;
 
 /// Shows articles in the window's article pane.
 pub struct ArticlePane {
@@ -113,6 +119,18 @@ impl ArticlePane {
         }
     }
 
+    /// What happened to the images of the articles shown, for
+    /// measurements; `None` without the HTML view.
+    pub fn image_stats(&self) -> Option<String> {
+        #[cfg(feature = "html-view")]
+        return self
+            .html
+            .as_ref()
+            .map(|html| html.view.image_stats().to_string());
+        #[cfg(not(feature = "html-view"))]
+        None
+    }
+
     /// Puts `text` on the clipboard (only with the HTML view, which has
     /// the clipboard).
     pub fn copy_text(&self, text: &str) {
@@ -149,6 +167,8 @@ impl ArticlePane {
 
     fn create_html_pane(&self, load_images: bool, measure: bool) -> HtmlPane {
         let weak = self.window.clone();
+        let cache = ren_settings::paths::image_cache(|name| std::env::var(name).ok())
+            .map(|dir| ImageCache::new(dir, IMAGE_CACHE_BYTES));
         HtmlPane {
             view: HtmlView::new(
                 move || {
@@ -160,6 +180,7 @@ impl ArticlePane {
                     });
                 },
                 load_images,
+                cache,
             ),
             buffers: [None, None],
             next: 0,
@@ -184,6 +205,9 @@ impl ArticlePane {
         let Some(html) = &mut self.html else {
             return;
         };
+        // Images are scaled for the size and scale factor known when the
+        // document is created.
+        set_view_size(&window, &mut html.view);
         let started = Instant::now();
         let document = article.html_document(&style);
         html.view
@@ -219,10 +243,7 @@ impl ArticlePane {
             return;
         };
         html.render_scheduled = false;
-        let scale = window.window().scale_factor();
-        let width = (window.get_article_width() * scale).round().max(1.0) as u32;
-        let height = (window.get_article_height() * scale).round().max(1.0) as u32;
-        html.view.set_size(width, height, scale);
+        let (width, height) = set_view_size(&window, &mut html.view);
 
         if html.view.needs_render() {
             let slot = html.next;
@@ -313,6 +334,16 @@ impl ArticlePane {
             .unwrap_or_default()
             .into()
     }
+}
+
+/// Gives the view the pane's size in physical pixels, and returns it.
+#[cfg(feature = "html-view")]
+fn set_view_size(window: &MainWindow, view: &mut HtmlView) -> (u32, u32) {
+    let scale = window.window().scale_factor();
+    let width = (window.get_article_width() * scale).round().max(1.0) as u32;
+    let height = (window.get_article_height() * scale).round().max(1.0) as u32;
+    view.set_size(width, height, scale);
+    (width, height)
 }
 
 #[cfg(feature = "html-view")]

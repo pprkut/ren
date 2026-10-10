@@ -6,6 +6,14 @@
 
 use super::Article;
 
+/// The article's font size, in CSS pixels.
+const FONT_SIZE: u32 = 15;
+/// The widest the article's text gets, in `em`: a readable line length.
+const CONTENT_EMS: u32 = 46;
+/// The widest the article's content gets, in CSS pixels, so also the widest
+/// an image is shown at.
+pub const CONTENT_WIDTH: u32 = FONT_SIZE * CONTENT_EMS;
+
 /// Colours for the article stylesheet, taken from the UI's palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
@@ -114,9 +122,9 @@ fn stylesheet(style: &Style) -> String {
     let border = bg.mix(fg, 60);
     format!(
         "html {{ background: {bg}; color: {fg}; color-scheme: {scheme}; }}
-body {{ margin: 0; padding: 16px 20px 32px; font-family: sans-serif; font-size: 15px;
+body {{ margin: 0; padding: 16px 20px 32px; font-family: sans-serif; font-size: {FONT_SIZE}px;
   line-height: 1.55; overflow-wrap: break-word; }}
-article {{ max-width: 46em; }}
+article {{ max-width: {CONTENT_EMS}em; }}
 header h1 {{ font-size: 1.5em; line-height: 1.25; margin: 0 0 0.3em; }}
 header h1 a {{ color: inherit; text-decoration: none; }}
 .meta {{ margin: 0 0 1.5em; font-size: 0.9em; color: {meta}; }}
