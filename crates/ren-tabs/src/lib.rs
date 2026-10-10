@@ -226,7 +226,7 @@ pub enum Event {
     External {
         url: String,
     },
-    /// A frame of `tab` is in buffer `buffer`: RGBA, premultiplied, top
+    /// A frame of `tab` is in buffer `buffer`: RGB (pages are opaque), top
     /// row first. `readback_us` is how long the helper took to get it
     /// from the GPU into the buffer.
     Frame {
