@@ -612,7 +612,8 @@ From here on every milestone ships with tests for what it adds.
   - **Content blocking (optional):** filter ad and tracker requests
     through Servo's request interception with a filter list (e.g. the
     `adblock` crate, MPL-2.0). Ads are what makes these pages repaint all
-    the time; also a privacy feature. As a setting.
+    the time; also a privacy feature. As a setting. *Moved to M7b, a
+    milestone of its own.*
 
   *Result:* Servo can't share a build with Blitz on another stylo
   (stylo's `links` key), so the helper became a program of its own,
@@ -638,7 +639,33 @@ From here on every milestone ships with tests for what it adds.
   threshold (on heise 100–117 MiB less). Heavy pages cost 160–470 MiB
   per tab (heise after its consent: 470) and scroll at about 25 frames
   per second on heise, with one frame under way at a time. Content
-  blocking isn't done.
+  blocking isn't done (M7b). Scrolling a page in a tab felt smooth, but
+  the window took 60–80 % of a core: Slint's software renderer drawing
+  each frame. RGB frames and no background under the frame cut a third
+  of that per frame; the rest is M10's.
+
+- **M7b — Content blocking.** Block ads and trackers in the web page
+  tabs: they make heavy pages big (heise: 470 MiB per tab once its
+  consent is accepted, M7) and repaint all the time, and they are a
+  privacy matter. Starts with research, recorded in a decision record:
+  - *Engines:* Brave's `adblock` crate (MPL-2.0; network rules, cosmetic
+    rules, its memory and CPU cost with the usual lists), what Servo
+    offers itself (request interception through `load_web_resource`, any
+    content-blocking work upstream), simpler host lists (e.g. hosts files
+    or a domain set), and how other Servo and Rust embedders do it.
+  - *Lists:* which ones (EasyList, EasyPrivacy, uBlock's, regional ones),
+    their licences (downloaded, not shipped, unless one allows it), how
+    and how often they are updated (by the helper, by the sync, a size
+    and age limit), where they are kept.
+  - *Cosmetic filtering:* hiding elements needs CSS or scripts injected
+    into pages (Servo's user content manager); worth it or network
+    blocking only.
+  - *Cost:* RSS of the helper with the engine and lists loaded against
+    what blocking saves on heavy pages, the time per request, startup
+    time of the helper.
+  Then the implementation in the helper, a setting to turn it off
+  (default on), and per-site exceptions if pages break. Measured with
+  `just measure-tabs` on the heavy pages of M7.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -684,7 +711,19 @@ From here on every milestone ships with tests for what it adds.
   for scrolling web pages after M7's frame path work: GPU renderers halve
   the UI's drawing cost on heavy pages but cost 35–60 MiB for the whole
   session (0001, 0005); if one still feels clearly better, offer it as a
-  setting.
+  setting. From M7:
+  - **The window's CPU while a page scrolls** (60–80 % of a core on the
+    desktop before RGB frames; 0011): Slint's software renderer drawing
+    every frame. Compare with the GPU renderers, and whether the software
+    renderer can draw an opaque image without its per-pixel path.
+  - **Two frames under way** in the tabs (two slots in the shared
+    buffer), so the GPU's work on the next frame overlaps the window's
+    copy of the last; heise scrolled at about 25 frames per second with
+    one.
+  - **Smooth wheel scrolling in the article view,** as in the tabs:
+    scrolling articles feels less smooth than pages.
+  - **The article view's last frame** is probably kept while a page is
+    shown (Slint keeps the image of an element it doesn't draw, 0011).
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
