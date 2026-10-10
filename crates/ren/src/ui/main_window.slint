@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { LineEdit, Palette, ScrollView } from "std-widgets.slint";
+import { Button, LineEdit, Palette, ScrollView } from "std-widgets.slint";
 import { FeedTree, FeedRow } from "feed_tree.slint";
 import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
 import { Splitter } from "splitter.slint";
@@ -38,8 +38,11 @@ export component MainWindow inherits Window {
     in property <image> article-image;
     // 0 default, 1 pointer (links), 2 text.
     in property <int> article-cursor;
-    out property <length> article-width: html-pane.width;
-    out property <length> article-height: html-pane.height;
+    out property <length> article-width: html-area.width;
+    out property <length> article-height: html-area.height;
+    // The article has images that weren't loaded (`articles.load-images`
+    // is off).
+    in property <bool> article-images-blocked;
     // Colours for the article stylesheet.
     out property <brush> article-background: Palette.background;
     out property <brush> article-foreground: Palette.foreground;
@@ -312,6 +315,13 @@ export component MainWindow inherits Window {
                 title: "Open Link in External Browser";
                 activated => {
                     root.action("open-browser");
+                }
+            }
+            MenuItem {
+                title: "Load Images";
+                enabled: root.article-images-blocked;
+                activated => {
+                    root.action("load-images");
                 }
             }
             MenuSeparator { }
@@ -590,118 +600,155 @@ export component MainWindow inherits Window {
                 background: Palette.background;
                 clip: true;
 
-                changed width => {
-                    root.article-resized();
-                }
-                changed height => {
-                    root.article-resized();
-                }
-
-                Image {
+                // Offers to load the images that weren't loaded.
+                images-bar := Rectangle {
+                    visible: root.article-images-blocked;
                     width: parent.width;
-                    height: parent.height;
-                    source: root.article-image;
-                    image-fit: fill;
-                }
+                    height: self.visible ? images-bar-layout.preferred-height : 0px;
+                    background: Theme.hover;
 
-                html-focus := FocusScope {
-                    focus-gained(reason) => {
-                        root.check-activation(reason);
-                    }
+                    images-bar-layout := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        padding-top: 4px;
+                        padding-bottom: 4px;
+                        spacing: 12px;
 
-                    // Scrolling by keyboard; deltas are positive towards the
-                    // top, as for the mouse wheel.
-                    property <length> line: 40px;
-                    property <length> page: html-pane.height * 0.9;
+                        Text {
+                            text: "Images from other servers were not loaded.";
+                            vertical-alignment: center;
+                            overflow: elide;
+                            color: Palette.foreground;
+                        }
 
-                    key-pressed(event) => {
-                        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
-                            if root.article-key(event.text, html-pane.mods(event.modifiers)) {
-                                return accept;
+                        Button {
+                            text: "Load Images";
+                            clicked => {
+                                root.action("load-images");
                             }
-                            return reject;
                         }
-                        if event.text == Key.UpArrow {
-                            root.article-scroll(0, self.line, 0);
-                        } else if event.text == Key.DownArrow {
-                            root.article-scroll(0, -self.line, 0);
-                        } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
-                            root.article-scroll(0, self.page, 0);
-                        } else if event.text == Key.PageDown || event.text == " " {
-                            root.article-scroll(0, -self.page, 0);
-                        } else if event.text == Key.Home {
-                            root.article-scroll(0, 1000000px, 0);
-                        } else if event.text == Key.End {
-                            root.article-scroll(0, -1000000px, 0);
-                        } else {
-                            return reject;
-                        }
-                        accept
                     }
                 }
 
-                // The link under the pointer when the menu opened.
-                property <string> menu-link;
+                html-area := Rectangle {
+                    y: images-bar.height;
+                    width: parent.width;
+                    height: parent.height - images-bar.height;
 
-                article-menu := ContextMenuArea {
-                    Menu {
-                        if html-pane.menu-link != "" && root.tabs-available: MenuItem {
-                            title: "Open Link in Tab";
-                            activated => {
-                                root.article-link-action(html-pane.menu-link, "open");
-                            }
-                        }
-                        if html-pane.menu-link != "": MenuItem {
-                            title: "Open Link in Browser";
-                            activated => {
-                                root.article-link-action(html-pane.menu-link, "browser");
-                            }
-                        }
-                        if html-pane.menu-link != "": MenuItem {
-                            title: "Copy Link Address";
-                            activated => {
-                                root.article-link-action(html-pane.menu-link, "copy");
-                            }
-                        }
-                        if html-pane.menu-link != "": MenuSeparator { }
-                        MenuItem {
-                            title: "Copy";
-                            activated => {
-                                root.article-copy();
-                            }
-                        }
+                    changed width => {
+                        root.article-resized();
+                    }
+                    changed height => {
+                        root.article-resized();
                     }
 
-                    TouchArea {
-                        mouse-cursor: root.article-cursor == 1 ? MouseCursor.pointer : root.article-cursor == 2 ? MouseCursor.text : MouseCursor.default;
-                        pointer-event(event) => {
-                            if event.kind == PointerEventKind.down {
-                                html-focus.focus();
-                            }
-                            // This TouchArea takes the right click before the
-                            // ContextMenuArea sees it; open the menu here, and
-                            // keep the click from Blitz so the selection stays.
-                            if event.button == PointerEventButton.right {
-                                if event.kind == PointerEventKind.down {
-                                    html-pane.menu-link = root.article-link-at(self.mouse-x, self.mouse-y);
-                                    article-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.article-image;
+                        image-fit: fill;
+                    }
+
+                    html-focus := FocusScope {
+                        focus-gained(reason) => {
+                            root.check-activation(reason);
+                        }
+
+                        // Scrolling by keyboard; deltas are positive towards the
+                        // top, as for the mouse wheel.
+                        property <length> line: 40px;
+                        property <length> page: html-area.height * 0.9;
+
+                        key-pressed(event) => {
+                            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                                if root.article-key(event.text, html-pane.mods(event.modifiers)) {
+                                    return accept;
                                 }
-                                return;
+                                return reject;
                             }
-                            if event.kind != PointerEventKind.cancel {
-                                root.article-pointer(
-                                    event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
-                                    event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
-                                    self.mouse-x,
-                                    self.mouse-y,
-                                    html-pane.mods(event.modifiers));
+                            if event.text == Key.UpArrow {
+                                root.article-scroll(0, self.line, 0);
+                            } else if event.text == Key.DownArrow {
+                                root.article-scroll(0, -self.line, 0);
+                            } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
+                                root.article-scroll(0, self.page, 0);
+                            } else if event.text == Key.PageDown || event.text == " " {
+                                root.article-scroll(0, -self.page, 0);
+                            } else if event.text == Key.Home {
+                                root.article-scroll(0, 1000000px, 0);
+                            } else if event.text == Key.End {
+                                root.article-scroll(0, -1000000px, 0);
+                            } else {
+                                return reject;
                             }
-                        }
-                        scroll-event(event) => {
-                            root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
                             accept
                         }
                     }
+
+                    // The link under the pointer when the menu opened.
+                    property <string> menu-link;
+
+                    article-menu := ContextMenuArea {
+                        Menu {
+                            if html-area.menu-link != "" && root.tabs-available: MenuItem {
+                                title: "Open Link in Tab";
+                                activated => {
+                                    root.article-link-action(html-area.menu-link, "open");
+                                }
+                            }
+                            if html-area.menu-link != "": MenuItem {
+                                title: "Open Link in Browser";
+                                activated => {
+                                    root.article-link-action(html-area.menu-link, "browser");
+                                }
+                            }
+                            if html-area.menu-link != "": MenuItem {
+                                title: "Copy Link Address";
+                                activated => {
+                                    root.article-link-action(html-area.menu-link, "copy");
+                                }
+                            }
+                            if html-area.menu-link != "": MenuSeparator { }
+                            MenuItem {
+                                title: "Copy";
+                                activated => {
+                                    root.article-copy();
+                                }
+                            }
+                        }
+
+                        TouchArea {
+                            mouse-cursor: root.article-cursor == 1 ? MouseCursor.pointer : root.article-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                            pointer-event(event) => {
+                                if event.kind == PointerEventKind.down {
+                                    html-focus.focus();
+                                }
+                                // This TouchArea takes the right click before the
+                                // ContextMenuArea sees it; open the menu here, and
+                                // keep the click from Blitz so the selection stays.
+                                if event.button == PointerEventButton.right {
+                                    if event.kind == PointerEventKind.down {
+                                        html-area.menu-link = root.article-link-at(self.mouse-x, self.mouse-y);
+                                        article-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                    }
+                                    return;
+                                }
+                                if event.kind != PointerEventKind.cancel {
+                                    root.article-pointer(
+                                        event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                        event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
+                                        self.mouse-x,
+                                        self.mouse-y,
+                                        html-pane.mods(event.modifiers));
+                                }
+                            }
+                            scroll-event(event) => {
+                                root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
+                                accept
+                            }
+                        }
+                    }
+
                 }
 
                 pure function mods(m: KeyboardModifiers) -> int {

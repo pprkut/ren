@@ -170,16 +170,23 @@ struct Net {
 
 /// What the workers share with the view.
 struct NetShared {
-    /// Whether images are fetched from their servers; `data:` URLs and the
-    /// cache are always used.
+    /// Whether the document shown fetches images from their servers;
+    /// `data:` URLs and the cache are always used. Set before a document is
+    /// created, so that it applies to all its requests.
     remote: AtomicBool,
     /// Requests of older documents (articles no longer shown) are dropped.
     /// Document ids only grow; a newer document may already be fetching
     /// while it is being created, before its id is stored here.
     current_doc: AtomicUsize,
+    /// The last document that had an image to fetch from its server
+    /// without `remote`, plus one; 0 for none.
+    blocked_doc: AtomicUsize,
     /// Physical pixels per CSS pixel, as `f32` bits.
     scale: AtomicU32,
     cache: Option<ImageCache>,
+    /// Asked to render again when an image wasn't loaded, so the UI can
+    /// offer to load it.
+    shell: Arc<Shell>,
     stats: ImageStats,
 }
 
@@ -245,6 +252,8 @@ impl NetShared {
                 }
                 None if !job.remote => {
                     count(&self.stats.blocked);
+                    self.blocked_doc.store(job.doc_id + 1, Ordering::Release);
+                    self.shell.request_redraw();
                     return;
                 }
                 None => fetch(agent, &url).inspect(|bytes| {
@@ -279,14 +288,16 @@ impl NetShared {
 }
 
 impl Net {
-    fn new(remote: bool, cache: Option<ImageCache>) -> Self {
+    fn new(cache: Option<ImageCache>, shell: Arc<Shell>) -> Self {
         Self {
             jobs: Mutex::new(None),
             shared: Arc::new(NetShared {
-                remote: AtomicBool::new(remote),
+                remote: AtomicBool::new(false),
                 current_doc: AtomicUsize::new(0),
+                blocked_doc: AtomicUsize::new(0),
                 scale: AtomicU32::new(1f32.to_bits()),
                 cache,
+                shell,
                 stats: ImageStats::default(),
             }),
         }
@@ -407,13 +418,8 @@ pub struct HtmlView {
 impl HtmlView {
     /// `wake` is called, possibly from another thread, when the view needs
     /// to be rendered again, e.g. after an image has loaded. Images are
-    /// kept in `cache`. Without `load_images`, only images in `data:` URLs
-    /// and in the cache are shown.
-    pub fn new(
-        wake: impl Fn() + Send + Sync + 'static,
-        load_images: bool,
-        cache: Option<ImageCache>,
-    ) -> Self {
+    /// kept in `cache`.
+    pub fn new(wake: impl Fn() + Send + Sync + 'static, cache: Option<ImageCache>) -> Self {
         use parley::fontique::{Blob, Collection, CollectionOptions, SourceCache};
         // One font collection for all articles, so the system fonts are
         // scanned only once.
@@ -428,6 +434,11 @@ impl HtmlView {
             .collection
             .register_fonts(Blob::new(Arc::new(blitz_dom::BULLET_FONT) as _), None);
 
+        let shell = Arc::new(Shell {
+            redraw: AtomicBool::new(false),
+            wake: Box::new(wake),
+            clipboard: Mutex::new(None),
+        });
         Self {
             doc: None,
             renderer: VelloCpuImageRenderer::with_image_cache_config(
@@ -442,13 +453,9 @@ impl HtmlView {
             scale: 1.0,
             color_scheme: ColorScheme::Light,
             font_ctx,
-            shell: Arc::new(Shell {
-                redraw: AtomicBool::new(false),
-                wake: Box::new(wake),
-                clipboard: Mutex::new(None),
-            }),
+            net: Arc::new(Net::new(cache, shell.clone())),
+            shell,
             navigation: Arc::new(Navigation::default()),
-            net: Arc::new(Net::new(load_images, cache)),
             buttons: MouseEventButtons::None,
             pointer: (0.0, 0.0),
             middle_clicks: Vec::new(),
@@ -460,8 +467,10 @@ impl HtmlView {
         Viewport::new(self.size.0, self.size.1, self.scale, self.color_scheme)
     }
 
-    /// Shows a document; relative URLs resolve against `base_url`.
-    pub fn show(&mut self, html: &str, base_url: Option<&str>, dark: bool) {
+    /// Shows a document; relative URLs resolve against `base_url`. Without
+    /// `load_images`, only images in `data:` URLs and in the cache are
+    /// shown.
+    pub fn show(&mut self, html: &str, base_url: Option<&str>, dark: bool, load_images: bool) {
         self.color_scheme = if dark {
             ColorScheme::Dark
         } else {
@@ -484,6 +493,7 @@ impl HtmlView {
         // while painting, which may not happen for a long time.
         self.doc = None;
         self.renderer.clear_image_cache();
+        self.net.shared.remote.store(load_images, Ordering::Release);
         let doc = HtmlDocument::from_html(html, config);
         self.net
             .shared
@@ -530,6 +540,14 @@ impl HtmlView {
             doc.set_viewport(viewport);
         }
         self.shell.request_redraw();
+    }
+
+    /// Whether the document has images that weren't loaded because it
+    /// doesn't load images from their servers.
+    pub fn images_blocked(&self) -> bool {
+        self.doc
+            .as_ref()
+            .is_some_and(|doc| self.net.shared.blocked_doc.load(Ordering::Acquire) == doc.id() + 1)
     }
 
     /// What happened to the images of all articles so far.
@@ -731,12 +749,13 @@ mod tests {
 
     /// A view of 1000×300 pixels showing `body` without margins.
     fn view(body: &str, load_images: bool) -> HtmlView {
-        let mut view = HtmlView::new(|| {}, load_images, None);
+        let mut view = HtmlView::new(|| {}, None);
         view.set_size(WIDTH, HEIGHT, 1.0);
         view.show(
             &format!(r#"<html><body style="margin: 0">{body}</body></html>"#),
             Some(PAGE),
             false,
+            load_images,
         );
         render(&mut view);
         view
@@ -759,6 +778,15 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    #[test]
+    fn remote_images_can_wait_for_a_request() {
+        let mut view = view(r#"<img src="https://example.org/a.png">"#, false);
+        assert!(wait_for(&mut view, HtmlView::images_blocked));
+        assert_eq!(view.image_stats().blocked.load(Ordering::Relaxed), 1);
+        view.clear();
+        assert!(!view.images_blocked());
     }
 
     #[test]

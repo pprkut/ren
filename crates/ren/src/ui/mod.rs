@@ -125,6 +125,8 @@ struct App {
     sync: RefCell<SyncState>,
     /// Print what syncs take.
     measure: bool,
+    /// `--no-images`: articles never load images from their servers.
+    no_images: bool,
 }
 
 #[derive(Default)]
@@ -267,6 +269,7 @@ impl App {
             "previous-article" => self.item_key("up", 1),
             "next-article" => self.item_key("down", 1),
             "next-unread" => self.next_unread(),
+            "load-images" => self.article.borrow_mut().load_images_once(),
             "mark-feed-read" => self.mark_node_read(self.reader.borrow().selected()),
             "mark-read" | "mark-unread" => {
                 if let Some(id) = current {
@@ -487,7 +490,17 @@ impl App {
         } else if reload != Reload::Unchanged {
             self.status("Settings reloaded");
         }
-        Some(file.settings().clone())
+        let settings = file.settings().clone();
+        self.apply_settings(&settings);
+        Some(settings)
+    }
+
+    /// Applies the settings the window uses itself; the sync reads its own
+    /// when it starts.
+    fn apply_settings(&self, settings: &Settings) {
+        self.article
+            .borrow_mut()
+            .set_load_images(settings.load_images() && !self.no_images);
     }
 
     fn window_activated(&self) {
@@ -1060,7 +1073,6 @@ fn run_window(
     let article = article::ArticlePane::new(
         &window,
         !options.plain_text,
-        !options.no_images,
         options.measure || options.cycle_articles.is_some(),
         move |url| {
             if let Some(window) = weak.upgrade() {
@@ -1090,9 +1102,14 @@ fn run_window(
         settings: RefCell::new(None),
         sync: RefCell::default(),
         measure: options.measure || options.measure_sync,
+        no_images: options.no_images,
     });
     app.refresh_tree();
     app.show_sort();
+    match &settings {
+        Some((file, _)) => app.apply_settings(file.settings()),
+        None => app.apply_settings(&Settings::default()),
+    }
     if let Some((file, reload)) = settings {
         if let Some(message) = settings_message(file.path(), &reload) {
             app.status_until_next(message);

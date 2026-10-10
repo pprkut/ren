@@ -30,10 +30,13 @@ const IMAGE_CACHE_BYTES: u64 = 100 * 1024 * 1024;
 pub struct ArticlePane {
     window: slint::Weak<MainWindow>,
     article: Option<Article>,
-    /// Whether articles are rendered as HTML, and how: `(load_images,
-    /// measure)`.
+    /// Whether articles are rendered as HTML, and whether their timings are
+    /// printed.
     #[cfg(feature = "html-view")]
-    html_mode: Option<(bool, bool)>,
+    html_mode: Option<bool>,
+    /// Whether articles load images from their servers.
+    #[cfg(feature = "html-view")]
+    load_images: bool,
     /// The HTML view, created with the first article so that startup
     /// doesn't pay for Blitz.
     #[cfg(feature = "html-view")]
@@ -91,18 +94,19 @@ impl ArticlePane {
     pub fn new(
         window: &MainWindow,
         html: bool,
-        load_images: bool,
         measure: bool,
         on_link: impl Fn(&str) + 'static,
     ) -> Rc<RefCell<Self>> {
         #[cfg(not(feature = "html-view"))]
-        let _ = (html, load_images, measure, on_link);
+        let _ = (html, measure, on_link);
 
         let pane = Rc::new(RefCell::new(Self {
             window: window.as_weak(),
             article: None,
             #[cfg(feature = "html-view")]
-            html_mode: html.then_some((load_images, measure)),
+            html_mode: html.then_some(measure),
+            #[cfg(feature = "html-view")]
+            load_images: true,
             #[cfg(feature = "html-view")]
             html: None,
             #[cfg(feature = "html-view")]
@@ -149,8 +153,26 @@ impl ArticlePane {
             html.buffers = [None, None];
             window.set_html_view(false);
             window.set_article_image(slint::Image::default());
+            window.set_article_images_blocked(false);
             html.trim_later();
         }
+    }
+
+    /// Whether articles load images from their servers, from the next one
+    /// on.
+    pub fn set_load_images(&mut self, load: bool) {
+        #[cfg(feature = "html-view")]
+        {
+            self.load_images = load;
+        }
+        #[cfg(not(feature = "html-view"))]
+        let _ = load;
+    }
+
+    /// Shows the article again with the images from their servers.
+    pub fn load_images_once(&mut self) {
+        #[cfg(feature = "html-view")]
+        self.load_html_with(true);
     }
 
     /// What happened to the images of the articles shown, for
@@ -199,7 +221,7 @@ impl ArticlePane {
         }
     }
 
-    fn create_html_pane(&self, load_images: bool, measure: bool) -> HtmlPane {
+    fn create_html_pane(&self, measure: bool) -> HtmlPane {
         let weak = self.window.clone();
         let cache = ren_settings::paths::image_cache(|name| std::env::var(name).ok())
             .map(|dir| ImageCache::new(dir, IMAGE_CACHE_BYTES));
@@ -213,7 +235,6 @@ impl ArticlePane {
                         }
                     });
                 },
-                load_images,
                 cache,
             ),
             buffers: [None, None],
@@ -229,11 +250,18 @@ impl ArticlePane {
     /// (Re)builds the document of the current article, e.g. after the
     /// colour scheme changed.
     fn load_html(&mut self) {
-        let (Some((load_images, measure)), Some(article)) = (self.html_mode, &self.article) else {
+        self.load_html_with(false);
+    }
+
+    /// (Re)builds the document of the current article, loading images
+    /// from their servers if the setting or `load_images` says so.
+    fn load_html_with(&mut self, load_images: bool) {
+        let (Some(measure), Some(article)) = (self.html_mode, &self.article) else {
             return;
         };
+        let load_images = load_images || self.load_images;
         if self.html.is_none() {
-            self.html = Some(self.create_html_pane(load_images, measure));
+            self.html = Some(self.create_html_pane(measure));
         }
         let window = self.window();
         let style = Self::style(&window);
@@ -246,7 +274,7 @@ impl ArticlePane {
         let started = Instant::now();
         let document = article.html_document(&style);
         html.view
-            .show(&document, article.url.as_deref(), style.dark);
+            .show(&document, article.url.as_deref(), style.dark, load_images);
         html.pending_timing = Some((started.elapsed(), started));
         html.trim_later();
         window.set_html_view(true);
@@ -304,6 +332,11 @@ impl ArticlePane {
                     ms(started.elapsed()),
                 );
             }
+        }
+
+        let blocked = html.view.images_blocked();
+        if window.get_article_images_blocked() != blocked {
+            window.set_article_images_blocked(blocked);
         }
 
         let cursor = html.view.cursor();
