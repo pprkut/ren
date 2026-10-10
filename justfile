@@ -5,10 +5,11 @@
 default:
     @just --list
 
-# Run the checks CI runs
+# Run the checks CI runs, except for Servo's helper (check-servo)
 check:
     reuse lint
     cargo fmt --all --check
+    cd crates/ren-servo && cargo fmt --check
     cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
     cargo test --locked --no-default-features --features renderer-software
     cargo clippy --all-targets --locked -- -D warnings
@@ -20,6 +21,7 @@ check:
 check-light:
     reuse lint
     cargo fmt --all --check
+    cd crates/ren-servo && cargo fmt --check
     cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
     cargo test --locked --no-default-features --features renderer-software
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
@@ -32,11 +34,17 @@ check-secret-service:
 test-secret-service *args:
     scripts/test-secret-service.sh {{args}}
 
-# Run the checks of CI's Servo job (a long build)
+# Run the checks of CI's Servo job: the helper, ren-servo (a long build)
 check-servo:
-    cargo clippy --all-targets --locked --features servo -- -D warnings
-    cargo clippy --all-targets --locked --features servo-wgpu -- -D warnings
-    cargo test --locked --features servo-wgpu
+    cd crates/ren-servo && cargo fmt --check
+    cd crates/ren-servo && cargo clippy --all-targets --locked -- -D warnings
+    cd crates/ren-servo && cargo test --locked
+    @if command -v cargo-deny >/dev/null; then cargo deny --manifest-path crates/ren-servo/Cargo.toml check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
+
+# Build ren and its Servo helper (ren-servo, next to ren in target/), for web pages in tabs
+build profile="release":
+    cargo build --locked --profile {{profile}}
+    cd crates/ren-servo && cargo build --locked --profile {{profile}}
 
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
