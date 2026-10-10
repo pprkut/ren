@@ -507,8 +507,9 @@ fn key(text: &str) -> Option<Key> {
     }
     let mut chars = text.chars();
     match (chars.next(), chars.next()) {
-        // Other private-use code points are keys without a mapping.
-        (Some(c), None) if !('\u{f700}'..='\u{f8ff}').contains(&c) => {
+        // Other control characters and private-use code points are keys
+        // without a mapping.
+        (Some(c), None) if !c.is_control() && !('\u{f700}'..='\u{f8ff}').contains(&c) => {
             Some(Key::Character(text.to_owned()))
         }
         _ => None,
@@ -683,4 +684,28 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
         },
     );
     timer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_for_the_page() {
+        let named = |k: slint::platform::Key| key(SharedString::from(k).as_str());
+        assert_eq!(key("a"), Some(Key::Character("a".to_owned())));
+        assert_eq!(key("ä"), Some(Key::Character("ä".to_owned())));
+        assert_eq!(
+            named(slint::platform::Key::Return),
+            Some(Key::Named(NamedKey::Enter))
+        );
+        assert_eq!(
+            named(slint::platform::Key::F5),
+            Some(Key::Named(NamedKey::F5))
+        );
+        // Keys without a mapping, and text that isn't one key.
+        assert_eq!(named(slint::platform::Key::CapsLock), None);
+        assert_eq!(key("ab"), None);
+        assert_eq!(key(""), None);
+    }
 }
