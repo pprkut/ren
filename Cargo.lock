@@ -7062,6 +7062,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ren-tabs"
+version = "0.1.0"
+dependencies = [
+ "memmap2",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+[package]
+name = "ren-tabs"
+description = "Web page tabs of ren: the protocol between the window and its Servo helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Passing the frame buffer's file descriptor (SCM_RIGHTS), the sealed
+# memfd. Both are already built for Slint's winit backend and Servo.
+rustix = { version = "1", default-features = false, features = ["std", "fs", "net"] }
+memmap2 = "0.9"
