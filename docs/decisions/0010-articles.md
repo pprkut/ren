@@ -250,9 +250,11 @@ without.
   ren ignores relative XDG directories (fixed in 1aa4ef2). It was empty
   when the run started, so the variants measured what they should.
 
-Still to check by hand: the jump links in "GSoC 2026 Final Update -
-Jenkins Email Notifications using Outlook SMTP with OAuth", dark mode
-with real articles, and `articles.load-images = false`.
+Checked by hand by the user on the desktop: the jump links in "GSoC
+2026 Final Update - Jenkins Email Notifications using Outlook SMTP with
+OAuth" work; dark mode reads fine with articles from heise, Ars
+Technica, LWN, Anime News Network and the GitHub Blog; and
+`articles.load-images = false` works.
 
 ## Open
 
