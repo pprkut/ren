@@ -57,6 +57,33 @@ struct HtmlPane {
     pending_timing: Option<(Duration, Instant)>,
     /// A render is scheduled for after the pending input events.
     render_scheduled: bool,
+    /// Gives freed memory back to the system a moment after the article
+    /// changed.
+    trim_timer: slint::Timer,
+}
+
+/// The time after an article switch until freed memory is given back to
+/// the system: the previous article's memory is free then, and switching
+/// quickly through articles trims only once.
+#[cfg(feature = "html-view")]
+const TRIM_DELAY: Duration = Duration::from_secs(1);
+
+#[cfg(feature = "html-view")]
+impl HtmlPane {
+    /// glibc keeps freed memory, and raises its threshold for serving large
+    /// blocks from separate mappings (which are returned when freed) after
+    /// such blocks were freed, so decoded images end up in the heap and
+    /// stay there (see `docs/decisions/0004-article-view.md`).
+    fn trim_later(&self) {
+        let measure = self.measure;
+        self.trim_timer
+            .start(slint::TimerMode::SingleShot, TRIM_DELAY, move || {
+                let started = Instant::now();
+                if crate::procstat::trim_heap() && measure {
+                    eprintln!("ren: heap trimmed in {:.1} ms", ms(started.elapsed()));
+                }
+            });
+    }
 }
 
 impl ArticlePane {
@@ -114,8 +141,15 @@ impl ArticlePane {
         self.show_placeholder();
         #[cfg(feature = "html-view")]
         if let Some(html) = &mut self.html {
+            let window = self
+                .window
+                .upgrade()
+                .expect("the pane only lives as long as the window");
             html.view.clear();
-            self.window().set_html_view(false);
+            html.buffers = [None, None];
+            window.set_html_view(false);
+            window.set_article_image(slint::Image::default());
+            html.trim_later();
         }
     }
 
@@ -188,6 +222,7 @@ impl ArticlePane {
             measure,
             pending_timing: None,
             render_scheduled: false,
+            trim_timer: slint::Timer::default(),
         }
     }
 
@@ -213,6 +248,7 @@ impl ArticlePane {
         html.view
             .show(&document, article.url.as_deref(), style.dark);
         html.pending_timing = Some((started.elapsed(), started));
+        html.trim_later();
         window.set_html_view(true);
         self.render();
     }
