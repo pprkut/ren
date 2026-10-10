@@ -628,9 +628,15 @@ From here on every milestone ships with tests for what it adds.
   Servo profile in `$XDG_DATA_HOME/ren/servo` (`pages.keep-site-data`,
   Settings → Clear Web Site Data); per feed, "Show Full Pages Instead of
   Articles" loads its articles' pages in one tab. Spike variants
-  removed. Checked in the container (Xvfb, llvmpipe); the desktop
-  measurements (`just measure-tabs`, heavy pages, the helper's mmap
-  threshold) are still to be run. Content blocking isn't done.
+  removed. On the desktop: 48.0 MiB before the first tab (S4: 56.9),
+  248.4 with one (288.5), 311.9 with three (418.0); the helper 30–90
+  MiB smaller; starting 0.9 ms, stopping 1.2 ms without waiting on the
+  UI thread; frames 3.9 ms to the window (6.9), 133 frames while
+  scrolling (127), Ars Technica 162. The window kept one frame after the
+  last tab closed (Slint keeps the image of a hidden element); fixed,
+  to be confirmed. The helper keeps the fixed mmap threshold. Heavy
+  pages cost 160–250 MiB per tab; heise is to be measured again after
+  accepting its consent banner. Content blocking isn't done.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
