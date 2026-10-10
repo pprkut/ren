@@ -93,7 +93,9 @@ impl Model for ItemListModel {
     }
 }
 
-fn feed_row(row: &Row) -> FeedRow {
+/// A row of the feed tree; `full_page` for feeds whose articles show their
+/// web page instead.
+fn feed_row(row: &Row, full_page: bool) -> FeedRow {
     FeedRow {
         title: row.title.as_str().into(),
         depth: row.depth.into(),
@@ -103,6 +105,7 @@ fn feed_row(row: &Row) -> FeedRow {
         expanded: row.expanded == Some(true),
         last: row.last,
         guides: ModelRc::new(VecModel::from(row.guides.clone())),
+        full_page,
     }
 }
 
@@ -166,18 +169,40 @@ impl App {
         match changed {
             Some(changed) => {
                 for i in changed {
-                    self.feeds.set_row_data(i, feed_row(&rows[i]));
+                    self.feeds.set_row_data(i, self.feed_row(&rows[i]));
                 }
             }
-            None => self
-                .feeds
-                .set_vec(rows.iter().map(feed_row).collect::<Vec<_>>()),
+            None => self.feeds.set_vec(
+                rows.iter()
+                    .map(|row| self.feed_row(row))
+                    .collect::<Vec<_>>(),
+            ),
         }
         let current = rows.iter().position(|r| r.node == selected);
         *self.tree_rows.borrow_mut() = rows;
         let window = self.window();
         window.set_current_feed(current.map_or(-1, |i| i as i32));
         window.set_unread_text(format!("{unread} unread articles").into());
+    }
+
+    fn feed_row(&self, row: &Row) -> FeedRow {
+        let full_page = match row.node {
+            Node::Feed(id) => self.reader.borrow().is_full_page(id),
+            _ => false,
+        };
+        feed_row(row, full_page)
+    }
+
+    /// Switches whether a feed's articles show their web page instead.
+    fn toggle_full_page(&self, row: usize, feed_id: u64) {
+        let full_page = !self.reader.borrow().is_full_page(feed_id);
+        if self
+            .with_reader(|reader| reader.set_full_page(feed_id, full_page))
+            .is_some()
+            && let Some(tree_row) = self.tree_rows.borrow().get(row)
+        {
+            self.feeds.set_row_data(row, feed_row(tree_row, full_page));
+        }
     }
 
     /// Updates what an operation of the reader changed.
@@ -288,6 +313,23 @@ impl App {
             }
             "fetch-feed" | "fetch-all" => self.start_sync(),
             "cancel-sync" => self.cancel_sync(),
+            #[cfg(feature = "servo")]
+            "close-tab" => self.pages.borrow_mut().close_current(),
+            #[cfg(feature = "servo")]
+            "page-browser" => {
+                let url = self.pages.borrow().current_url();
+                if let Some(url) = url {
+                    self.open_in_browser(&url);
+                }
+            }
+            #[cfg(feature = "servo")]
+            "clear-site-data" => {
+                let result = self.pages.borrow_mut().clear_site_data();
+                match result {
+                    Ok(()) => self.status("Cookies and site data of web pages removed"),
+                    Err(err) => self.status(format!("Removing the site data failed: {err}")),
+                }
+            }
             "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
@@ -296,6 +338,7 @@ impl App {
     fn feed_menu(&self, row: usize, action: &str) {
         match (action, self.node(row)) {
             ("mark-feed-read", Some(node)) => self.mark_node_read(node),
+            ("toggle-full-page", Some(Node::Feed(id))) => self.toggle_full_page(row, id),
             // The server fetches the feeds; ren syncs everything.
             ("fetch-feed" | "fetch-all", _) => self.start_sync(),
             _ => self.not_implemented(action),
@@ -501,6 +544,10 @@ impl App {
         self.article
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
+        #[cfg(feature = "servo")]
+        self.pages
+            .borrow_mut()
+            .set_keep_site_data(settings.keep_site_data());
     }
 
     fn window_activated(&self) {
@@ -665,10 +712,29 @@ impl App {
             self.article.borrow_mut().clear();
             return;
         };
-        self.article.borrow_mut().show(article);
         #[cfg(feature = "servo")]
-        self.pages.borrow_mut().show_article();
+        self.show_page_or_article(article.url.as_deref());
+        self.article.borrow_mut().show(article);
         self.apply(changes);
+    }
+
+    /// Shows the article in front of the tabs, or for feeds set to show
+    /// full pages, the article's web page in a tab (the article is still
+    /// in the Article tab).
+    #[cfg(feature = "servo")]
+    fn show_page_or_article(&self, url: Option<&str>) {
+        let full_page = self.reader.borrow().current_full_page();
+        let url = url.filter(|url| full_page && link_kind(url) == LinkKind::Web);
+        let mut pages = self.pages.borrow_mut();
+        match url.map(|url| pages.open_for_article(url)) {
+            Some(Ok(())) => {}
+            Some(Err(err)) => {
+                pages.show_article();
+                drop(pages);
+                self.status(format!("Opening the page failed: {err}"));
+            }
+            None => pages.show_article(),
+        }
     }
 }
 
@@ -720,19 +786,6 @@ fn select_backend(
         selector = selector.renderer_name(renderer.to_owned());
     }
     selector.select()
-}
-
-/// Slint's femtovg renderer on wgpu's Vulkan backend, whose textures Servo's
-/// frames can be shared as.
-#[cfg(feature = "servo-wgpu")]
-fn select_wgpu_backend() -> Result<(), slint::PlatformError> {
-    use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
-    let mut settings = WGPUSettings::default();
-    settings.backends = wgpu::Backends::VULKAN;
-    slint::BackendSelector::new()
-        .backend_name("winit".to_owned())
-        .require_wgpu_30(WGPUConfiguration::Automatic(settings))
-        .select()
 }
 
 fn log_elapsed(started: Instant, what: &str) {
@@ -1014,35 +1067,9 @@ fn run_window(
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
 ) -> Result<(), slint::PlatformError> {
-    #[cfg(feature = "servo-wgpu")]
-    let wgpu_tabs = options.tabs == cli::TabMode::Wgpu;
-    #[cfg(not(feature = "servo-wgpu"))]
-    let wgpu_tabs = false;
-    if wgpu_tabs {
-        #[cfg(feature = "servo-wgpu")]
-        select_wgpu_backend()?;
-    } else {
-        select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
-    }
+    select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
 
     let window = MainWindow::new()?;
-    #[cfg(feature = "servo-wgpu")]
-    if wgpu_tabs {
-        // Before report_startup, which can only set the notifier if this
-        // didn't.
-        window
-            .window()
-            .set_rendering_notifier(|state, api| {
-                if let (
-                    slint::RenderingState::RenderingSetup,
-                    slint::GraphicsAPI::WGPU30 { device, .. },
-                ) = (state, api)
-                {
-                    crate::tabs::wgpu::set_device(device.clone());
-                }
-            })
-            .map_err(|err| slint::PlatformError::Other(err.to_string()))?;
-    }
     let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
     if let Some(dark) = dark {
         window.set_forced_color_scheme(if dark {
@@ -1082,11 +1109,7 @@ fn run_window(
     );
 
     #[cfg(feature = "servo")]
-    let pages = pages::Pages::new(
-        &window,
-        options.tabs,
-        options.measure || options.measure_tabs,
-    );
+    let pages = pages::Pages::new(&window, options.measure || options.measure_tabs);
 
     let app = Rc::new(App {
         window: window.as_weak(),
@@ -1228,7 +1251,15 @@ fn run_window(
         }
         pages::start_measurement(Rc::downgrade(&app.pages), urls)
     });
-    window.run()
+    let result = window.run();
+    // Closing the tabs ends the helper; it saves the site data before it
+    // exits, which ren's exit would cut short.
+    #[cfg(feature = "servo")]
+    {
+        app.pages.borrow_mut().close_all();
+        crate::tabs::helper::wait_for_helpers();
+    }
+    result
 }
 
 #[cfg(test)]

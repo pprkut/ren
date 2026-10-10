@@ -5,11 +5,16 @@
 //! back into memory: the CPU readback frame path. Unlike Servo's
 //! `SoftwareRenderingContext` it uses the hardware adapter, and unlike its
 //! `WindowRenderingContext` it needs no window, so it works with any Slint
-//! renderer and in a helper process.
+//! renderer in the window.
+//!
+//! Frames are read asynchronously: into a pixel buffer object, with a
+//! fence the helper polls, so it goes on handling Servo's messages while
+//! the GPU finishes the frame instead of waiting in `glReadPixels`.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 
 use dpi::PhysicalSize;
 use euclid::default::Size2D;
@@ -26,6 +31,26 @@ pub struct HeadlessContext {
     context: RefCell<Context>,
     gleam: Rc<dyn Gl>,
     glow: Arc<glow::Context>,
+    /// The pixel buffer object frames are read into, and its size.
+    pbo: Cell<(u32, usize)>,
+}
+
+/// A frame being read back from the GPU.
+pub struct Readback {
+    fence: gl::GLsync,
+    width: u32,
+    height: u32,
+    started: Instant,
+}
+
+impl Readback {
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub fn started(&self) -> Instant {
+        self.started
+    }
 }
 
 impl HeadlessContext {
@@ -62,15 +87,8 @@ impl HeadlessContext {
             context: RefCell::new(context),
             gleam,
             glow: Arc::new(glow),
+            pbo: Cell::new((0, 0)),
         })
-    }
-
-    /// The address of an OpenGL function of this context.
-    #[cfg_attr(not(feature = "servo-wgpu"), allow(dead_code))]
-    pub fn proc_address(&self, name: &str) -> *const std::ffi::c_void {
-        self.device
-            .borrow()
-            .get_proc_address(&self.context.borrow(), name)
     }
 
     /// The framebuffer Servo renders into.
@@ -84,29 +102,96 @@ impl HeadlessContext {
             .map_or(0, |fbo| fbo.0.get())
     }
 
-    /// Reads the current frame as RGBA, top row first, into `out`, which
-    /// must hold `width * height * 4` bytes.
-    pub fn read_into(&self, out: &mut [u8]) {
+    /// Starts reading the frame Servo just painted; returns at once.
+    pub fn start_readback(&self) -> Readback {
         let size = self.size.get();
+        let len = size.width as usize * size.height as usize * 4;
         let gl = &self.gleam;
+        let (mut pbo, capacity) = self.pbo.get();
+        if pbo == 0 {
+            pbo = gl.gen_buffers(1)[0];
+        }
         gl.bind_framebuffer(gl::FRAMEBUFFER, self.framebuffer());
         gl.bind_vertex_array(0);
-        gl.read_pixels_into_buffer(
-            0,
-            0,
-            size.width as i32,
-            size.height as i32,
-            gl::RGBA,
-            gl::UNSIGNED_BYTE,
-            out,
-        );
-        // OpenGL's first row is the bottom one.
-        let stride = size.width as usize * 4;
-        let rows = size.height as usize;
-        for y in 0..rows / 2 {
-            let (top, bottom) = out.split_at_mut((rows - 1 - y) * stride);
-            top[y * stride..(y + 1) * stride].swap_with_slice(&mut bottom[..stride]);
+        gl.bind_buffer(gl::PIXEL_PACK_BUFFER, pbo);
+        if capacity != len {
+            gl.buffer_data_untyped(
+                gl::PIXEL_PACK_BUFFER,
+                len as gl::GLsizeiptr,
+                std::ptr::null(),
+                gl::STREAM_READ,
+            );
         }
+        self.pbo.set((pbo, len));
+        // SAFETY: a pixel pack buffer of the frame's size is bound.
+        unsafe {
+            gl.read_pixels_into_pbo(
+                0,
+                0,
+                size.width as i32,
+                size.height as i32,
+                gl::RGBA,
+                gl::UNSIGNED_BYTE,
+            );
+        }
+        let fence = gl.fence_sync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.bind_buffer(gl::PIXEL_PACK_BUFFER, 0);
+        gl.flush();
+        Readback {
+            fence,
+            width: size.width,
+            height: size.height,
+            started: Instant::now(),
+        }
+    }
+
+    /// Whether the GPU has finished `readback`.
+    pub fn is_ready(&self, readback: &Readback) -> bool {
+        let status = self.gleam.client_wait_sync(readback.fence, 0, 0);
+        status != gl::TIMEOUT_EXPIRED
+    }
+
+    /// Copies a finished readback into `out` (RGBA, top row first), which
+    /// holds `width * height * 4` bytes of its size; waits for the GPU if
+    /// it isn't finished. A readback of an older size than `out` is
+    /// dropped.
+    pub fn finish_readback(&self, readback: Readback, out: Option<&mut [u8]>) {
+        let gl = &self.gleam;
+        let (pbo, len) = self.pbo.get();
+        let out = out.filter(|out| {
+            out.len() == len && len == readback.width as usize * readback.height as usize * 4
+        });
+        if let Some(out) = out {
+            gl.client_wait_sync(readback.fence, gl::SYNC_FLUSH_COMMANDS_BIT, u64::MAX);
+            gl.bind_buffer(gl::PIXEL_PACK_BUFFER, pbo);
+            let mapped = gl.map_buffer_range(
+                gl::PIXEL_PACK_BUFFER,
+                0,
+                len as gl::GLsizeiptr,
+                gl::MAP_READ_BIT,
+            );
+            if !mapped.is_null() {
+                // SAFETY: the buffer holds `len` bytes and is mapped for
+                // reading until `unmap_buffer`.
+                let pixels = unsafe { std::slice::from_raw_parts(mapped.cast::<u8>(), len) };
+                copy_flipped(pixels, out, readback.width as usize * 4);
+                gl.unmap_buffer(gl::PIXEL_PACK_BUFFER);
+            }
+            gl.bind_buffer(gl::PIXEL_PACK_BUFFER, 0);
+        }
+        gl.delete_sync(readback.fence);
+    }
+}
+
+/// Copies rows from `from` into `to` in reverse order: OpenGL's first row
+/// is the bottom one.
+fn copy_flipped(from: &[u8], to: &mut [u8], stride: usize) {
+    for (from, to) in from
+        .chunks_exact(stride)
+        .rev()
+        .zip(to.chunks_exact_mut(stride))
+    {
+        to.copy_from_slice(from);
     }
 }
 
@@ -131,6 +216,10 @@ fn bind_new_surface(
 
 impl Drop for HeadlessContext {
     fn drop(&mut self) {
+        let (pbo, _) = self.pbo.get();
+        if pbo != 0 {
+            self.gleam.delete_buffers(&[pbo]);
+        }
         let device = &mut self.device.borrow_mut();
         let context = &mut self.context.borrow_mut();
         if let Ok(Some(mut surface)) = device.unbind_surface_from_context(context) {
@@ -148,17 +237,27 @@ impl RenderingContext for HeadlessContext {
 
     fn read_to_image(&self, rect: DeviceIntRect) -> Option<RgbaImage> {
         // Servo only asks for this for screenshots; frames go through
-        // `read_into`.
+        // `start_readback`.
         let size = self.size.get();
-        let mut pixels = vec![0; size.width as usize * size.height as usize * 4];
-        self.read_into(&mut pixels);
+        let stride = size.width as usize * 4;
+        let gl = &self.gleam;
+        gl.bind_framebuffer(gl::FRAMEBUFFER, self.framebuffer());
+        let flipped = gl.read_pixels(
+            0,
+            0,
+            size.width as i32,
+            size.height as i32,
+            gl::RGBA,
+            gl::UNSIGNED_BYTE,
+        );
+        let mut pixels = vec![0; flipped.len()];
+        copy_flipped(&flipped, &mut pixels, stride);
         let rect = rect
             .to_usize()
             .intersection(&euclid::Box2D::from_size(euclid::Size2D::new(
                 size.width as usize,
                 size.height as usize,
             )))?;
-        let stride = size.width as usize * 4;
         let mut cropped = Vec::with_capacity(rect.area() * 4);
         for row in rect.y_range() {
             cropped.extend_from_slice(&pixels[row * stride + rect.min.x * 4..][..rect.width() * 4]);
@@ -203,5 +302,18 @@ impl RenderingContext for HeadlessContext {
 
     fn connection(&self) -> Option<Connection> {
         Some(self.device.borrow().connection())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_flipped;
+
+    #[test]
+    fn flips_rows() {
+        let from = [1, 1, 2, 2, 3, 3];
+        let mut to = [0; 6];
+        copy_flipped(&from, &mut to, 2);
+        assert_eq!(to, [3, 3, 2, 2, 1, 1]);
     }
 }

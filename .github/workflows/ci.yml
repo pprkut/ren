@@ -35,8 +35,15 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check licenses
+      - name: Servo's helper
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: crates/ren-servo/Cargo.toml
+          command: check licenses
 
-  # Without the heavy engines (Blitz, Servo), so it stays fast.
+  # Without the heavy engines (Blitz, Servo), so it stays fast. The
+  # `servo` feature is only the window's side of the tabs; Servo itself is
+  # in the helper, crates/ren-servo.
   rust:
     name: Format, lint, test
     runs-on: ubuntu-latest
@@ -52,8 +59,10 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-      - run: cargo test --locked --no-default-features --features renderer-software
+      - run: cargo fmt --check
+        working-directory: crates/ren-servo
+      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
+      - run: cargo test --locked --no-default-features --features renderer-software,servo
       - name: Test the Secret Service store
         run: |
           sudo apt-get install -y --no-install-recommends dbus-daemon gnome-keyring
@@ -78,14 +87,18 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
 
-  # Servo's web page tabs, as `full`, but in a job of its own: Servo is
-  # big (SpiderMonkey, WebRender, about 430 more crates). Without debug
-  # info the target directory fits the runner's disk; the cache is only
-  # saved on master, so pull requests don't push out the other caches.
+  # Servo's helper for web page tabs (crates/ren-servo, a workspace of its
+  # own), for the same events as `full`: Servo is big (SpiderMonkey,
+  # WebRender, about 430 more crates). Without debug info the target
+  # directory fits the runner's disk; the cache is only saved on master, so
+  # pull requests don't push out the other caches.
   servo:
-    name: Lint and test with Servo
+    name: Lint and test Servo's helper
     if: github.event_name != 'push' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/ren-servo
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -100,7 +113,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
+          workspaces: crates/ren-servo -> ../../target
           save-if: ${{ github.ref == 'refs/heads/master' }}
-      - run: cargo clippy --all-targets --locked --features servo -- -D warnings
-      - run: cargo clippy --all-targets --locked --features servo-wgpu -- -D warnings
-      - run: cargo test --locked --features servo-wgpu
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked

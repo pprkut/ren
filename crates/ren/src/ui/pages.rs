@@ -1,49 +1,60 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Web pages in tabs next to the article: the tab bar and the page pane,
-//! backed by a Servo [`Engine`] that exists only while tabs are open.
+//! Web pages in tabs next to the article: the tab bar, the page pane and
+//! its navigation bar, backed by the Servo helper, which runs only while
+//! tabs are open.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, Model, VecModel};
+use ren_tabs::stats::StageStats;
+use ren_tabs::{Button, Cursor, Event, Input, Key, Mods, NamedKey, Size, TabId};
+use slint::{ComponentHandle, Model, SharedString, VecModel};
 
 use super::{MainWindow, TabRow};
-use crate::cli::TabMode;
-use crate::tabs::{Button, Cursor, Engine, Event, Input, Size, TabId, Waker};
+use crate::tabs::Waker;
+use crate::tabs::helper::{self, Helper};
+use crate::tabs::list::{Changes, Tab, TabList};
 
 pub struct Pages {
     window: slint::Weak<MainWindow>,
-    mode: TabMode,
-    engine: Option<Box<dyn Engine>>,
-    /// Servo has run in this process, so it can't run here again.
-    servo_used: bool,
-    /// The engine's tab ids, in the order of `rows`.
-    tabs: Vec<TabId>,
+    helper: Option<Helper>,
+    list: TabList,
     rows: Rc<VecModel<TabRow>>,
+    /// Where Servo keeps cookies and site data, if it keeps them.
+    site_data: Option<PathBuf>,
+    keep_site_data: bool,
     measure: bool,
     /// A pump is already queued on the event loop.
     pump_queued: Arc<AtomicBool>,
-    stats: crate::tabs::StageStats,
+    stats: StageStats,
+}
+
+fn row(tab: &Tab) -> TabRow {
+    TabRow {
+        title: tab.label().into(),
+        loading: tab.loading,
+    }
 }
 
 impl Pages {
-    pub fn new(window: &MainWindow, mode: TabMode, measure: bool) -> Rc<RefCell<Self>> {
+    pub fn new(window: &MainWindow, measure: bool) -> Rc<RefCell<Self>> {
         let rows = Rc::new(VecModel::default());
         window.set_tabs(rows.clone().into());
         let pages = Rc::new(RefCell::new(Self {
             window: window.as_weak(),
-            mode,
-            engine: None,
-            servo_used: false,
-            tabs: Vec::new(),
+            helper: None,
+            list: TabList::default(),
             rows,
+            site_data: ren_settings::paths::site_data(|name| std::env::var(name).ok()),
+            keep_site_data: true,
             measure,
-            stats: crate::tabs::StageStats::new("ui"),
+            stats: StageStats::new("ui"),
             pump_queued: Arc::default(),
         }));
         connect(window, &pages);
@@ -57,25 +68,25 @@ impl Pages {
     }
 
     pub fn helper_pid(&self) -> Option<u32> {
-        self.engine.as_ref()?.helper_pid()
+        self.helper.as_ref()?.pid()
     }
 
-    /// Whether Servo can still be started after the last tab closed.
-    pub fn can_restart(&self) -> bool {
-        self.mode == TabMode::Helper
-    }
-
-    /// Frames shown so far by the current engine.
+    /// Frames shown so far by the current helper.
     pub fn frame_count(&self) -> usize {
-        self.engine
+        self.helper
             .as_ref()
-            .and_then(|e| e.frame_stats())
+            .and_then(Helper::frame_stats)
             .map_or(0, |(count, _, _)| count)
     }
 
     /// Whether any open tab is still loading.
     pub fn loading(&self) -> bool {
-        self.rows.iter().any(|row| row.loading)
+        self.list.tabs().iter().any(|tab| tab.loading)
+    }
+
+    /// Whether the next helper keeps cookies and site data.
+    pub fn set_keep_site_data(&mut self, keep: bool) {
+        self.keep_site_data = keep;
     }
 
     fn size(&self) -> Size {
@@ -105,110 +116,153 @@ impl Pages {
         })
     }
 
-    fn start_engine(&mut self) -> Result<Box<dyn Engine>, String> {
-        let window = self.window();
-        let size = self.size();
-        let dark = window.get_dark();
-        let waker = self.waker();
-        let started = Instant::now();
-        let engine: Box<dyn Engine> = match self.mode {
-            TabMode::Helper => Box::new(crate::tabs::helper::Helper::start(waker, size, dark)?),
-            _ if self.servo_used => {
-                return Err("Servo can't be started again in this process".to_owned());
+    /// The helper, started if it isn't running.
+    fn helper(&mut self) -> Result<&mut Helper, String> {
+        if self.helper.is_none() {
+            let window = self.window();
+            let profile = self
+                .site_data
+                .clone()
+                .filter(|_| self.keep_site_data)
+                .filter(|dir| match private_dir(dir) {
+                    Ok(()) => true,
+                    Err(err) => {
+                        eprintln!("ren: {}: {err}; site data isn't kept", dir.display());
+                        false
+                    }
+                });
+            let started = Instant::now();
+            let helper = Helper::start(self.waker(), self.size(), window.get_dark(), profile)?;
+            if self.measure {
+                eprintln!(
+                    "ren: Servo started in {:.1} ms",
+                    started.elapsed().as_secs_f64() * 1_000.0
+                );
             }
-            TabMode::InProcess => {
-                Box::new(crate::tabs::inprocess::InProcess::new(waker, size, dark)?)
-            }
-            #[cfg(feature = "servo-wgpu")]
-            TabMode::Wgpu => Box::new(crate::tabs::wgpu::Wgpu::new(waker, size, dark)?),
-            #[cfg(not(feature = "servo-wgpu"))]
-            TabMode::Wgpu => return Err("built without the servo-wgpu feature".to_owned()),
-        };
-        self.servo_used = true;
-        if self.measure {
-            eprintln!(
-                "ren: Servo started ({:?}) in {:.1} ms",
-                self.mode,
-                started.elapsed().as_secs_f64() * 1_000.0
-            );
+            self.helper = Some(helper);
         }
-        Ok(engine)
+        Ok(self.helper.as_mut().expect("started above"))
     }
 
+    /// Opens `url` in a new tab and shows it.
     pub fn open(&mut self, url: &str) -> Result<(), String> {
-        if self.engine.is_none() {
-            let engine = self.start_engine();
-            match engine {
-                Ok(engine) => self.engine = Some(engine),
-                Err(err) => {
-                    self.window().set_current_tab(-1);
-                    return Err(err);
+        let tab = self.helper()?.open(url);
+        let index = self.list.open(tab, url);
+        self.rows.push(row(&self.list.tabs()[index]));
+        self.show_current();
+        Ok(())
+    }
+
+    /// Shows the page of an article of a feed set to show full pages: in
+    /// the tab opened for that, or a new one.
+    pub fn open_for_article(&mut self, url: &str) -> Result<(), String> {
+        let existing = self
+            .list
+            .article_tab()
+            .and_then(|index| Some((index, self.list.id(index)?)));
+        match existing {
+            Some((index, tab)) if self.helper.is_some() => {
+                self.helper()?.load(tab, url);
+                self.list.load(index, url);
+                self.update_rows(&[index]);
+                self.list.select(Some(index));
+                self.show_current();
+            }
+            _ => {
+                self.open(url)?;
+                if let Some(index) = self.list.current() {
+                    self.list.set_article_tab(index);
                 }
             }
         }
-        let engine = self.engine.as_mut().expect("started above");
-        let tab = engine.open(url);
-        self.tabs.push(tab);
-        self.rows.push(TabRow {
-            title: url.into(),
-            loading: true,
-        });
-        self.select(self.tabs.len() as i32 - 1);
         Ok(())
     }
 
     /// Shows the article instead of a page; the tabs stay open.
     pub fn show_article(&mut self) {
-        if self.window().get_current_tab() >= 0 {
-            self.select(-1);
+        if self.list.select(None) {
+            self.show_current();
         }
     }
 
     /// Shows tab `index`, or the article for -1.
     fn select(&mut self, index: i32) {
+        self.list.select(usize::try_from(index).ok());
+        self.show_current();
+    }
+
+    /// Shows the list's current tab, or the article.
+    fn show_current(&mut self) {
         let window = self.window();
-        window.set_current_tab(index);
-        let tab = usize::try_from(index)
-            .ok()
-            .and_then(|i| self.tabs.get(i).copied());
-        if let Some(engine) = &mut self.engine {
-            engine.activate(tab);
-            self.request_pump();
+        window.set_current_tab(self.list.current().map_or(-1, |i| i as i32));
+        self.show_navigation();
+        let tab = self.list.current_tab().map(|t| t.id);
+        if let Some(helper) = &mut self.helper {
+            helper.activate(tab);
+        }
+        if tab.is_none() {
+            // The page's image isn't needed while the article is shown.
+            window.set_page_image(slint::Image::default());
         }
     }
 
+    /// The navigation bar: the current tab's address and history.
+    fn show_navigation(&self) {
+        let window = self.window();
+        let tab = self.list.current_tab();
+        window.set_page_url(tab.map_or(SharedString::new(), |t| t.url.as_str().into()));
+        window.set_page_can_go_back(tab.is_some_and(|t| t.back));
+        window.set_page_can_go_forward(tab.is_some_and(|t| t.forward));
+    }
+
     pub fn close(&mut self, index: usize) {
-        if index >= self.tabs.len() {
+        let shown = self.list.current() == Some(index);
+        let Some(tab) = self.list.close(index) else {
             return;
-        }
-        let tab = self.tabs.remove(index);
+        };
         self.rows.remove(index);
-        if let Some(engine) = &mut self.engine {
-            engine.close(tab);
+        if let Some(helper) = &mut self.helper {
+            helper.close(tab);
         }
-        if self.tabs.is_empty() {
-            self.stop_engine();
-            self.select(-1);
-            return;
+        if self.list.is_empty() {
+            self.stop_helper();
         }
-        let current = self.window().get_current_tab();
-        if current >= index as i32 {
-            self.select((current - 1).max(0).min(self.tabs.len() as i32 - 1));
+        if shown || self.list.is_empty() {
+            self.show_current();
+        } else {
+            let window = self.window();
+            window.set_current_tab(self.list.current().map_or(-1, |i| i as i32));
         }
     }
 
     pub fn close_all(&mut self) {
-        while !self.tabs.is_empty() {
-            self.close(self.tabs.len() - 1);
+        while !self.list.is_empty() {
+            self.close(self.list.len() - 1);
         }
     }
 
-    fn stop_engine(&mut self) {
-        let Some(engine) = self.engine.take() else {
+    /// Closes all tabs and removes the cookies and site data Servo kept.
+    pub fn clear_site_data(&mut self) -> Result<(), String> {
+        self.close_all();
+        // The helper writes the site data when it ends.
+        helper::wait_for_helpers();
+        let Some(dir) = &self.site_data else {
+            return Ok(());
+        };
+        match std::fs::remove_dir_all(dir) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => {
+                Err(format!("{}: {err}", dir.display()))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn stop_helper(&mut self) {
+        let Some(helper) = self.helper.take() else {
             return;
         };
         if self.measure
-            && let Some((frames, mean, max)) = engine.frame_stats()
+            && let Some((frames, mean, max)) = helper.frame_stats()
         {
             eprintln!(
                 "ren: page frames: {frames}, to the UI in {:.2} ms on average, {:.2} ms at most",
@@ -217,7 +271,7 @@ impl Pages {
             );
         }
         let started = Instant::now();
-        drop(engine);
+        drop(helper);
         if self.measure {
             eprintln!(
                 "ren: Servo stopped in {:.1} ms",
@@ -227,6 +281,8 @@ impl Pages {
         let window = self.window();
         window.set_page_image(slint::Image::default());
         window.set_page_cursor(0);
+        // The frame buffers are gone; give the heap's freed memory back.
+        crate::procstat::trim_heap();
     }
 
     fn request_pump(&self) {
@@ -235,61 +291,90 @@ impl Pages {
 
     fn pump(&mut self) {
         self.pump_queued.store(false, Ordering::Release);
-        let Some(engine) = &mut self.engine else {
+        let Some(helper) = &mut self.helper else {
             return;
         };
-        let events = engine.pump();
-        let frame = engine.take_frame();
+        let events = helper.pump();
+        let frame = helper.take_frame();
         let window = self.window();
         if let Some(frame) = frame {
             self.stats.count("frames");
             window.set_page_image(frame);
         }
         self.stats.report();
+        let events = match events {
+            Ok(events) => events,
+            Err(reason) => {
+                eprintln!("ren: {reason}");
+                window.set_status_text(reason.into());
+                self.helper = None;
+                self.list.clear();
+                self.rows.clear();
+                self.show_current();
+                return;
+            }
+        };
+        let mut changes = Changes::default();
         for event in events {
             match event {
-                Event::Title { tab, title } => self.update_row(tab, |row| row.title = title.into()),
-                Event::Loading { tab, loading } => {
-                    self.update_row(tab, |row| row.loading = loading)
-                }
                 Event::Cursor(cursor) => window.set_page_cursor(match cursor {
                     Cursor::Default => 0,
                     Cursor::Pointer => 1,
                     Cursor::Text => 2,
                 }),
-                Event::Failed(reason) => {
-                    eprintln!("ren: {reason}");
-                    window.set_status_text(reason.into());
-                    self.tabs.clear();
-                    self.rows.clear();
-                    self.engine = None;
-                    self.select(-1);
-                    return;
-                }
+                event => self.list.apply(event, &mut changes),
             }
+        }
+        self.apply(changes);
+    }
+
+    /// Shows what events changed.
+    fn apply(&mut self, mut changes: Changes) {
+        let window = self.window();
+        if changes.list {
+            self.rows
+                .set_vec(self.list.tabs().iter().map(row).collect::<Vec<_>>());
+        } else {
+            changes.rows.dedup();
+            self.update_rows(&changes.rows);
+        }
+        if let Some(url) = changes.external {
+            window.invoke_article_link_action(url.into(), "browser".into());
+        }
+        if let Some(reason) = changes.crashed {
+            window.set_status_text(format!("A page crashed: {reason}").into());
+        }
+        if self.list.is_empty() {
+            self.stop_helper();
+            self.show_current();
+        } else if changes.current {
+            self.show_current();
+        } else {
+            self.show_navigation();
         }
     }
 
-    fn update_row(&self, tab: TabId, update: impl FnOnce(&mut TabRow)) {
-        if let Some(index) = self.tabs.iter().position(|&t| t == tab)
-            && let Some(mut row) = self.rows.row_data(index)
-        {
-            update(&mut row);
-            self.rows.set_row_data(index, row);
+    fn update_rows(&self, indices: &[usize]) {
+        for &index in indices {
+            if let Some(tab) = self.list.tabs().get(index)
+                && index < self.rows.row_count()
+            {
+                self.rows.set_row_data(index, row(tab));
+            }
         }
     }
 
     fn resized(&mut self) {
         let size = self.size();
-        if let Some(engine) = &mut self.engine {
-            engine.resize(size);
+        if let Some(helper) = &mut self.helper {
+            helper.resize(size);
             self.request_pump();
         }
     }
 
     pub fn input(&mut self, input: Input) {
-        if let Some(engine) = &mut self.engine {
-            engine.input(input);
+        if let Some(helper) = &mut self.helper {
+            helper.input(input);
         }
     }
 
@@ -297,12 +382,21 @@ impl Pages {
         self.window().window().scale_factor()
     }
 
+    /// Pointer input: kind 0 down, 1 up, else a move; button 0 left, 1
+    /// middle, 2 right, 3 back, 4 forward.
     fn pointer(&mut self, kind: i32, button: i32, x: f32, y: f32) {
         let scale = self.scale();
         let (x, y) = (x * scale, y * scale);
         let button = match button {
             1 => Button::Middle,
             2 => Button::Right,
+            // The mouse's back and forward buttons go through the history.
+            3 | 4 => {
+                if kind == 1 {
+                    self.navigate(if button == 3 { "back" } else { "forward" });
+                }
+                return;
+            }
             _ => Button::Left,
         };
         self.input(match kind {
@@ -322,11 +416,103 @@ impl Pages {
         });
     }
 
+    /// The navigation bar's actions on the current tab: "back",
+    /// "forward", "reload".
+    pub fn navigate(&mut self, action: &str) {
+        let (Some(tab), Some(helper)) = (self.current_id(), self.helper.as_mut()) else {
+            return;
+        };
+        match action {
+            "back" => helper.back(tab),
+            "forward" => helper.forward(tab),
+            "reload" => helper.reload(tab),
+            _ => {}
+        }
+    }
+
+    fn current_id(&self) -> Option<TabId> {
+        self.list.current_tab().map(|t| t.id)
+    }
+
+    /// The address of the page shown, if one is.
+    pub fn current_url(&self) -> Option<String> {
+        self.list.current_tab().map(|t| t.url.clone())
+    }
+
+    /// Closes the tab shown, if one is.
+    pub fn close_current(&mut self) {
+        if let Some(index) = self.list.current() {
+            self.close(index);
+        }
+    }
+
     fn theme_changed(&mut self) {
         let dark = self.window().get_dark();
-        if let Some(engine) = &mut self.engine {
-            engine.set_dark(dark);
+        if let Some(helper) = &mut self.helper {
+            helper.set_dark(dark);
         }
+    }
+}
+
+/// Creates `dir` readable only by the user, as it holds cookies.
+fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+/// Maps Slint's key text (characters, or private-use code points for named
+/// keys) to a key for the page.
+fn key(text: &str) -> Option<Key> {
+    use slint::platform::Key as K;
+    let named = [
+        (K::Backspace, NamedKey::Backspace),
+        (K::Tab, NamedKey::Tab),
+        (K::Return, NamedKey::Enter),
+        (K::Escape, NamedKey::Escape),
+        (K::Delete, NamedKey::Delete),
+        (K::Shift, NamedKey::Shift),
+        (K::Control, NamedKey::Control),
+        (K::Alt, NamedKey::Alt),
+        (K::Meta, NamedKey::Meta),
+        (K::UpArrow, NamedKey::ArrowUp),
+        (K::DownArrow, NamedKey::ArrowDown),
+        (K::LeftArrow, NamedKey::ArrowLeft),
+        (K::RightArrow, NamedKey::ArrowRight),
+        (K::Home, NamedKey::Home),
+        (K::End, NamedKey::End),
+        (K::PageUp, NamedKey::PageUp),
+        (K::PageDown, NamedKey::PageDown),
+        (K::Insert, NamedKey::Insert),
+        (K::F1, NamedKey::F1),
+        (K::F2, NamedKey::F2),
+        (K::F3, NamedKey::F3),
+        (K::F4, NamedKey::F4),
+        (K::F5, NamedKey::F5),
+        (K::F6, NamedKey::F6),
+        (K::F7, NamedKey::F7),
+        (K::F8, NamedKey::F8),
+        (K::F9, NamedKey::F9),
+        (K::F10, NamedKey::F10),
+        (K::F11, NamedKey::F11),
+        (K::F12, NamedKey::F12),
+    ];
+    for (slint_key, key) in named {
+        if text == SharedString::from(slint_key).as_str() {
+            return Some(Key::Named(key));
+        }
+    }
+    let mut chars = text.chars();
+    match (chars.next(), chars.next()) {
+        // Other control characters and private-use code points are keys
+        // without a mapping.
+        (Some(c), None) if !c.is_control() && !('\u{f700}'..='\u{f8ff}').contains(&c) => {
+            Some(Key::Character(text.to_owned()))
+        }
+        _ => None,
     }
 }
 
@@ -349,13 +535,17 @@ fn connect(window: &MainWindow, pages: &Rc<RefCell<Pages>>) {
     let w = with.clone();
     window.on_page_key(move |text, mods, down| {
         w(&|p| {
-            p.input(Input::Key {
-                text: text.to_string(),
-                mods: mods as u8,
-                down,
-            })
+            if let Some(key) = key(&text) {
+                p.input(Input::Key {
+                    key,
+                    mods: mods as Mods,
+                    down,
+                })
+            }
         })
     });
+    let w = with.clone();
+    window.on_page_navigate(move |action| w(&|p| p.navigate(&action)));
     let w = with.clone();
     window.on_page_resized(move || w(&|p| p.resized()));
     let w = with.clone();
@@ -402,7 +592,7 @@ fn log_memory(when: &str, pages: &Pages) {
 }
 
 /// `--measure-tabs`: opens one page and then three, scrolls the first,
-/// closes them all, opens one again if Servo can be restarted, and logs
+/// closes them all, opens one again, and logs
 /// memory use after each step; then quits.
 pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>) -> slint::Timer {
     let timer = slint::Timer::default();
@@ -475,10 +665,6 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
                 }
                 Step::Closed => {
                     log_memory("after closing all tabs", &pages);
-                    if !pages.can_restart() {
-                        let _ = slint::quit_event_loop();
-                        return;
-                    }
                     open(&mut pages, 0);
                     Step::Reopened
                 }
@@ -498,4 +684,28 @@ pub fn start_measurement(pages: std::rc::Weak<RefCell<Pages>>, urls: Vec<String>
         },
     );
     timer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_for_the_page() {
+        let named = |k: slint::platform::Key| key(SharedString::from(k).as_str());
+        assert_eq!(key("a"), Some(Key::Character("a".to_owned())));
+        assert_eq!(key("ä"), Some(Key::Character("ä".to_owned())));
+        assert_eq!(
+            named(slint::platform::Key::Return),
+            Some(Key::Named(NamedKey::Enter))
+        );
+        assert_eq!(
+            named(slint::platform::Key::F5),
+            Some(Key::Named(NamedKey::F5))
+        );
+        // Keys without a mapping, and text that isn't one key.
+        assert_eq!(named(slint::platform::Key::CapsLock), None);
+        assert_eq!(key("ab"), None);
+        assert_eq!(key(""), None);
+    }
 }

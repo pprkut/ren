@@ -22,21 +22,6 @@ use std::time::Instant;
 fn main() -> ExitCode {
     let started = Instant::now();
 
-    #[cfg(feature = "servo")]
-    {
-        let mut args = std::env::args().skip(1);
-        if args.next().as_deref() == Some(tabs::helper::HELPER_ARG) {
-            let socket = args.next().unwrap_or_default();
-            return match tabs::helper::run(socket.as_ref()) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(err) => {
-                    eprintln!("ren: Servo helper: {err}");
-                    ExitCode::FAILURE
-                }
-            };
-        }
-    }
-
     // With glibc's dynamic threshold for comparison (`just
     // measure-articles`).
     if std::env::var_os("REN_DYNAMIC_MMAP_THRESHOLD").is_none() {

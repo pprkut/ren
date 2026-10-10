@@ -84,12 +84,19 @@ export component MainWindow inherits Window {
     in property <image> page-image;
     // 0 default, 1 pointer, 2 text.
     in property <int> page-cursor;
-    out property <length> page-width: page-pane.width;
-    out property <length> page-height: page-pane.height;
+    // The navigation bar above the page.
+    in property <string> page-url;
+    in property <bool> page-can-go-back;
+    in property <bool> page-can-go-forward;
+    out property <length> page-width: page-area.width;
+    out property <length> page-height: page-area.height;
     callback tab-selected(index: int);
     callback tab-closed(index: int);
-    // As for the article; positions are relative to the page.
+    // As for the article, with buttons 3 (back) and 4 (forward);
+    // positions are relative to the page.
     callback page-pointer(kind: int, button: int, x: length, y: length, mods: int);
+    // "back", "forward" or "reload" in the page shown.
+    callback page-navigate(action: string);
     callback page-scroll(dx: length, dy: length, x: length, y: length);
     callback page-key(text: string, mods: int, down: bool);
     callback page-resized();
@@ -169,6 +176,14 @@ export component MainWindow inherits Window {
                 }
             }
             MenuSeparator { }
+            MenuItem {
+                title: "Close Tab";
+                enabled: root.current-tab >= 0;
+                shortcut: @keys(Control + W);
+                activated => {
+                    root.action("close-tab");
+                }
+            }
             MenuItem {
                 title: "Quit";
                 icon: Icons.quit;
@@ -267,6 +282,25 @@ export component MainWindow inherits Window {
                     root.action("next-unread");
                 }
             }
+            MenuSeparator { }
+            MenuItem {
+                title: "Back";
+                icon: Icons.back;
+                enabled: root.current-tab >= 0 && root.page-can-go-back;
+                shortcut: @keys(Alt + LeftArrow);
+                activated => {
+                    root.page-navigate("back");
+                }
+            }
+            MenuItem {
+                title: "Forward";
+                icon: Icons.forward;
+                enabled: root.current-tab >= 0 && root.page-can-go-forward;
+                shortcut: @keys(Alt + RightArrow);
+                activated => {
+                    root.page-navigate("forward");
+                }
+            }
         }
 
         Menu {
@@ -361,6 +395,13 @@ export component MainWindow inherits Window {
                     root.show-toolbar = toolbar-item.checked;
                 }
             }
+            MenuItem {
+                title: "Clear Web Site Data";
+                enabled: root.tabs-available;
+                activated => {
+                    root.action("clear-site-data");
+                }
+            }
             MenuSeparator { }
             MenuItem {
                 title: "Configure ren…";
@@ -431,6 +472,7 @@ export component MainWindow inherits Window {
             width: root.tree-width;
             rows: root.feeds;
             current: root.current-feed;
+            tabs-available: root.tabs-available;
             select(row) => {
                 root.feed-clicked(row);
             }
@@ -831,63 +873,132 @@ export component MainWindow inherits Window {
                 background: Palette.background;
                 clip: true;
 
-                changed width => {
-                    root.page-resized();
-                }
-                changed height => {
-                    root.page-resized();
-                }
                 changed visible => {
                     if self.visible {
                         page-focus.focus();
                     }
                 }
 
-                Image {
+                // Back, forward, reload, the address, and the system
+                // browser.
+                page-bar := Rectangle {
+                    y: 0;
                     width: parent.width;
-                    height: parent.height;
-                    source: root.page-image;
-                    image-fit: fill;
+                    height: page-bar-layout.preferred-height;
+                    background: Palette.alternate-background;
+
+                    page-bar-layout := HorizontalLayout {
+                        padding: 2px;
+                        spacing: 2px;
+
+                        ToolButton {
+                            icon: Icons.back;
+                            enabled: root.page-can-go-back;
+                            clicked => {
+                                root.page-navigate("back");
+                            }
+                        }
+
+                        ToolButton {
+                            icon: Icons.forward;
+                            enabled: root.page-can-go-forward;
+                            clicked => {
+                                root.page-navigate("forward");
+                            }
+                        }
+
+                        ToolButton {
+                            icon: Icons.reload;
+                            clicked => {
+                                root.page-navigate("reload");
+                            }
+                        }
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: root.page-url;
+                            overflow: elide;
+                            vertical-alignment: center;
+                            color: Palette.foreground;
+                            opacity: 0.8;
+                        }
+
+                        ToolButton {
+                            icon: Icons.browser;
+                            text: "Open in Browser";
+                            clicked => {
+                                root.action("page-browser");
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.separator;
+                    }
                 }
 
-                page-focus := FocusScope {
-                    focus-gained(reason) => {
-                        root.check-activation(reason);
+                page-area := Rectangle {
+                    y: page-bar.height;
+                    width: parent.width;
+                    height: parent.height - page-bar.height;
+
+                    changed width => {
+                        root.page-resized();
+                    }
+                    changed height => {
+                        root.page-resized();
                     }
 
-                    // All keys go to the page; with modifiers they also
-                    // stay available as the window's shortcuts.
-                    key-pressed(event) => {
-                        root.page-key(event.text, html-pane.mods(event.modifiers), true);
-                        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
-                            return reject;
-                        }
-                        accept
+                    // Only while a page is shown: the renderer keeps the last
+                    // image of an element it no longer draws.
+                    if root.current-tab >= 0: Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.page-image;
+                        image-fit: fill;
                     }
-                    key-released(event) => {
-                        root.page-key(event.text, html-pane.mods(event.modifiers), false);
-                        accept
-                    }
-                }
 
-                TouchArea {
-                    mouse-cursor: root.page-cursor == 1 ? MouseCursor.pointer : root.page-cursor == 2 ? MouseCursor.text : MouseCursor.default;
-                    pointer-event(event) => {
-                        if event.kind == PointerEventKind.down {
-                            page-focus.focus();
+                    page-focus := FocusScope {
+                        focus-gained(reason) => {
+                            root.check-activation(reason);
                         }
-                        if event.kind != PointerEventKind.cancel {
-                            root.page-pointer(
-                                event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
-                                event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
-                                self.mouse-x,
-                                self.mouse-y,
-                                html-pane.mods(event.modifiers));
+
+                        // All keys go to the page; with modifiers they also
+                        // stay available as the window's shortcuts.
+                        key-pressed(event) => {
+                            root.page-key(event.text, html-pane.mods(event.modifiers), true);
+                            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                                return reject;
+                            }
+                            accept
+                        }
+                        key-released(event) => {
+                            root.page-key(event.text, html-pane.mods(event.modifiers), false);
+                            accept
                         }
                     }
-                    scroll-event(event) => {
-                        root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
-                        accept
+
+                    TouchArea {
+                        mouse-cursor: root.page-cursor == 1 ? MouseCursor.pointer : root.page-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                        pointer-event(event) => {
+                            if event.kind == PointerEventKind.down {
+                                page-focus.focus();
+                            }
+                            if event.kind != PointerEventKind.cancel {
+                                root.page-pointer(
+                                    event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                    event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : event.button == PointerEventButton.back ? 3 : event.button == PointerEventButton.forward ? 4 : 0,
+                                    self.mouse-x,
+                                    self.mouse-y,
+                                    html-pane.mods(event.modifiers));
+                            }
+                        }
+                        scroll-event(event) => {
+                            root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                            accept
+                        }
                     }
                 }
             }

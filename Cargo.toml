@@ -4,6 +4,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Servo's helper, a workspace of its own (see its Cargo.toml).
+exclude = ["crates/ren-servo"]
 
 [workspace.package]
 version = "0.1.0"

@@ -92,6 +92,26 @@ const ICONS: &[Icon] = &[
         fallback: bundled!("rss"),
         set: |icons, image| icons.set_feed(image),
     },
+    Icon {
+        names: &["go-previous"],
+        fallback: bundled!("arrow-left"),
+        set: |icons, image| icons.set_back(image),
+    },
+    Icon {
+        names: &["go-next"],
+        fallback: bundled!("arrow-right"),
+        set: |icons, image| icons.set_forward(image),
+    },
+    Icon {
+        names: &["view-refresh"],
+        fallback: bundled!("rotate-cw"),
+        set: |icons, image| icons.set_reload(image),
+    },
+    Icon {
+        names: &["internet-web-browser", "applications-internet"],
+        fallback: bundled!("external-link"),
+        set: |icons, image| icons.set_browser(image),
+    },
 ];
 
 /// The configured icon theme: KDE's from `kdeglobals`, else GTK's.

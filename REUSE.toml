@@ -4,7 +4,7 @@
 version = 1
 
 [[annotations]]
-path = "Cargo.lock"
+path = ["Cargo.lock", "crates/ren-servo/Cargo.lock"]
 SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
 SPDX-License-Identifier = "CC0-1.0"
 
@@ -30,10 +30,14 @@ SPDX-License-Identifier = "ISC"
 # Lucide icons derived from Feather.
 [[annotations]]
 path = [
+    "crates/ren/icons/arrow-left.svg",
+    "crates/ren/icons/arrow-right.svg",
     "crates/ren/icons/chevrons-down.svg",
     "crates/ren/icons/circle-x.svg",
+    "crates/ren/icons/external-link.svg",
     "crates/ren/icons/log-out.svg",
     "crates/ren/icons/plus.svg",
+    "crates/ren/icons/rotate-cw.svg",
     "crates/ren/icons/rss.svg",
     "crates/ren/icons/search.svg",
     "crates/ren/icons/star.svg",
