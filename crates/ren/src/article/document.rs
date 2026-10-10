@@ -58,7 +58,8 @@ impl Article {
             Some(url) => format!(r#"<a href="{}">{title}</a>"#, escape(url)),
             None => title.clone(),
         };
-        let body = super::fragment::add_heading_ids(&replace_iframes(&self.body));
+        let body = replace_media(&replace_iframes(&self.body), self.url.as_deref());
+        let body = super::fragment::add_heading_ids(&body);
         format!(
             "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title>\
              <style>{}</style></head><body><article>\
@@ -75,9 +76,67 @@ impl Article {
 /// only cost memory and tell the embedding site what is being read. Links
 /// can later open in a full-page tab.
 fn replace_iframes(html: &str) -> String {
+    replace_elements(html, "iframe", |tag, _| {
+        let src = attribute(tag, "src").filter(|src| !src.is_empty())?;
+        let src = escape(&src);
+        Some(format!(
+            r#"<p class="embed"><a href="{src}">Embedded content: {src}</a></p>"#
+        ))
+    })
+}
+
+/// Replaces `<video>` and `<audio>` with their poster image and a link to
+/// the page, where they can be played: Blitz plays no media. Without a page,
+/// the link goes to the media file.
+fn replace_media(html: &str, page: Option<&str>) -> String {
+    let media = |kind: &str, tag: &str, inner: &str| {
+        let source = attribute(tag, "src")
+            .or_else(|| first_source(inner))
+            .filter(|src| !src.is_empty());
+        let link = page.map(str::to_owned).or(source).map(|href| escape(&href));
+        let poster = attribute(tag, "poster")
+            .filter(|poster| !poster.is_empty())
+            .map(|poster| format!(r#"<img src="{}" alt="">"#, escape(&poster)));
+        Some(match (link, poster) {
+            (Some(href), Some(poster)) => format!(
+                r#"<figure class="media"><a href="{href}">{poster}</a><figcaption><a href="{href}">{kind}: play it on the page</a></figcaption></figure>"#
+            ),
+            (Some(href), None) => {
+                format!(r#"<p class="media"><a href="{href}">{kind}: play it on the page</a></p>"#)
+            }
+            (None, Some(poster)) => format!(r#"<figure class="media">{poster}</figure>"#),
+            (None, None) => format!(r#"<p class="media">{kind} (not shown)</p>"#),
+        })
+    };
+    let html = replace_elements(html, "video", |tag, inner| media("Video", tag, inner));
+    replace_elements(&html, "audio", |tag, inner| media("Audio", tag, inner))
+}
+
+/// The `src` of the first `<source>` element in `html`.
+fn first_source(html: &str) -> Option<String> {
+    let start = find_element(html, "source")?;
+    let tag = &html[start + 1..];
+    attribute(&tag[..tag.find('>')?], "src")
+}
+
+/// The value of an attribute in a start tag, with character references
+/// decoded.
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    super::text::attribute(tag, name).map(|value| super::text::decode_entities(&value))
+}
+
+/// Replaces each `name` element, with its content, by what `replace` makes
+/// of its start tag (without `<` and `>`) and its content; `None` removes
+/// it.
+fn replace_elements(
+    html: &str,
+    name: &str,
+    mut replace: impl FnMut(&str, &str) -> Option<String>,
+) -> String {
+    let end_tag = format!("</{name}>");
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
-    while let Some(start) = find_ignore_case(rest, "<iframe") {
+    while let Some(start) = find_element(rest, name) {
         out.push_str(&rest[..start]);
         let after = &rest[start..];
         let Some(tag_end) = after.find('>') else {
@@ -85,18 +144,32 @@ fn replace_iframes(html: &str) -> String {
             break;
         };
         let tag = &after[1..tag_end];
-        let close = find_ignore_case(&after[tag_end..], "</iframe>")
-            .map_or(tag_end + 1, |i| tag_end + i + "</iframe>".len());
-        if let Some(src) = super::text::attribute(tag, "src").filter(|src| !src.is_empty()) {
-            let src = escape(&super::text::decode_entities(&src));
-            out.push_str(&format!(
-                r#"<p class="embed"><a href="{src}">Embedded content: {src}</a></p>"#
-            ));
+        let content = &after[tag_end + 1..];
+        let (inner, close) = match find_ignore_case(content, &end_tag) {
+            Some(i) if !tag.ends_with('/') => (&content[..i], tag_end + 1 + i + end_tag.len()),
+            _ => ("", tag_end + 1),
+        };
+        if let Some(replacement) = replace(tag, inner) {
+            out.push_str(&replacement);
         }
         rest = &after[close..];
     }
     out.push_str(rest);
     out
+}
+
+/// The position of the next start tag of a `name` element.
+fn find_element(html: &str, name: &str) -> Option<usize> {
+    let open = format!("<{name}");
+    let mut from = 0;
+    while let Some(i) = find_ignore_case(&html[from..], &open).map(|i| from + i) {
+        match html.as_bytes().get(i + open.len()) {
+            Some(b) if b.is_ascii_whitespace() || *b == b'>' || *b == b'/' => return Some(i),
+            // `<sourcefoo` or the end of the text.
+            _ => from = i + open.len(),
+        }
+    }
+    None
 }
 
 fn find_ignore_case(haystack: &str, needle: &str) -> Option<usize> {
@@ -221,6 +294,46 @@ mod tests {
         assert_eq!(replace_iframes("<iframe></iframe>x"), "x");
         assert_eq!(replace_iframes("<iframe src=x"), "");
         assert_eq!(replace_iframes("no frames"), "no frames");
+        assert_eq!(
+            replace_iframes("<iframes>x</iframes>"),
+            "<iframes>x</iframes>"
+        );
+    }
+
+    #[test]
+    fn media_become_posters_and_links() {
+        let page = Some("https://example.org/post?a=1&b=2");
+        assert_eq!(
+            replace_media(
+                r#"<p>a</p><video controls poster="https://example.org/p.jpg?x=1&amp;y=2"><source src="v.mp4">No video.</video><p>b</p>"#,
+                page
+            ),
+            r#"<p>a</p><figure class="media"><a href="https://example.org/post?a=1&amp;b=2"><img src="https://example.org/p.jpg?x=1&amp;y=2" alt=""></a><figcaption><a href="https://example.org/post?a=1&amp;b=2">Video: play it on the page</a></figcaption></figure><p>b</p>"#
+        );
+        assert_eq!(
+            replace_media(r#"<AUDIO src="a.mp3"></AUDIO>"#, page),
+            r#"<p class="media"><a href="https://example.org/post?a=1&amp;b=2">Audio: play it on the page</a></p>"#
+        );
+        // Without a page, the link goes to the file.
+        assert_eq!(
+            replace_media(
+                r#"<video><source type="video/mp4" src="v.mp4"></video>"#,
+                None
+            ),
+            r#"<p class="media"><a href="v.mp4">Video: play it on the page</a></p>"#
+        );
+        assert_eq!(
+            replace_media(r#"<video poster="p.jpg"/>x"#, None),
+            r#"<figure class="media"><img src="p.jpg" alt=""></figure>x"#
+        );
+        assert_eq!(
+            replace_media("<audio></audio>", None),
+            r#"<p class="media">Audio (not shown)</p>"#
+        );
+        assert_eq!(
+            replace_media("<videos>x</videos>", None),
+            "<videos>x</videos>"
+        );
     }
 
     #[test]
