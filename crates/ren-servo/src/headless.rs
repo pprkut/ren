@@ -203,7 +203,9 @@ fn copy_flipped_rgb(from: &[u8], to: &mut [u8], width: usize) {
         .rev()
         .zip(to.chunks_exact_mut(width * 3))
     {
-        for (from, to) in from.chunks_exact(4).zip(to.chunks_exact_mut(3)) {
+        let (from, _) = from.as_chunks::<4>();
+        let (to, _) = to.as_chunks_mut::<3>();
+        for (from, to) in from.iter().zip(to) {
             to.copy_from_slice(&from[..3]);
         }
     }
