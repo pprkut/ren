@@ -13,11 +13,11 @@ use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use rustix::fs::{MemfdFlags, SealFlags};
 
-/// The bytes of an RGBA frame, if they fit a `usize`.
+/// The bytes of an RGB frame, if they fit a `usize`.
 pub fn frame_len(width: u32, height: u32) -> Option<usize> {
     let len = u64::from(width)
         .checked_mul(u64::from(height))?
-        .checked_mul(4)?;
+        .checked_mul(3)?;
     usize::try_from(len).ok()
 }
 
@@ -119,17 +119,17 @@ mod tests {
     #[test]
     fn frames_go_through_shared_memory() {
         let mut shared = SharedFrames::create(1, frame_len(4, 2).unwrap()).unwrap();
-        assert_eq!(shared.len(), 32);
+        assert_eq!(shared.len(), 24);
         let fd = shared.fd().unwrap().try_clone_to_owned().unwrap();
         shared.sent();
         assert!(shared.fd().is_none());
 
-        let mut writer = FrameWriter::open(1, fd, 32).unwrap();
+        let mut writer = FrameWriter::open(1, fd, 24).unwrap();
         writer.frame_mut(4, 2).unwrap().fill(7);
         assert!(writer.frame_mut(5, 2).is_none());
         assert!(writer.frame_mut(0, 2).is_none());
-        assert_eq!(shared.frame(4, 2).unwrap(), [7; 32]);
-        assert_eq!(shared.frame(2, 2).unwrap(), [7; 16]);
+        assert_eq!(shared.frame(4, 2).unwrap(), [7; 24]);
+        assert_eq!(shared.frame(2, 2).unwrap(), [7; 12]);
         assert!(shared.frame(4, 3).is_none());
         assert!(shared.frame(u32::MAX, u32::MAX).is_none());
     }
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn frame_lengths() {
-        assert_eq!(frame_len(800, 600), Some(1_920_000));
+        assert_eq!(frame_len(800, 600), Some(1_440_000));
         assert_eq!(frame_len(0, 600), Some(0));
         assert_eq!(frame_len(u32::MAX, u32::MAX), None);
     }

@@ -151,16 +151,16 @@ impl HeadlessContext {
         status != gl::TIMEOUT_EXPIRED
     }
 
-    /// Copies a finished readback into `out` (RGBA, top row first), which
-    /// holds `width * height * 4` bytes of its size; waits for the GPU if
-    /// it isn't finished. A readback of an older size than `out` is
-    /// dropped.
+    /// Copies a finished readback into `out` as RGB, top row first, which
+    /// holds `width * height * 3` bytes of its size; waits for the GPU if
+    /// it isn't finished. A readback of another size than `out` is
+    /// dropped. Pages are opaque, so the alpha channel is left out: the
+    /// window then draws the frame without blending each pixel.
     pub fn finish_readback(&self, readback: Readback, out: Option<&mut [u8]>) {
         let gl = &self.gleam;
         let (pbo, len) = self.pbo.get();
-        let out = out.filter(|out| {
-            out.len() == len && len == readback.width as usize * readback.height as usize * 4
-        });
+        let pixels = readback.width as usize * readback.height as usize;
+        let out = out.filter(|out| len == pixels * 4 && out.len() == pixels * 3);
         if let Some(out) = out {
             gl.client_wait_sync(readback.fence, gl::SYNC_FLUSH_COMMANDS_BIT, u64::MAX);
             gl.bind_buffer(gl::PIXEL_PACK_BUFFER, pbo);
@@ -174,7 +174,7 @@ impl HeadlessContext {
                 // SAFETY: the buffer holds `len` bytes and is mapped for
                 // reading until `unmap_buffer`.
                 let pixels = unsafe { std::slice::from_raw_parts(mapped.cast::<u8>(), len) };
-                copy_flipped(pixels, out, readback.width as usize * 4);
+                copy_flipped_rgb(pixels, out, readback.width as usize);
                 gl.unmap_buffer(gl::PIXEL_PACK_BUFFER);
             }
             gl.bind_buffer(gl::PIXEL_PACK_BUFFER, 0);
@@ -192,6 +192,20 @@ fn copy_flipped(from: &[u8], to: &mut [u8], stride: usize) {
         .zip(to.chunks_exact_mut(stride))
     {
         to.copy_from_slice(from);
+    }
+}
+
+/// Copies RGBA rows of `width` pixels from `from` into `to` as RGB, in
+/// reverse order.
+fn copy_flipped_rgb(from: &[u8], to: &mut [u8], width: usize) {
+    for (from, to) in from
+        .chunks_exact(width * 4)
+        .rev()
+        .zip(to.chunks_exact_mut(width * 3))
+    {
+        for (from, to) in from.chunks_exact(4).zip(to.chunks_exact_mut(3)) {
+            to.copy_from_slice(&from[..3]);
+        }
     }
 }
 
@@ -307,7 +321,7 @@ impl RenderingContext for HeadlessContext {
 
 #[cfg(test)]
 mod tests {
-    use super::copy_flipped;
+    use super::{copy_flipped, copy_flipped_rgb};
 
     #[test]
     fn flips_rows() {
@@ -315,5 +329,14 @@ mod tests {
         let mut to = [0; 6];
         copy_flipped(&from, &mut to, 2);
         assert_eq!(to, [3, 3, 2, 2, 1, 1]);
+    }
+
+    #[test]
+    fn flips_rows_into_rgb() {
+        // Two rows of two pixels.
+        let from = [1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255];
+        let mut to = [0; 12];
+        copy_flipped_rgb(&from, &mut to, 2);
+        assert_eq!(to, [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]);
     }
 }

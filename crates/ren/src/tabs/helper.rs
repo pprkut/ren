@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use ren_tabs::frames::{SharedFrames, frame_len};
 use ren_tabs::wire::{self, Receiver};
 use ren_tabs::{Command, Event, Input, Size, TabId};
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
+use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
 use super::{FrameStats, Waker};
 
@@ -55,7 +55,7 @@ pub struct Helper {
     old_buffer: Option<SharedFrames>,
     /// Two pixel buffers: Slint still holds the one shown, the other can
     /// be copied into without a copy of its own.
-    pixels: [Option<SharedPixelBuffer<Rgba8Pixel>>; 2],
+    pixels: [Option<SharedPixelBuffer<Rgb8Pixel>>; 2],
     next_pixels: usize,
     frame: Option<Image>,
     stats: FrameStats,
@@ -294,7 +294,7 @@ impl Helper {
             _ => SharedPixelBuffer::new(width, height),
         };
         pixels.make_mut_bytes().copy_from_slice(frame);
-        self.frame = Some(Image::from_rgba8_premultiplied(pixels.clone()));
+        self.frame = Some(Image::from_rgb8(pixels.clone()));
         self.pixels[slot] = Some(pixels);
         self.next_pixels = 1 - slot;
     }
@@ -382,8 +382,8 @@ mod tests {
             height,
             scale: 1.0,
         };
-        assert_eq!(buffer_len(size(800, 600)), 896 * 640 * 4);
-        assert_eq!(buffer_len(size(1024, 768)), 1024 * 768 * 4);
-        assert_eq!(buffer_len(size(0, 0)), 128 * 128 * 4);
+        assert_eq!(buffer_len(size(800, 600)), 896 * 640 * 3);
+        assert_eq!(buffer_len(size(1024, 768)), 1024 * 768 * 3);
+        assert_eq!(buffer_len(size(0, 0)), 128 * 128 * 3);
     }
 }
