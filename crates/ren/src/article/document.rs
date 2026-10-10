@@ -50,7 +50,7 @@ impl Article {
             Some(url) => format!(r#"<a href="{}">{title}</a>"#, escape(url)),
             None => title.clone(),
         };
-        let body = replace_iframes(&self.body);
+        let body = super::fragment::add_heading_ids(&replace_iframes(&self.body));
         format!(
             "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title>\
              <style>{}</style></head><body><article>\
