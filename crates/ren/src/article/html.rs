@@ -494,7 +494,9 @@ impl HtmlView {
         self.shell.request_redraw();
     }
 
-    /// Drops the document, e.g. when no article is selected.
+    /// Drops the document, e.g. when no article is selected, and what is
+    /// only needed while one is shown: the renderer's buffers for the
+    /// view's size and its images.
     pub fn clear(&mut self) {
         if let Some(doc) = self.doc.take() {
             // Drop its pending requests.
@@ -503,6 +505,10 @@ impl HtmlView {
                 .current_doc
                 .store(doc.id() + 1, Ordering::Release);
         }
+        self.renderer.clear_image_cache();
+        // Sized again by the next `set_size`.
+        self.size = (1, 1);
+        self.renderer.resize(1, 1);
     }
 
     /// Sets the size of the view in physical pixels and its scale factor.
