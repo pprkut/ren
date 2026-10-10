@@ -45,9 +45,10 @@ const IMAGE_CACHE_BYTES: usize = 16 * 1024 * 1024;
 /// Threads fetching and decoding images.
 const FETCH_THREADS: usize = 2;
 
-/// Most pixels of an image as shown, e.g. 690×8,700 or, at a scale factor
-/// of 2, 1,380×4,350: 24 MiB as RGBA. Taller images are shown narrower.
-const MAX_IMAGE_PIXELS: u64 = 6_000_000;
+/// Most pixels of an image as shown, e.g. 690×5,800 or, at a scale factor
+/// of 2, 1,380×2,900: 16 MiB as RGBA, which Blitz holds twice while
+/// decoding it. Taller images are shown narrower.
+const MAX_IMAGE_PIXELS: u64 = 4_000_000;
 
 /// Mouse buttons, as far as the article cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +190,14 @@ struct NetShared {
     /// Asked to render again when an image wasn't loaded, so the UI can
     /// offer to load it.
     shell: Arc<Shell>,
+    /// Held while an image is decoded (by `images` and then by Blitz), so
+    /// that the workers fetch at the same time but never hold two decoded
+    /// images at once: the memory for decoding is the peak of reading
+    /// articles.
+    decoding: Mutex<()>,
+    /// Requests sent to the workers and not done yet. When the last one is
+    /// done, the memory freed while decoding is given back to the system.
+    queued: AtomicUsize,
     stats: ImageStats,
 }
 
@@ -205,6 +214,8 @@ pub struct ImageStats {
     pub scaled: AtomicUsize,
     /// Failed to load or refused (e.g. too many pixels).
     pub failed: AtomicUsize,
+    /// Times the heap was trimmed after the requests were done.
+    pub trims: AtomicUsize,
 }
 
 impl std::fmt::Display for ImageStats {
@@ -212,12 +223,14 @@ impl std::fmt::Display for ImageStats {
         let n = |count: &AtomicUsize| count.load(Ordering::Relaxed);
         write!(
             f,
-            "{} fetched, {} from the cache, {} not loaded, {} scaled down, {} failed",
+            "{} fetched, {} from the cache, {} not loaded, {} scaled down, {} failed; \
+             heap trimmed {} times after loading",
             n(&self.fetched),
             n(&self.cached),
             n(&self.blocked),
             n(&self.scaled),
-            n(&self.failed)
+            n(&self.failed),
+            n(&self.trims)
         )
     }
 }
@@ -271,6 +284,7 @@ impl NetShared {
         if !self.is_current(job.doc_id) {
             return;
         }
+        let _decoding = self.decoding.lock();
         let bytes = bytes.and_then(|bytes| match images::prepare(&bytes, self.limits()) {
             Ok(None) => Ok(bytes),
             Ok(Some(scaled)) => {
@@ -300,6 +314,8 @@ impl Net {
                 scale: AtomicU32::new(1f32.to_bits()),
                 cache,
                 shell,
+                decoding: Mutex::new(()),
+                queued: AtomicUsize::new(0),
                 stats: ImageStats::default(),
             }),
         }
@@ -325,6 +341,13 @@ impl Net {
                             Err(_) => return,
                         };
                         shared.load(&agent, job);
+                        if shared.queued.fetch_sub(1, Ordering::AcqRel) == 1 {
+                            // Decoding freed memory into the heap, which
+                            // glibc keeps.
+                            if crate::procstat::trim_heap() {
+                                count(&shared.stats.trims);
+                            }
+                        }
                     }
                 });
             if let Err(err) = spawned {
@@ -341,12 +364,16 @@ impl NetProvider for Net {
             return;
         };
         let tx = jobs.get_or_insert_with(|| self.start_workers());
-        let _ = tx.send(Job {
+        self.shared.queued.fetch_add(1, Ordering::AcqRel);
+        let sent = tx.send(Job {
             doc_id,
             request,
             handler,
             remote: self.shared.remote.load(Ordering::Acquire),
         });
+        if sent.is_err() {
+            self.shared.queued.fetch_sub(1, Ordering::AcqRel);
+        }
     }
 }
 
