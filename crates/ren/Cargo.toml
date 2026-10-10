@@ -23,6 +23,8 @@ html-view = [
     "dep:blitz-paint",
     "dep:blitz-traits",
     "dep:cursor-icon",
+    "dep:image",
+    "dep:jpeg-decoder",
     "dep:keyboard-types",
     "dep:parley",
     "dep:percent-encoding",
@@ -71,6 +73,12 @@ parley = { version = "0.11", optional = true, default-features = false, features
 percent-encoding = { version = "2", optional = true }
 url = { version = "2.5", optional = true }
 freedesktop-icons = "0.4"
+# Images scaled down before Blitz decodes them, with the formats Blitz
+# already brings (through anyrender_svg).
+image = { version = "0.25", optional = true, default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+# Decodes large JPEGs at 1/2, 1/4 or 1/8 of their size, which the image
+# crate's decoder can't.
+jpeg-decoder = { version = "0.3", optional = true, default-features = false }
 nextcloud-news = { path = "../nextcloud-news" }
 ren-settings = { path = "../ren-settings" }
 ren-store = { path = "../ren-store" }

@@ -8,7 +8,7 @@
 //!
 //! No UI toolkit types here; `ui` converts events and pixels.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -27,6 +27,10 @@ use blitz_traits::shell::{ClipboardError, ColorScheme, ShellProvider, Viewport};
 use cursor_icon::CursorIcon;
 use keyboard_types::{Code, Key, Location, Modifiers};
 
+use super::cache::ImageCache;
+use super::document::CONTENT_WIDTH;
+use super::images::{self, Limits};
+
 const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
 
 /// Largest image (or other resource) fetched for an article.
@@ -38,6 +42,10 @@ const IMAGE_CACHE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Threads fetching and decoding images.
 const FETCH_THREADS: usize = 2;
+
+/// Most pixels of an image as shown, e.g. 690×8,700 or, at a scale factor
+/// of 2, 1,380×4,350: 24 MiB as RGBA. Taller images are shown narrower.
+const MAX_IMAGE_PIXELS: u64 = 6_000_000;
 
 /// Mouse buttons, as far as the article cares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,26 +155,140 @@ struct Job {
     doc_id: usize,
     request: Request,
     handler: Box<dyn NetHandler>,
+    /// Fetch it from its server if it isn't in the cache.
+    remote: bool,
 }
 
-/// Fetches images on a few worker threads. Blitz decodes them in the
-/// handler, so that happens on the workers too.
+/// Fetches images on a few worker threads: from the cache, or from their
+/// servers into the cache. They are scaled down to the size they are shown
+/// at (see [`images`]), and Blitz decodes them in the handler, so all of
+/// that happens on the workers too.
 struct Net {
     jobs: Mutex<Option<mpsc::Sender<Job>>>,
-    /// Fetch http(s) resources; `data:` URLs are always decoded.
-    remote: bool,
+    shared: Arc<NetShared>,
+}
+
+/// What the workers share with the view.
+struct NetShared {
+    /// Whether images are fetched from their servers; `data:` URLs and the
+    /// cache are always used.
+    remote: AtomicBool,
     /// Requests of older documents (articles no longer shown) are dropped.
     /// Document ids only grow; a newer document may already be fetching
     /// while it is being created, before its id is stored here.
-    current_doc: Arc<AtomicUsize>,
+    current_doc: AtomicUsize,
+    /// Physical pixels per CSS pixel, as `f32` bits.
+    scale: AtomicU32,
+    cache: Option<ImageCache>,
+    stats: ImageStats,
+}
+
+/// What happened to the images of all articles, for measurements.
+#[derive(Debug, Default)]
+pub struct ImageStats {
+    /// Fetched from their servers.
+    pub fetched: AtomicUsize,
+    /// Read from the cache.
+    pub cached: AtomicUsize,
+    /// Not loaded, because the article doesn't load images.
+    pub blocked: AtomicUsize,
+    /// Scaled down before Blitz decoded them.
+    pub scaled: AtomicUsize,
+    /// Failed to load or refused (e.g. too many pixels).
+    pub failed: AtomicUsize,
+}
+
+impl std::fmt::Display for ImageStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = |count: &AtomicUsize| count.load(Ordering::Relaxed);
+        write!(
+            f,
+            "{} fetched, {} from the cache, {} not loaded, {} scaled down, {} failed",
+            n(&self.fetched),
+            n(&self.cached),
+            n(&self.blocked),
+            n(&self.scaled),
+            n(&self.failed)
+        )
+    }
+}
+
+fn count(counter: &AtomicUsize) {
+    counter.fetch_add(1, Ordering::Relaxed);
+}
+
+impl NetShared {
+    fn limits(&self) -> Limits {
+        let scale = f32::from_bits(self.scale.load(Ordering::Relaxed));
+        Limits {
+            max_width: (CONTENT_WIDTH as f32 * scale).ceil() as u32,
+            max_pixels: MAX_IMAGE_PIXELS,
+        }
+    }
+
+    fn is_current(&self, doc_id: usize) -> bool {
+        doc_id >= self.current_doc.load(Ordering::Acquire)
+    }
+
+    /// Fetches, prepares and hands over the resource of `job`.
+    fn load(&self, agent: &ureq::Agent, job: Job) {
+        if !self.is_current(job.doc_id) {
+            return;
+        }
+        let url = job.request.url.to_string();
+        let bytes = match job.request.url.scheme() {
+            "data" => decode_data_url(&url),
+            "http" | "https" => match self.cache.as_ref().and_then(|cache| cache.get(&url)) {
+                Some(bytes) => {
+                    count(&self.stats.cached);
+                    Ok(bytes)
+                }
+                None if !job.remote => {
+                    count(&self.stats.blocked);
+                    return;
+                }
+                None => fetch(agent, &url).inspect(|bytes| {
+                    count(&self.stats.fetched);
+                    if let Some(cache) = &self.cache {
+                        cache.put(&url, bytes);
+                    }
+                }),
+            },
+            scheme => Err(format!("unsupported scheme {scheme}")),
+        };
+        // Fetching takes a while; the article may be gone.
+        if !self.is_current(job.doc_id) {
+            return;
+        }
+        let bytes = bytes.and_then(|bytes| match images::prepare(&bytes, self.limits()) {
+            Ok(None) => Ok(bytes),
+            Ok(Some(scaled)) => {
+                count(&self.stats.scaled);
+                Ok(scaled)
+            }
+            Err(err) => Err(err),
+        });
+        match bytes {
+            Ok(bytes) => job.handler.bytes(url, bytes.into()),
+            Err(err) => {
+                count(&self.stats.failed);
+                eprintln!("ren: {url}: {err}");
+            }
+        }
+    }
 }
 
 impl Net {
-    fn new(remote: bool) -> Self {
+    fn new(remote: bool, cache: Option<ImageCache>) -> Self {
         Self {
             jobs: Mutex::new(None),
-            remote,
-            current_doc: Arc::new(AtomicUsize::new(0)),
+            shared: Arc::new(NetShared {
+                remote: AtomicBool::new(remote),
+                current_doc: AtomicUsize::new(0),
+                scale: AtomicU32::new(1f32.to_bits()),
+                cache,
+                stats: ImageStats::default(),
+            }),
         }
     }
 
@@ -177,7 +299,7 @@ impl Net {
         for n in 0..FETCH_THREADS {
             let rx = rx.clone();
             let agent = agent.clone();
-            let current_doc = self.current_doc.clone();
+            let shared = self.shared.clone();
             let spawned = std::thread::Builder::new()
                 .name(format!("ren-fetch-{n}"))
                 .spawn(move || {
@@ -189,14 +311,7 @@ impl Net {
                             },
                             Err(_) => return,
                         };
-                        if job.doc_id < current_doc.load(Ordering::Acquire) {
-                            continue;
-                        }
-                        let url = job.request.url.to_string();
-                        match fetch(&agent, &job.request) {
-                            Ok(bytes) => job.handler.bytes(url, bytes.into()),
-                            Err(err) => eprintln!("ren: {url}: {err}"),
-                        }
+                        shared.load(&agent, job);
                     }
                 });
             if let Err(err) = spawned {
@@ -209,9 +324,6 @@ impl Net {
 
 impl NetProvider for Net {
     fn fetch(&self, doc_id: usize, request: Request, handler: Box<dyn NetHandler>) {
-        if !self.remote && request.url.scheme() != "data" {
-            return;
-        }
         let Ok(mut jobs) = self.jobs.lock() else {
             return;
         };
@@ -220,6 +332,7 @@ impl NetProvider for Net {
             doc_id,
             request,
             handler,
+            remote: self.shared.remote.load(Ordering::Acquire),
         });
     }
 }
@@ -240,21 +353,16 @@ fn http_agent() -> ureq::Agent {
         .new_agent()
 }
 
-fn fetch(agent: &ureq::Agent, request: &Request) -> Result<Vec<u8>, String> {
-    let url = &request.url;
-    match url.scheme() {
-        "data" => decode_data_url(url.as_str()),
-        "http" | "https" => agent
-            .get(url.as_str())
-            .call()
-            .map_err(|err| err.to_string())?
-            .into_body()
-            .into_with_config()
-            .limit(RESOURCE_LIMIT)
-            .read_to_vec()
-            .map_err(|err| err.to_string()),
-        scheme => Err(format!("unsupported scheme {scheme}")),
-    }
+fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
+    agent
+        .get(url)
+        .call()
+        .map_err(|err| err.to_string())?
+        .into_body()
+        .into_with_config()
+        .limit(RESOURCE_LIMIT)
+        .read_to_vec()
+        .map_err(|err| err.to_string())
 }
 
 /// The payload of a `data:` URL.
@@ -298,9 +406,14 @@ pub struct HtmlView {
 
 impl HtmlView {
     /// `wake` is called, possibly from another thread, when the view needs
-    /// to be rendered again, e.g. after an image has loaded. Without
-    /// `load_images`, only images in `data:` URLs are shown.
-    pub fn new(wake: impl Fn() + Send + Sync + 'static, load_images: bool) -> Self {
+    /// to be rendered again, e.g. after an image has loaded. Images are
+    /// kept in `cache`. Without `load_images`, only images in `data:` URLs
+    /// and in the cache are shown.
+    pub fn new(
+        wake: impl Fn() + Send + Sync + 'static,
+        load_images: bool,
+        cache: Option<ImageCache>,
+    ) -> Self {
         use parley::fontique::{Blob, Collection, CollectionOptions, SourceCache};
         // One font collection for all articles, so the system fonts are
         // scanned only once.
@@ -335,7 +448,7 @@ impl HtmlView {
                 clipboard: Mutex::new(None),
             }),
             navigation: Arc::new(Navigation::default()),
-            net: Arc::new(Net::new(load_images)),
+            net: Arc::new(Net::new(load_images, cache)),
             buttons: MouseEventButtons::None,
             pointer: (0.0, 0.0),
             middle_clicks: Vec::new(),
@@ -372,7 +485,10 @@ impl HtmlView {
         self.doc = None;
         self.renderer.clear_image_cache();
         let doc = HtmlDocument::from_html(html, config);
-        self.net.current_doc.store(doc.id(), Ordering::Release);
+        self.net
+            .shared
+            .current_doc
+            .store(doc.id(), Ordering::Release);
         self.doc = Some(doc);
         self.buttons = MouseEventButtons::None;
         self.shell.request_redraw();
@@ -382,7 +498,10 @@ impl HtmlView {
     pub fn clear(&mut self) {
         if let Some(doc) = self.doc.take() {
             // Drop its pending requests.
-            self.net.current_doc.store(doc.id() + 1, Ordering::Release);
+            self.net
+                .shared
+                .current_doc
+                .store(doc.id() + 1, Ordering::Release);
         }
     }
 
@@ -394,12 +513,22 @@ impl HtmlView {
         }
         self.size = size;
         self.scale = scale;
+        // For images fetched from now on.
+        self.net
+            .shared
+            .scale
+            .store(scale.to_bits(), Ordering::Relaxed);
         self.renderer.resize(size.0, size.1);
         let viewport = self.viewport();
         if let Some(doc) = &mut self.doc {
             doc.set_viewport(viewport);
         }
         self.shell.request_redraw();
+    }
+
+    /// What happened to the images of all articles so far.
+    pub fn image_stats(&self) -> &ImageStats {
+        &self.net.shared.stats
     }
 
     /// Whether something changed since the last [`Self::render`].
@@ -589,6 +718,67 @@ impl HtmlView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WIDTH: u32 = 1000;
+    const HEIGHT: u32 = 300;
+    const PAGE: &str = "https://example.org/post";
+
+    /// A view of 1000×300 pixels showing `body` without margins.
+    fn view(body: &str, load_images: bool) -> HtmlView {
+        let mut view = HtmlView::new(|| {}, load_images, None);
+        view.set_size(WIDTH, HEIGHT, 1.0);
+        view.show(
+            &format!(r#"<html><body style="margin: 0">{body}</body></html>"#),
+            Some(PAGE),
+            false,
+        );
+        render(&mut view);
+        view
+    }
+
+    fn render(view: &mut HtmlView) {
+        let mut buffer = vec![0; (WIDTH * HEIGHT * 4) as usize];
+        view.render(&mut buffer);
+    }
+
+    /// Renders until `done` or a few seconds have passed (images load on
+    /// other threads).
+    fn wait_for(view: &mut HtmlView, mut done: impl FnMut(&HtmlView) -> bool) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(5) {
+            render(view);
+            if done(view) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+
+    #[test]
+    fn large_images_are_shown_scaled_down() {
+        use base64::Engine;
+        let image = image::RgbImage::new(2000, 100);
+        let mut png = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let data = base64::engine::general_purpose::STANDARD.encode(&png);
+        let mut view = view(
+            &format!(r#"<img id="i" src="data:image/png;base64,{data}">"#),
+            false,
+        );
+        // Shown at its own size in this document, which is the width of the
+        // article's content now.
+        let width = |view: &HtmlView| {
+            let doc = view.doc.as_ref().unwrap();
+            let id = doc.get_element_by_id("i").unwrap();
+            doc.get_node(id).unwrap().final_layout().size.width
+        };
+        assert!(wait_for(&mut view, |view| width(view) > 0.0));
+        assert_eq!(width(&view), CONTENT_WIDTH as f32);
+        assert_eq!(view.image_stats().scaled.load(Ordering::Relaxed), 1);
+    }
 
     #[test]
     fn data_urls() {

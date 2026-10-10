@@ -24,6 +24,7 @@ use ren_settings::{Account, PASSWORD_VAR, SecretService};
 use ren_store::Store;
 use ren_sync::{Kind, Progress, Report, SystemClock};
 
+use crate::hash::fnv1a;
 use crate::procstat::trim_heap;
 use crate::remote::USER_AGENT;
 
@@ -82,14 +83,6 @@ impl std::fmt::Display for Failure {
             Failure::Sync(err) => write!(f, "{err}"),
         }
     }
-}
-
-/// A 64-bit FNV-1a hash: stable across Rust versions, unlike the
-/// standard library's hasher.
-fn fnv1a(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-    })
 }
 
 /// Checks that the database belongs to `account`, and records that it
@@ -284,12 +277,6 @@ mod tests {
         let mut other_server = account("ada");
         other_server.server = "https://other.example.org".to_owned();
         assert!(!claim_database(&mut store, &other_server).unwrap());
-    }
-
-    #[test]
-    fn stable_hash() {
-        assert_eq!(fnv1a(""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a("a"), 0xaf63_dc4c_8601_ec8c);
     }
 
     #[test]

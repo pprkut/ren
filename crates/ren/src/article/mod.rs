@@ -5,9 +5,13 @@
 //! Blitz view or as plain text without it.
 
 #[cfg_attr(not(feature = "html-view"), allow(dead_code))]
+pub mod cache;
+#[cfg_attr(not(feature = "html-view"), allow(dead_code))]
 mod document;
 #[cfg(feature = "html-view")]
 pub mod html;
+#[cfg(feature = "html-view")]
+mod images;
 pub mod text;
 
 #[cfg_attr(not(feature = "html-view"), allow(unused_imports))]

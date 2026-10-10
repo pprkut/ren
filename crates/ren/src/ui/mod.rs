@@ -817,6 +817,9 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
         }
         if let Some(done_at) = done_at {
             if Instant::now() >= done_at {
+                if let Some(stats) = app.article.borrow().image_stats() {
+                    eprintln!("ren: images: {stats}");
+                }
                 log_rss(&format!("after {opened} articles"));
                 let _ = slint::quit_event_loop();
             }
