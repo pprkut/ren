@@ -608,6 +608,8 @@ export component MainWindow inherits Window {
                 // Offers to load the images that weren't loaded.
                 images-bar := Rectangle {
                     visible: root.article-images-blocked;
+                    // Not centred, as children without a position are.
+                    y: 0;
                     width: parent.width;
                     height: self.visible ? images-bar-layout.preferred-height : 0px;
                     background: Theme.hover;
@@ -621,6 +623,7 @@ export component MainWindow inherits Window {
 
                         Text {
                             text: "Images from other servers were not loaded.";
+                            horizontal-stretch: 1;
                             vertical-alignment: center;
                             overflow: elide;
                             color: Palette.foreground;
@@ -628,6 +631,7 @@ export component MainWindow inherits Window {
 
                         Button {
                             text: "Load Images";
+                            horizontal-stretch: 0;
                             clicked => {
                                 root.action("load-images");
                             }
