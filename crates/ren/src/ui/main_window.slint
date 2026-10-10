@@ -43,6 +43,10 @@ export component MainWindow inherits Window {
     // The article has images that weren't loaded (`articles.load-images`
     // is off).
     in property <bool> article-images-blocked;
+    // The article's scroll position and the largest one (0 if it fits),
+    // for the scroll indicator: Blitz draws none for the viewport.
+    in property <length> article-scroll-y;
+    in property <length> article-scroll-max;
     // Colours for the article stylesheet.
     out property <brush> article-background: Palette.background;
     out property <brush> article-foreground: Palette.foreground;
@@ -52,6 +56,7 @@ export component MainWindow inherits Window {
     // mods: 1 control, 2 shift, 4 alt, 8 meta.
     callback article-pointer(kind: int, button: int, x: length, y: length, mods: int);
     callback article-scroll(dx: length, dy: length, mods: int);
+    callback article-scroll-to(y: length);
     callback article-key(text: string, mods: int) -> bool;
     callback article-resized();
     callback article-theme-changed();
@@ -740,6 +745,63 @@ export component MainWindow inherits Window {
                                         self.mouse-x,
                                         self.mouse-y,
                                         html-pane.mods(event.modifiers));
+                                }
+                            }
+                            scroll-event(event) => {
+                                root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
+                                accept
+                            }
+                        }
+                    }
+
+                    // The scroll position, over the right edge of the article;
+                    // the thumb can be dragged.
+                    scroll-track := Rectangle {
+                        visible: root.article-scroll-max > 0;
+                        x: parent.width - self.width;
+                        width: 14px;
+                        height: parent.height;
+
+                        property <length> content: html-area.height + root.article-scroll-max;
+                        property <length> thumb-height: max(24px, self.height * html-area.height / self.content);
+                        property <length> travel: self.height - self.thumb-height;
+                        property <bool> active: track-area.has-hover || track-area.pressed;
+
+                        thumb := Rectangle {
+                            x: parent.width - self.width - 3px;
+                            y: parent.travel * root.article-scroll-y / max(1px, root.article-scroll-max);
+                            width: parent.active ? 8px : 4px;
+                            height: parent.thumb-height;
+                            border-radius: self.width / 2;
+                            background: Palette.foreground;
+                            opacity: parent.active ? 0.45 : 0.25;
+
+                            animate width, opacity { duration: 100ms; }
+                        }
+
+                        track-area := TouchArea {
+                            // Where the thumb was grabbed, from its top.
+                            property <length> grab;
+
+                            function scroll-to-pointer() {
+                                root.article-scroll-to(
+                                    (self.mouse-y - self.grab) / max(1px, scroll-track.travel) * root.article-scroll-max);
+                            }
+
+                            pointer-event(event) => {
+                                if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                                    if self.mouse-y >= thumb.y && self.mouse-y <= thumb.y + thumb.height {
+                                        self.grab = self.mouse-y - thumb.y;
+                                    } else {
+                                        // Centred on the pointer.
+                                        self.grab = thumb.height / 2;
+                                        self.scroll-to-pointer();
+                                    }
+                                }
+                            }
+                            moved => {
+                                if self.pressed {
+                                    self.scroll-to-pointer();
                                 }
                             }
                             scroll-event(event) => {
