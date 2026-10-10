@@ -61,6 +61,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo fmt --check
         working-directory: crates/ren-servo
+      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
       - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
       - run: cargo test --locked --no-default-features --features renderer-software,servo
       - name: Test the Secret Service store

@@ -219,6 +219,7 @@ impl Reader {
 
     /// Whether the item shown is of a feed set to show the full page
     /// instead of the article.
+    #[cfg_attr(not(feature = "servo"), allow(dead_code))]
     pub fn current_full_page(&self) -> bool {
         self.current_feed
             .is_some_and(|feed| self.full_page.contains(&feed))
