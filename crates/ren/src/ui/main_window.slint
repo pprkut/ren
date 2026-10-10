@@ -951,7 +951,9 @@ export component MainWindow inherits Window {
                         root.page-resized();
                     }
 
-                    Image {
+                    // Only while a page is shown: the renderer keeps the last
+                    // image of an element it no longer draws.
+                    if root.current-tab >= 0: Image {
                         width: parent.width;
                         height: parent.height;
                         source: root.page-image;
