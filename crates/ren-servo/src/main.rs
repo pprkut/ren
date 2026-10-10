@@ -171,9 +171,8 @@ impl Frames {
             .and_then(|buffer| Some((buffer.id(), buffer.frame_mut(width, height)?)));
         let Some((buffer, pixels)) = target else {
             // The buffer is too small for this frame; ren sends a new one
-            // with the new size.
+            // with the new size, which is painted into then.
             self.context.finish_readback(readback, None);
-            self.repaint = true;
             return Ok(false);
         };
         self.context.finish_readback(readback, Some(pixels));
