@@ -20,6 +20,8 @@ export struct FeedRow {
     last: bool,
     // Per ancestor level below the root: a branch line passes through.
     guides: [bool],
+    // A feed whose articles show their web page instead.
+    full-page: bool,
 }
 
 component Chevron inherits Path {
@@ -37,6 +39,8 @@ component FeedTreeRow inherits Rectangle {
     in property <FeedRow> entry;
     in property <bool> selected;
     in property <bool> focused;
+    // Web pages can be opened in tabs (the `servo` feature).
+    in property <bool> tabs-available;
     callback clicked();
     callback toggle();
     // An entry of the context menu was activated.
@@ -159,6 +163,14 @@ component FeedTreeRow inherits Rectangle {
                 }
             }
             if !root.entry.starred: MenuSeparator { }
+            if root.is-feed && root.tabs-available: MenuItem {
+                title: "Show Full Pages Instead of Articles";
+                checkable: true;
+                checked: root.entry.full-page;
+                activated => {
+                    root.menu("toggle-full-page");
+                }
+            }
             if root.is-feed: MenuItem {
                 title: "Open Homepage";
                 activated => {
@@ -222,6 +234,7 @@ component FeedTreeRow inherits Rectangle {
 export component FeedTree inherits FocusScope {
     in property <[FeedRow]> rows;
     in property <int> current: 0;
+    in property <bool> tabs-available;
 
     // A row was clicked.
     callback select(row: int);
@@ -266,6 +279,7 @@ export component FeedTree inherits FocusScope {
             entry: row;
             selected: i == root.current;
             focused: root.has-focus;
+            tabs-available: root.tabs-available;
             clicked => {
                 root.focus();
                 root.select(i);

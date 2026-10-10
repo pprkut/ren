@@ -186,6 +186,13 @@ impl Helper {
         tab
     }
 
+    pub fn load(&mut self, tab: TabId, url: &str) {
+        self.send(&Command::Load {
+            tab,
+            url: url.to_owned(),
+        });
+    }
+
     pub fn close(&mut self, tab: TabId) {
         self.send(&Command::Close { tab });
     }

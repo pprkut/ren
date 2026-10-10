@@ -40,8 +40,12 @@ pub struct Reader {
     list: ItemList,
     /// The item shown in the article pane.
     current: Option<u64>,
+    /// The feed of the item shown.
+    current_feed: Option<u64>,
     /// Feed titles by id, for the item rows.
     feed_titles: HashMap<u64, String>,
+    /// Feeds whose articles show their web page instead.
+    full_page: HashSet<u64>,
 }
 
 impl Reader {
@@ -53,7 +57,9 @@ impl Reader {
             selected: Node::All,
             list: ItemList::default(),
             current: None,
+            current_feed: None,
             feed_titles: HashMap::new(),
+            full_page: HashSet::new(),
         };
         reader.reload()?;
         Ok(reader)
@@ -77,6 +83,7 @@ impl Reader {
                 (feed.id, title)
             })
             .collect();
+        self.full_page = self.store.full_page_feeds()?.into_iter().collect();
         if !self.tree.contains(self.selected) {
             self.selected = Node::All;
             self.list.set_selection(Selection::All);
@@ -175,9 +182,11 @@ impl Reader {
             return Ok(None);
         };
         self.current = Some(id);
+        self.current_feed = None;
         let Some(item) = self.store.item(id)? else {
             return Ok(None);
         };
+        self.current_feed = Some(item.summary.feed_id);
         let mut changes = Changes::default();
         if item.summary.status != Status::Read && self.store.set_unread(&[id], false)? > 0 {
             self.load_counts()?;
@@ -206,6 +215,32 @@ impl Reader {
             url: item.url,
             body: item.body.unwrap_or_default(),
         }
+    }
+
+    /// Whether the item shown is of a feed set to show the full page
+    /// instead of the article.
+    pub fn current_full_page(&self) -> bool {
+        self.current_feed
+            .is_some_and(|feed| self.full_page.contains(&feed))
+    }
+
+    /// Whether a feed shows the full page instead of the article.
+    pub fn is_full_page(&self, feed_id: u64) -> bool {
+        self.full_page.contains(&feed_id)
+    }
+
+    /// Sets whether a feed shows the full page instead of the article.
+    pub fn set_full_page(&mut self, feed_id: u64, full_page: bool) -> Result<()> {
+        let settings = ren_store::FeedSettings {
+            open_full_page: full_page,
+        };
+        self.store.set_feed_settings(feed_id, &settings)?;
+        if full_page {
+            self.full_page.insert(feed_id);
+        } else {
+            self.full_page.remove(&feed_id);
+        }
+        Ok(())
     }
 
     /// The link to an item's web page, if it has one.
@@ -374,6 +409,26 @@ mod tests {
         assert_eq!(reader.current(), None);
         // A feed without a title goes by its URL.
         assert_eq!(reader.feed_title(3), "https://example.org/3/feed");
+    }
+
+    #[test]
+    fn full_page_feeds() {
+        let mut reader = reader();
+        assert!(!reader.is_full_page(3));
+        reader.set_full_page(3, true).unwrap();
+        assert!(reader.is_full_page(3));
+        // Item 6 is of feed 3, item 4 of feed 2.
+        reader.open(0).unwrap();
+        assert!(reader.current_full_page());
+        reader.open(2).unwrap();
+        assert!(!reader.current_full_page());
+        // Kept in the store.
+        reader.reload().unwrap();
+        assert!(reader.is_full_page(3));
+        reader.set_full_page(3, false).unwrap();
+        reader.reload().unwrap();
+        assert!(!reader.is_full_page(3));
+        assert!(reader.set_full_page(99, true).is_err());
     }
 
     #[test]

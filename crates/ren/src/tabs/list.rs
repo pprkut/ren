@@ -14,6 +14,9 @@ pub struct Tab {
     pub loading: bool,
     pub back: bool,
     pub forward: bool,
+    /// Opened for an article of a feed set to show full pages: the next
+    /// such article loads in it instead of a new tab.
+    pub for_articles: bool,
 }
 
 impl Tab {
@@ -25,6 +28,7 @@ impl Tab {
             loading: true,
             back: false,
             forward: false,
+            for_articles: false,
         }
     }
 
@@ -81,6 +85,10 @@ impl TabList {
         self.tabs.get(self.current?)
     }
 
+    pub fn id(&self, index: usize) -> Option<TabId> {
+        self.tabs.get(index).map(|t| t.id)
+    }
+
     fn index(&self, id: TabId) -> Option<usize> {
         self.tabs.iter().position(|t| t.id == id)
     }
@@ -90,6 +98,27 @@ impl TabList {
         self.tabs.push(Tab::new(id, url));
         self.current = Some(self.tabs.len() - 1);
         self.tabs.len() - 1
+    }
+
+    /// The tab that articles load in, if there is one.
+    pub fn article_tab(&self) -> Option<usize> {
+        self.tabs.iter().position(|t| t.for_articles)
+    }
+
+    /// Marks the tab at `index` as the one articles load in.
+    pub fn set_article_tab(&mut self, index: usize) {
+        for (i, tab) in self.tabs.iter_mut().enumerate() {
+            tab.for_articles = i == index;
+        }
+    }
+
+    /// A tab starts loading another page.
+    pub fn load(&mut self, index: usize, url: &str) {
+        if let Some(tab) = self.tabs.get_mut(index) {
+            tab.url = url.to_owned();
+            tab.title.clear();
+            tab.loading = true;
+        }
     }
 
     /// Shows the tab at `index`, or the article for `None`; returns
@@ -289,6 +318,20 @@ mod tests {
         let mut changes = Changes::default();
         list.apply(Event::Closed { tab: 2 }, &mut changes);
         assert!(changes.list && !changes.current);
+    }
+
+    #[test]
+    fn the_article_tab() {
+        let mut list = list(2);
+        assert_eq!(list.article_tab(), None);
+        list.set_article_tab(1);
+        assert_eq!(list.article_tab(), Some(1));
+        list.load(1, "https://example.org/next");
+        let tab = &list.tabs()[1];
+        assert!(tab.loading && tab.title.is_empty());
+        assert_eq!(tab.label(), "https://example.org/next");
+        list.close(0);
+        assert_eq!(list.article_tab(), Some(0));
     }
 
     #[test]

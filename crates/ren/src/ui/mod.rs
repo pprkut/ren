@@ -93,7 +93,9 @@ impl Model for ItemListModel {
     }
 }
 
-fn feed_row(row: &Row) -> FeedRow {
+/// A row of the feed tree; `full_page` for feeds whose articles show their
+/// web page instead.
+fn feed_row(row: &Row, full_page: bool) -> FeedRow {
     FeedRow {
         title: row.title.as_str().into(),
         depth: row.depth.into(),
@@ -103,6 +105,7 @@ fn feed_row(row: &Row) -> FeedRow {
         expanded: row.expanded == Some(true),
         last: row.last,
         guides: ModelRc::new(VecModel::from(row.guides.clone())),
+        full_page,
     }
 }
 
@@ -166,18 +169,40 @@ impl App {
         match changed {
             Some(changed) => {
                 for i in changed {
-                    self.feeds.set_row_data(i, feed_row(&rows[i]));
+                    self.feeds.set_row_data(i, self.feed_row(&rows[i]));
                 }
             }
-            None => self
-                .feeds
-                .set_vec(rows.iter().map(feed_row).collect::<Vec<_>>()),
+            None => self.feeds.set_vec(
+                rows.iter()
+                    .map(|row| self.feed_row(row))
+                    .collect::<Vec<_>>(),
+            ),
         }
         let current = rows.iter().position(|r| r.node == selected);
         *self.tree_rows.borrow_mut() = rows;
         let window = self.window();
         window.set_current_feed(current.map_or(-1, |i| i as i32));
         window.set_unread_text(format!("{unread} unread articles").into());
+    }
+
+    fn feed_row(&self, row: &Row) -> FeedRow {
+        let full_page = match row.node {
+            Node::Feed(id) => self.reader.borrow().is_full_page(id),
+            _ => false,
+        };
+        feed_row(row, full_page)
+    }
+
+    /// Switches whether a feed's articles show their web page instead.
+    fn toggle_full_page(&self, row: usize, feed_id: u64) {
+        let full_page = !self.reader.borrow().is_full_page(feed_id);
+        if self
+            .with_reader(|reader| reader.set_full_page(feed_id, full_page))
+            .is_some()
+            && let Some(tree_row) = self.tree_rows.borrow().get(row)
+        {
+            self.feeds.set_row_data(row, feed_row(tree_row, full_page));
+        }
     }
 
     /// Updates what an operation of the reader changed.
@@ -313,6 +338,7 @@ impl App {
     fn feed_menu(&self, row: usize, action: &str) {
         match (action, self.node(row)) {
             ("mark-feed-read", Some(node)) => self.mark_node_read(node),
+            ("toggle-full-page", Some(Node::Feed(id))) => self.toggle_full_page(row, id),
             // The server fetches the feeds; ren syncs everything.
             ("fetch-feed" | "fetch-all", _) => self.start_sync(),
             _ => self.not_implemented(action),
@@ -686,10 +712,29 @@ impl App {
             self.article.borrow_mut().clear();
             return;
         };
-        self.article.borrow_mut().show(article);
         #[cfg(feature = "servo")]
-        self.pages.borrow_mut().show_article();
+        self.show_page_or_article(article.url.as_deref());
+        self.article.borrow_mut().show(article);
         self.apply(changes);
+    }
+
+    /// Shows the article in front of the tabs, or for feeds set to show
+    /// full pages, the article's web page in a tab (the article is still
+    /// in the Article tab).
+    #[cfg(feature = "servo")]
+    fn show_page_or_article(&self, url: Option<&str>) {
+        let full_page = self.reader.borrow().current_full_page();
+        let url = url.filter(|url| full_page && link_kind(url) == LinkKind::Web);
+        let mut pages = self.pages.borrow_mut();
+        match url.map(|url| pages.open_for_article(url)) {
+            Some(Ok(())) => {}
+            Some(Err(err)) => {
+                pages.show_article();
+                drop(pages);
+                self.status(format!("Opening the page failed: {err}"));
+            }
+            None => pages.show_article(),
+        }
     }
 }
 

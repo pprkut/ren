@@ -472,6 +472,7 @@ export component MainWindow inherits Window {
             width: root.tree-width;
             rows: root.feeds;
             current: root.current-feed;
+            tabs-available: root.tabs-available;
             select(row) => {
                 root.feed-clicked(row);
             }
