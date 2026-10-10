@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0010 — The article view (M6)
 
-**Status:** done (2026-10-10), for review; the measurement on the desktop
-with real articles is still to run (see "Measurements").
+**Status:** done (2026-10-10), for review; measured on the desktop with
+real articles on 2026-10-10.
 
 ## Context
 
@@ -203,19 +203,56 @@ Before M6 (a0170a1) and after (6049994), RSS in MiB:
 
 ### On the desktop, with real articles
 
-To be run by the user: `just measure-articles ~/ren-dump 100` (the
-S3 dump, a graphical session, the network for the images). It builds
-both variants, opens 100 articles six times — a build without
-`html-view`, plain text, Blitz without images, Blitz with images from
-their servers, again from the cache, and with glibc's dynamic
-threshold — and prints a table to compare with S3's in `0004` (the
-image cache starts empty in the output directory). The goal: well below
-100 MiB after 100 articles with images, peak included (S3: 108 MiB
-after them, peak 123 MiB).
+By the user, at 15d7ef8, on the machine of S1 and S3 (i7-1185G7, Linux
+7.2.8, KDE on X11), release builds: `just measure-articles ~/ren-dump
+100`, the S3 dump, 100 articles 300 ms apart. RSS in MiB:
 
-Also by hand: the jump links in "GSoC 2026 Final Update - Jenkins Email
-Notifications using Outlook SMTP with OAuth", dark mode with real
-articles, and `articles.load-images = false`.
+| variant | RSS before | after 1st | after last | peak | anon / file after last | first frame ms (median / p90 / max) | parse ms | style+layout ms | paint ms | heap trims ms (median / max) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| build without html-view | 45.0 | 45.0 | 48.0 | 51.5 | 8.2 / 24.1 | - | - | - | - | - |
+| plain text | 47.5 | 47.5 | 50.4 | 54.1 | 8.7 / 26.0 | - | - | - | - | - |
+| Blitz, no images | 48.1 | 64.1 | 70.1 | 78.6 | 22.1 / 32.3 | 5.9 / 9.5 / 26.0 | 0.8 / 1.0 / 12.1 | 1.5 / 2.7 / 8.0 | 1.6 / 4.8 / 18.7 | 0.1 / 0.1 |
+| Blitz, images from their servers | 48.1 | 64.3 | 76.4 | 90.3 | 26.4 / 34.3 | 4.0 / 8.0 / 16.5 | 0.8 / 1.0 / 1.5 | 1.4 / 2.4 / 7.5 | 1.8 / 4.7 / 8.2 | 0.1 / 0.1 |
+| Blitz, images from the cache | 48.4 | 64.6 | 75.6 | 88.2 | 25.7 / 34.3 | 3.9 / 8.2 / 16.2 | 0.8 / 1.1 / 1.4 | 1.3 / 2.4 / 7.3 | 1.8 / 4.8 / 8.2 | 0.2 / 0.2 |
+| Blitz, images from the cache, dynamic mmap threshold | 48.6 | 64.8 | 80.0 | 107.4 | 29.8 / 34.6 | 4.4 / 8.5 / 16.8 | 0.8 / 1.0 / 1.9 | 1.4 / 2.9 / 7.6 | 2.0 / 4.8 / 8.6 | 0.5 / 0.5 |
+
+Images (52 requests; a few were dropped because the article had
+changed before they were fetched): from their servers 49 fetched, 2
+scaled down; from the cache 49 read from it, 2 fetched (dropped in the
+first run), 2 scaled down. Binary size 35.3 MiB with `html-view`, 23.8
+without.
+
+- **The goal is met:** after 100 articles with images, 76.4 MiB, peak
+  90.3 MiB (S3: 108.4 and 122.9). Blitz costs 26 MiB above plain text
+  after them (S3: 60), 20 MiB without images (S3: 33).
+- **Without images** the view's heap after 100 articles is 14 MiB
+  smaller than in S3 (anon 22.1 against 36.1 MiB): the glyph outlines
+  the old renderer kept.
+- **Images** add 6 MiB after 100 articles and 12 MiB to the peak. Real
+  images are small: only 2 of 49 were wider than the content, so here
+  the savings come from the fixed threshold, the trims and the renderer,
+  not from scaling. glibc's dynamic threshold costs 4.4 MiB after the
+  articles and 19 MiB of peak (80.0 / 107.4 against 75.6 / 88.2).
+- **Trims** take 0.1–0.2 ms on the desktop.
+- **First frames** with images are as fast as in S3 (median 4.0 ms, p90
+  8.0). Without images the median is 5.9 ms (S3: 3.7) while parsing,
+  styling and painting take what they took in S3; in the container the
+  same code takes as long without images as before M6. Not explained
+  yet; it ran first of the Blitz variants, as in S3, so a second run
+  will show whether it is variance.
+- **Creating the view** still costs 16 MiB with the first article
+  (S3: 16.6): fonts, Stylo and the view itself. That is the largest
+  part left; a candidate for M10.
+- **The baseline** before the articles is 3 MiB above S3's (45.0
+  against 42.1 MiB without `html-view`): M5's store and sync code.
+- **The image cache in this run** was `~/.cache/ren/images`, not the
+  one in the output directory: the output directory was relative, and
+  ren ignores relative XDG directories (fixed in 1aa4ef2). It was empty
+  when the run started, so the variants measured what they should.
+
+Still to check by hand: the jump links in "GSoC 2026 Final Update -
+Jenkins Email Notifications using Outlook SMTP with OAuth", dark mode
+with real articles, and `articles.load-images = false`.
 
 ## Open
 
