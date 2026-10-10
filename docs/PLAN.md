@@ -634,9 +634,11 @@ From here on every milestone ships with tests for what it adds.
   UI thread; frames 3.9 ms to the window (6.9), 133 frames while
   scrolling (127), Ars Technica 162. The window kept one frame after the
   last tab closed (Slint keeps the image of a hidden element); fixed,
-  to be confirmed. The helper keeps the fixed mmap threshold. Heavy
-  pages cost 160–250 MiB per tab; heise is to be measured again after
-  accepting its consent banner. Content blocking isn't done.
+  1.0 MiB above the start afterwards. The helper keeps the fixed mmap
+  threshold (on heise 100–117 MiB less). Heavy pages cost 160–470 MiB
+  per tab (heise after its consent: 470) and scroll at about 25 frames
+  per second on heise, with one frame under way at a time. Content
+  blocking isn't done.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
