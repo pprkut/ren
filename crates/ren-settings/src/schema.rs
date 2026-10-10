@@ -26,6 +26,7 @@ pub enum Category {
     Account,
     Sync,
     Articles,
+    Pages,
 }
 
 impl Category {
@@ -34,6 +35,7 @@ impl Category {
             Category::Account => "Account",
             Category::Sync => "Sync",
             Category::Articles => "Articles",
+            Category::Pages => "Web pages",
         }
     }
 }
@@ -228,6 +230,7 @@ pub const PASSWORD_COMMAND: &str = "account.password-command";
 pub const SYNC_INTERVAL: &str = "sync.interval-minutes";
 pub const KEEP_READ: &str = "sync.keep-read-days";
 pub const LOAD_IMAGES: &str = "articles.load-images";
+pub const KEEP_SITE_DATA: &str = "pages.keep-site-data";
 
 /// All settings, in the order of the settings dialog.
 pub static SETTINGS: &[Setting] = &[
@@ -295,6 +298,15 @@ pub static SETTINGS: &[Setting] = &[
                       only on request (Article → Load Images), so the servers don't learn which \
                       articles you read; images loaded before are still shown.",
         category: Category::Articles,
+        kind: Kind::Switch { default: true },
+    },
+    Setting {
+        key: KEEP_SITE_DATA,
+        title: "Keep site data",
+        description: "Keep the cookies and site data of web pages opened in tabs, so logins and \
+                      consent choices last. When off, they are forgotten when the last tab \
+                      closes. Settings → Clear Web Site Data removes what was kept.",
+        category: Category::Pages,
         kind: Kind::Switch { default: true },
     },
 ];

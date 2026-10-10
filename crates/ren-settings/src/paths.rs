@@ -24,6 +24,12 @@ pub fn database(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_DATA_HOME", ".local/share")?.join("ren/ren.db"))
 }
 
+/// `$XDG_DATA_HOME/ren/servo`: cookies and site data of the web pages in
+/// tabs (Servo's profile).
+pub fn site_data(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    Some(base(&var, "XDG_DATA_HOME", ".local/share")?.join("ren/servo"))
+}
+
 /// `$XDG_CACHE_HOME/ren/images`, falling back to `~/.cache`: the images
 /// of articles, which can be removed at any time.
 pub fn image_cache(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
@@ -72,6 +78,7 @@ mod tests {
         assert_eq!(state(&vars), Some("/xdg/state/ren/state.toml".into()));
         assert_eq!(database(&vars), Some("/xdg/data/ren/ren.db".into()));
         assert_eq!(image_cache(&vars), Some("/xdg/cache/ren/images".into()));
+        assert_eq!(site_data(&vars), Some("/xdg/data/ren/servo".into()));
     }
 
     #[test]

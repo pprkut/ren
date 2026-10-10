@@ -314,6 +314,12 @@ impl Settings {
     pub fn load_images(&self) -> bool {
         self.bool(schema::LOAD_IMAGES)
     }
+
+    /// Whether web pages in tabs keep cookies and site data after the
+    /// last tab closes.
+    pub fn keep_site_data(&self) -> bool {
+        self.bool(schema::KEEP_SITE_DATA)
+    }
 }
 
 /// A duration of `n` minutes, `None` for 0.
@@ -574,6 +580,9 @@ pub(crate) mod tests {
 
             [articles]
             load-images = false
+
+            [pages]
+            keep-site-data = false
         "#;
         let settings = Settings::parse(text).unwrap().settings;
         assert_eq!(
@@ -590,6 +599,7 @@ pub(crate) mod tests {
             Some(Duration::from_secs(2 * 24 * 60 * 60))
         );
         assert!(!settings.load_images());
+        assert!(!settings.keep_site_data());
 
         let defaults = Settings::default();
         assert_eq!(defaults.sync_interval(), Some(Duration::from_secs(15 * 60)));
@@ -598,6 +608,7 @@ pub(crate) mod tests {
             Some(Duration::from_secs(30 * 24 * 60 * 60))
         );
         assert!(defaults.load_images());
+        assert!(defaults.keep_site_data());
     }
 
     #[test]
