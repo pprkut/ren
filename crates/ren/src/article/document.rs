@@ -23,6 +23,14 @@ pub struct Style {
     pub dark: bool,
 }
 
+impl Style {
+    /// The background of selected text: the accent, toned down so that the
+    /// text stays readable on it, in light and dark mode.
+    pub fn selection(&self) -> Rgb {
+        self.background.mix(self.link, 100)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
