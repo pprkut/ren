@@ -37,6 +37,12 @@ fn main() -> ExitCode {
         }
     }
 
+    // With glibc's dynamic threshold for comparison (`just
+    // measure-articles`).
+    if std::env::var_os("REN_DYNAMIC_MMAP_THRESHOLD").is_none() {
+        procstat::fix_mmap_threshold(procstat::MMAP_THRESHOLD);
+    }
+
     let options = match cli::parse(std::env::args().skip(1)) {
         Ok(cli::Command::Run(options)) => options,
         Ok(cli::Command::Help) => {

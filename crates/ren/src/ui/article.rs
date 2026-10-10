@@ -73,10 +73,10 @@ const TRIM_DELAY: Duration = Duration::from_secs(1);
 
 #[cfg(feature = "html-view")]
 impl HtmlPane {
-    /// glibc keeps freed memory, and raises its threshold for serving large
-    /// blocks from separate mappings (which are returned when freed) after
-    /// such blocks were freed, so decoded images end up in the heap and
-    /// stay there (see `docs/decisions/0004-article-view.md`).
+    /// glibc keeps freed memory in its heap. Blocks of a MiB or more have
+    /// mappings of their own, returned when freed
+    /// ([`crate::procstat::fix_mmap_threshold`]), but the article's many
+    /// smaller ones are freed into the heap.
     fn trim_later(&self) {
         let measure = self.measure;
         self.trim_timer

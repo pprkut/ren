@@ -6,7 +6,7 @@
 # directory: memory before and after opening articles, and the time to the
 # first frame of each article. Compares plain text with the Blitz view
 # (without images, with images from their servers and from the image cache,
-# and with glibc's mmap threshold fixed on top of trimming the heap) and
+# and with glibc's dynamic mmap threshold instead of ren's fixed one) and
 # with a build without the `html-view` feature. The image cache starts empty
 # in $OUT_DIR/cache. Needs a graphical session; don't touch the window while
 # it runs.
@@ -55,7 +55,7 @@ variants=(
     "Blitz, no images|ren-html|--no-images|"
     "Blitz, images from their servers|ren-html||"
     "Blitz, images from the cache|ren-html||"
-    "Blitz, images from the cache, fixed mmap threshold|ren-html||GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072"
+    "Blitz, images from the cache, dynamic mmap threshold|ren-html||REN_DYNAMIC_MMAP_THRESHOLD=1"
 )
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
@@ -146,7 +146,7 @@ done
     echo
     echo "RSS in MiB. First frame: from building the document to the first painted frame of each"
     echo "article (images arrive later and are not included). Heap trims: malloc_trim a second"
-    echo "after each article switch."
+    echo "after each article switch (the trims after loading images are counted with the images)."
     echo
     echo "Images:"
     echo

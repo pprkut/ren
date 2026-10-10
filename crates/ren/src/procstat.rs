@@ -33,6 +33,38 @@ pub fn cpu_seconds() -> Option<(f64, f64)> {
     Some((user as f64 / 100.0, sys as f64 / 100.0))
 }
 
+/// Blocks of at least this size get their own mapping from glibc, which is
+/// returned to the system when they are freed: decoded images and frame
+/// buffers.
+pub const MMAP_THRESHOLD: usize = 1024 * 1024;
+
+/// Fixes glibc's threshold for serving blocks from their own mappings at
+/// `bytes`. By default glibc raises it up to 32 MiB after such blocks are
+/// freed, and the threshold for giving back the top of the heap with it, to
+/// twice that: freed images then stay in the heap, and the top of a
+/// thread's heap isn't given back even by `malloc_trim` (M6: 98 instead of
+/// 51 MiB after 30 articles with images). Fixing it turns that off. Call
+/// it at startup, before other threads exist. Returns whether it was set.
+pub fn fix_mmap_threshold(bytes: usize) -> bool {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        const M_MMAP_THRESHOLD: std::ffi::c_int = -3;
+        unsafe extern "C" {
+            fn mallopt(param: std::ffi::c_int, value: std::ffi::c_int) -> std::ffi::c_int;
+        }
+        let Ok(value) = std::ffi::c_int::try_from(bytes) else {
+            return false;
+        };
+        // SAFETY: mallopt only changes a parameter of glibc's allocator.
+        unsafe { mallopt(M_MMAP_THRESHOLD, value) == 1 }
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        let _ = bytes;
+        false
+    }
+}
+
 /// Gives the memory the allocator keeps after freeing back to the system,
 /// where that is possible (glibc). Returns whether it was tried.
 pub fn trim_heap() -> bool {
@@ -53,6 +85,14 @@ pub fn trim_heap() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mmap_threshold() {
+        assert_eq!(
+            fix_mmap_threshold(MMAP_THRESHOLD),
+            cfg!(all(target_os = "linux", target_env = "gnu"))
+        );
+    }
 
     #[test]
     fn own_process_stats() {
