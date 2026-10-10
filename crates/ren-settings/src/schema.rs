@@ -25,6 +25,7 @@ pub struct Setting {
 pub enum Category {
     Account,
     Sync,
+    Articles,
 }
 
 impl Category {
@@ -32,6 +33,7 @@ impl Category {
         match self {
             Category::Account => "Account",
             Category::Sync => "Sync",
+            Category::Articles => "Articles",
         }
     }
 }
@@ -225,6 +227,7 @@ pub const USER: &str = "account.user";
 pub const PASSWORD_COMMAND: &str = "account.password-command";
 pub const SYNC_INTERVAL: &str = "sync.interval-minutes";
 pub const KEEP_READ: &str = "sync.keep-read-days";
+pub const LOAD_IMAGES: &str = "articles.load-images";
 
 /// All settings, in the order of the settings dialog.
 pub static SETTINGS: &[Setting] = &[
@@ -284,6 +287,15 @@ pub static SETTINGS: &[Setting] = &[
             default: 30,
             unit: "days",
         },
+    },
+    Setting {
+        key: LOAD_IMAGES,
+        title: "Load images",
+        description: "Load the images of articles from their servers. When off, they are loaded \
+                      only on request (Article → Load Images), so the servers don't learn which \
+                      articles you read; images loaded before are still shown.",
+        category: Category::Articles,
+        kind: Kind::Switch { default: true },
     },
 ];
 

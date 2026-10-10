@@ -308,6 +308,12 @@ impl Settings {
     pub fn keep_read(&self) -> Option<Duration> {
         minutes(self.number(schema::KEEP_READ) * 24 * 60)
     }
+
+    /// Whether articles load images from their servers without being asked
+    /// to.
+    pub fn load_images(&self) -> bool {
+        self.bool(schema::LOAD_IMAGES)
+    }
 }
 
 /// A duration of `n` minutes, `None` for 0.
@@ -565,6 +571,9 @@ pub(crate) mod tests {
             [sync]
             interval-minutes = 0
             keep-read-days = 2
+
+            [articles]
+            load-images = false
         "#;
         let settings = Settings::parse(text).unwrap().settings;
         assert_eq!(
@@ -580,6 +589,7 @@ pub(crate) mod tests {
             settings.keep_read(),
             Some(Duration::from_secs(2 * 24 * 60 * 60))
         );
+        assert!(!settings.load_images());
 
         let defaults = Settings::default();
         assert_eq!(defaults.sync_interval(), Some(Duration::from_secs(15 * 60)));
@@ -587,6 +597,7 @@ pub(crate) mod tests {
             defaults.keep_read(),
             Some(Duration::from_secs(30 * 24 * 60 * 60))
         );
+        assert!(defaults.load_images());
     }
 
     #[test]
