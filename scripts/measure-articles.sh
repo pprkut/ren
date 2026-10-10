@@ -37,6 +37,8 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+# Absolute: ren ignores relative XDG directories, as the specification asks.
+OUT_DIR=$(cd "$OUT_DIR" && pwd)
 log() { echo "$*" >&2; }
 
 log "== building"
