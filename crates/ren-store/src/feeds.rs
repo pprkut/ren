@@ -215,6 +215,15 @@ impl Store {
         Ok(settings.unwrap_or_default())
     }
 
+    /// The feeds set to open the full page instead of the article.
+    pub fn full_page_feeds(&self) -> Result<Vec<u64>> {
+        let mut statement = self.conn.prepare_cached(
+            "SELECT feed_id FROM feed_settings WHERE open_full_page ORDER BY feed_id",
+        )?;
+        let ids = statement.query_map([], |row| row.get(0))?;
+        Ok(ids.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Changes the settings of a feed. Fails if the feed doesn't exist.
     pub fn set_feed_settings(&mut self, feed_id: u64, settings: &FeedSettings) -> Result<()> {
         if *settings == FeedSettings::default() {
@@ -417,10 +426,12 @@ mod tests {
         };
         store.set_feed_settings(1, &full).unwrap();
         assert_eq!(store.feed_settings(1).unwrap(), full);
+        assert_eq!(store.full_page_feeds().unwrap(), [1]);
         store
             .set_feed_settings(1, &FeedSettings::default())
             .unwrap();
         assert_eq!(store.feed_settings(1).unwrap(), FeedSettings::default());
+        assert!(store.full_page_feeds().unwrap().is_empty());
         // Unknown feeds have no settings.
         assert!(store.set_feed_settings(9, &full).is_err());
         assert_eq!(store.feed_settings(9).unwrap(), FeedSettings::default());
