@@ -31,7 +31,7 @@ with a spike; if one fails, we pivot and record why in `docs/decisions/`.
 |----------------|--------------------------------------|-----|
 | UI toolkit     | **Slint** (confirmed in S1, software renderer by default: [0001](decisions/0001-ui-toolkit.md)) | Designed for low-resource targets; software, FemtoVG and Skia renderers; virtualised `ListView`; maintained Servo embedding (`examples/servo` in the Slint repo, GPU texture sharing on Linux via Vulkan external memory). Published on crates.io. |
 | Article view   | **Blitz** (`blitz-dom`, `blitz-html`, `blitz-paint`) | HTML/CSS engine built on Servo's Stylo, without a JS engine or networking stack. Painted on the CPU (`anyrender_vello_cpu`) into a Slint image, so no GPU stack is needed for reading articles. Feed bodies are already sanitised and must not run JS anyway. |
-| Full-page tabs | **Servo** (`servo` crate)            | Opening the original page of an article in an in-app tab. Created on demand, torn down when the last tab closes. |
+| Full-page tabs | **Servo** (`servo` crate), in a helper program (`ren-servo`, [0011](decisions/0011-tabs.md)) | Opening the original page of an article in an in-app tab. Created on demand, torn down when the last tab closes. |
 | HTTP           | **ureq 3** (blocking, rustls)        | No async runtime needed for a single background sync thread; small dependency tree. |
 | JSON           | serde / serde_json                   | Streaming deserialisation from the response reader. |
 | Storage        | **SQLite** via rusqlite (`bundled`)  | Paged queries for the list views, so only visible rows are ever in memory. |
@@ -83,7 +83,9 @@ engines (this also keeps CI and cloud builds fast):
 - `html-view` (default on): Blitz article pane. Without it, a plain-text
   rendering of the body is shown.
 - `servo` (default on): full-page tabs. Without it, "Open page" hands the URL
-  to the system browser.
+  to the system browser. Since M7 the feature is only the window's side;
+  Servo itself is in the helper `ren-servo` (`crates/ren-servo`, a
+  workspace of its own), which ren starts with the first tab.
 
 Open questions for the prototypes (spikes S3 and S4):
 
@@ -99,7 +101,9 @@ Open questions for the prototypes (spikes S3 and S4):
   crates. Check that the versions can be unified; two copies would inflate
   the binary and compile time (not RSS, as unused code pages are not loaded).
   *S4: unified with Servo 0.5 and Blitz 0.3.0-beta.2 (stylo 0.20); Servo
-  0.6 already needs stylo 0.21, so upgrades go together (0005).*
+  0.6 already needs stylo 0.21, so upgrades go together (0005). M7: two
+  stylo versions can't be in one build (its `links` key), so Servo moved
+  into a helper program of its own and follows its own releases (0011).*
 
 ## Architecture
 
@@ -110,8 +114,11 @@ crates/
   ren-sync/         Sync engine: pushes local changes, pulls remote changes.
   ren-settings/     Settings model and file, UI state file, app password
                     (Secret Service, password-command). No UI, no server.
+  ren-tabs/         Web page tabs: the protocol between the window and the
+                    Servo helper (messages, shared frame buffer).
   ren/              The application binary (Slint UI, Blitz article view,
-                    Servo tabs, glue).
+                    the window's side of the tabs, glue).
+  ren-servo/        Servo's helper program, a workspace of its own (M7).
 ```
 
 During phase 1 only `nextcloud-news` and `ren` exist; `ren-store`,
@@ -561,7 +568,8 @@ From here on every milestone ships with tests for what it adds.
   first frames as fast. On the desktop with 100 real articles: 76.4 MiB
   after them with images, peak 90.3 MiB (S3: 108.4 and 122.9), 26 MiB
   above plain text (S3: 60); creating the view still costs 16 MiB.
-- **M7 — Full-page tabs.** The S4 result made production-ready behind the
+- **M7 — Full-page tabs.** *(done; see `docs/decisions/0011-tabs.md`)*
+  The S4 result made production-ready behind the
   `servo` feature: tab bar, "Open page", on-demand lifecycle, per-feed "open
   full page instead of article" setting. Remove the spike-only variants
   (`--tabs in-process`, `servo-wgpu`). From the S4 decision record (0005):
@@ -605,6 +613,24 @@ From here on every milestone ships with tests for what it adds.
     through Servo's request interception with a filter list (e.g. the
     `adblock` crate, MPL-2.0). Ads are what makes these pages repaint all
     the time; also a privacy feature. As a setting.
+
+  *Result:* Servo can't share a build with Blitz on another stylo
+  (stylo's `links` key), so the helper became a program of its own,
+  `ren-servo`, in its own workspace on Servo 0.7.0, following Servo's
+  monthly releases; ren's binary has no Servo, and `ren-tabs` is the
+  protocol. One socket pair (the helper's stdin), frames through a
+  memfd sealed by ren and passed with `SCM_RIGHTS`, frame pacing,
+  asynchronous readback with a pixel buffer object and a fence, smooth
+  wheel scrolling, a death signal and a 3 s bound on the helper's
+  shutdown, no waiting on the UI thread when the last tab closes. Tabs
+  only navigate to web pages (mail links go to the desktop); popups open
+  tabs; back, forward, reload and the address in a navigation bar; a
+  Servo profile in `$XDG_DATA_HOME/ren/servo` (`pages.keep-site-data`,
+  Settings → Clear Web Site Data); per feed, "Show Full Pages Instead of
+  Articles" loads its articles' pages in one tab. Spike variants
+  removed. Checked in the container (Xvfb, llvmpipe); the desktop
+  measurements (`just measure-tabs`, heavy pages, the helper's mmap
+  threshold) are still to be run. Content blocking isn't done.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -660,7 +686,8 @@ From here on every milestone ships with tests for what it adds.
     (SpiderMonkey's in `mozjs_sys`, e.g. ICU and zlib). The About dialog
     (M8b) embeds the file; packages install it as documentation.
   - A `.desktop` file, an app icon, AppStream metadata, the install layout
-    (binary, notices, icons), and a SlackBuild.
+    (binary, the Servo helper in `libexec/ren/`, notices, icons), and a
+    SlackBuild. The notices cover both workspaces (ren's and the helper's).
 
 ## Conventions
 
