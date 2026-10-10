@@ -424,6 +424,24 @@ fn decode_data_url(url: &str) -> Result<Vec<u8>, String> {
     }
 }
 
+/// A renderer for a view of `width`×`height` pixels.
+///
+/// Besides its buffers for the view's size, the renderer keeps copies of
+/// the images it painted and the outlines of the glyphs: those of glyphs
+/// unused for 64 frames are dropped, which can be many articles later.
+/// With many glyphs (CJK) that was tens of MiB, so each article gets a new
+/// renderer; outlining its glyphs again is cheap.
+fn new_renderer(width: u32, height: u32) -> VelloCpuImageRenderer {
+    VelloCpuImageRenderer::with_image_cache_config(
+        width,
+        height,
+        ImageCacheConfig {
+            max_bytes: IMAGE_CACHE_BYTES,
+            ..Default::default()
+        },
+    )
+}
+
 /// An article rendered by Blitz.
 pub struct HtmlView {
     doc: Option<HtmlDocument>,
@@ -475,14 +493,7 @@ impl HtmlView {
         });
         Self {
             doc: None,
-            renderer: VelloCpuImageRenderer::with_image_cache_config(
-                1,
-                1,
-                ImageCacheConfig {
-                    max_bytes: IMAGE_CACHE_BYTES,
-                    ..Default::default()
-                },
-            ),
+            renderer: new_renderer(1, 1),
             size: (1, 1),
             scale: 1.0,
             color_scheme: ColorScheme::Light,
@@ -533,10 +544,10 @@ impl HtmlView {
             ..Default::default()
         };
         // Drop the previous document (and its pending images) first, and
-        // the renderer's copies of its images: the renderer only prunes them
-        // while painting, which may not happen for a long time.
+        // the renderer with its copies of the images and the glyphs (see
+        // `new_renderer`).
         self.doc = None;
-        self.renderer.clear_image_cache();
+        self.renderer = new_renderer(self.size.0, self.size.1);
         self.net.shared.remote.store(load_images, Ordering::Release);
         let doc = HtmlDocument::from_html(html, config);
         self.net
@@ -559,10 +570,9 @@ impl HtmlView {
                 .current_doc
                 .store(doc.id() + 1, Ordering::Release);
         }
-        self.renderer.clear_image_cache();
         // Sized again by the next `set_size`.
         self.size = (1, 1);
-        self.renderer.resize(1, 1);
+        self.renderer = new_renderer(1, 1);
     }
 
     /// Sets the size of the view in physical pixels and its scale factor.
