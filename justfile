@@ -10,6 +10,7 @@ check:
     reuse lint
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
     cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
     cargo test --locked --no-default-features --features renderer-software,servo
     cargo clippy --all-targets --locked -- -D warnings
@@ -22,6 +23,7 @@ check-light:
     reuse lint
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
+    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
     cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
     cargo test --locked --no-default-features --features renderer-software,servo
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
