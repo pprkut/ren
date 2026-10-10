@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+# Servo's helper process, in a workspace of its own: Servo and Blitz both
+# bring stylo, which only one version of can be in a build (its `links`
+# key), and the two follow their own release schedules. See
+# docs/decisions/0011-tabs.md.
+[workspace]
+resolver = "3"
+
+[package]
+name = "ren-servo"
+description = "Web pages for ren, rendered by Servo in a helper process"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+ren-tabs = { path = "../ren-tabs" }
+# Without its `multiprocess` feature: content runs in the helper's own
+# threads, and the helper is the process boundary.
+servo = { version = "0.7", default-features = false, features = ["bundled", "clipboard", "js_jit"] }
+# Types in Servo's RenderingContext API, at the versions it uses.
+dpi = "0.1"
+euclid = "0.22"
+gleam = "0.15"
+glow = "0.17"
+surfman = "0.14"
+# Servo's networking brings rustls with two crypto providers; ren picks
+# ring, as in the window.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+url = "2.5"
+# The parent death signal, and ending the helper if Servo's shutdown
+# hangs.
+rustix = { version = "1", default-features = false, features = ["std", "process"] }
+
+# Servo with debug info needs about 18 GB of disk (0005); the helper's own
+# code keeps it.
+[profile.dev]
+debug = false
+
+[profile.dev.package.ren-servo]
+debug = true
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
