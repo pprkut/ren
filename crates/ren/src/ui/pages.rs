@@ -153,6 +153,31 @@ impl Pages {
         Ok(())
     }
 
+    /// Shows the page of an article of a feed set to show full pages: in
+    /// the tab opened for that, or a new one.
+    pub fn open_for_article(&mut self, url: &str) -> Result<(), String> {
+        let existing = self
+            .list
+            .article_tab()
+            .and_then(|index| Some((index, self.list.id(index)?)));
+        match existing {
+            Some((index, tab)) if self.helper.is_some() => {
+                self.helper()?.load(tab, url);
+                self.list.load(index, url);
+                self.update_rows(&[index]);
+                self.list.select(Some(index));
+                self.show_current();
+            }
+            _ => {
+                self.open(url)?;
+                if let Some(index) = self.list.current() {
+                    self.list.set_article_tab(index);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Shows the article instead of a page; the tabs stay open.
     pub fn show_article(&mut self) {
         if self.list.select(None) {
