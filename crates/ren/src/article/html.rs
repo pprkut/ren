@@ -751,6 +751,38 @@ impl HtmlView {
         true
     }
 
+    /// The vertical scroll position, in logical pixels: the offset, the
+    /// largest offset (0 if the article fits) and the view's height.
+    pub fn vertical_scroll(&self) -> (f32, f32, f32) {
+        let viewport = self.size.1 as f32 / self.scale;
+        let Some(doc) = &self.doc else {
+            return (0.0, 0.0, viewport);
+        };
+        // What Blitz scrolls the viewport over.
+        let content = doc.try_root_element().map_or(0.0, |root| {
+            let layout = root.final_layout();
+            layout
+                .size
+                .height
+                .max(layout.scrollable_overflow_rect.bottom)
+        });
+        (
+            doc.viewport_scroll().y as f32,
+            (content - viewport).max(0.0),
+            viewport,
+        )
+    }
+
+    /// Scrolls to `offset` logical pixels from the top.
+    pub fn scroll_to(&mut self, offset: f32) {
+        let Some(doc) = &mut self.doc else {
+            return;
+        };
+        let by = doc.viewport_scroll().y - f64::from(offset);
+        doc.scroll_viewport_by(0.0, by);
+        self.shell.request_redraw();
+    }
+
     /// Copies the selected text to the clipboard. Returns whether there
     /// was a selection.
     pub fn copy(&mut self) -> bool {
@@ -858,6 +890,21 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    #[test]
+    fn scroll_position() {
+        let mut view = view(&r#"<div style="height: 100px">x</div>"#.repeat(50), false);
+        assert_eq!(view.vertical_scroll(), (0.0, 4700.0, 300.0));
+        view.scroll_to(1000.0);
+        render(&mut view);
+        assert_eq!(view.vertical_scroll().0, 1000.0);
+        view.scroll_to(1e9);
+        render(&mut view);
+        assert_eq!(view.vertical_scroll().0, 4700.0);
+
+        let short = self::view("<p>short</p>", false);
+        assert_eq!(short.vertical_scroll().1, 0.0);
     }
 
     #[test]

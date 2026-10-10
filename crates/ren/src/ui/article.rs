@@ -153,6 +153,7 @@ impl ArticlePane {
             html.buffers = [None, None];
             window.set_html_view(false);
             window.set_article_image(slint::Image::default());
+            window.set_article_scroll_max(0.0);
             window.set_article_images_blocked(false);
             html.trim_later();
         }
@@ -344,6 +345,14 @@ impl ArticlePane {
             window.set_article_images_blocked(blocked);
         }
 
+        let (offset, max, _) = html.view.vertical_scroll();
+        if window.get_article_scroll_y() != offset {
+            window.set_article_scroll_y(offset);
+        }
+        if window.get_article_scroll_max() != max {
+            window.set_article_scroll_max(max);
+        }
+
         let cursor = html.view.cursor();
         if cursor != html.cursor {
             html.cursor = cursor;
@@ -382,6 +391,14 @@ impl ArticlePane {
             return;
         };
         html.view.wheel(dx, dy, decode_mods(mods));
+        self.schedule_render();
+    }
+
+    fn scroll_to(&mut self, y: f32) {
+        let Some(html) = &mut self.html else {
+            return;
+        };
+        html.view.scroll_to(y);
         self.schedule_render();
     }
 
@@ -450,6 +467,8 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     });
     let w = with.clone();
     window.on_article_scroll(move |dx, dy, mods| w(&|p| p.scroll(dx, dy, mods)));
+    let w = with.clone();
+    window.on_article_scroll_to(move |y| w(&|p| p.scroll_to(y)));
     let weak = Rc::downgrade(pane);
     window.on_article_key(move |text, mods| {
         weak.upgrade()
