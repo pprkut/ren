@@ -10,6 +10,4 @@ license.workspace = true
 
 [dependencies]
 nextcloud-news = { path = "../nextcloud-news" }
-# 0.38: Servo 0.5 (servo-storage) links the same libsqlite3-sys, and there
-# can only be one crate linking sqlite3 in a build. Upgrade together.
 rusqlite = { version = "0.38", features = ["bundled", "collation", "fallible_uint"] }
