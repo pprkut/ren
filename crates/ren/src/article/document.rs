@@ -139,7 +139,12 @@ blockquote {{ margin: 1em 0; padding-left: 1em; border-left: 3px solid {border};
 table {{ border-collapse: collapse; }}
 td, th {{ border: 1px solid {border}; padding: 0.25em 0.5em; }}
 hr {{ border: none; border-top: 1px solid {border}; }}
-",
+{dark}",
+        dark = if style.dark {
+            dark_overrides(style)
+        } else {
+            String::new()
+        },
         bg = bg.css(),
         fg = fg.css(),
         scheme = if style.dark { "dark" } else { "light" },
@@ -147,6 +152,24 @@ hr {{ border: none; border-top: 1px solid {border}; }}
         link = style.link.css(),
         subtle = subtle.css(),
         border = border.css(),
+    )
+}
+
+/// In dark mode, the colours authors set (`color`, `background-color`,
+/// `bgcolor`, `<font color>`) are replaced by the stylesheet's: they are
+/// chosen for a light background, so dark text on the dark background, or
+/// light boxes around the light text, would be unreadable. `!important` in
+/// the stylesheet beats the authors' inline styles.
+fn dark_overrides(style: &Style) -> String {
+    let subtle = style.background.mix(style.foreground, 20).css();
+    format!(
+        ".content * {{ color: inherit !important; background-color: transparent !important; }}
+.content a, .content a * {{ color: {link} !important; }}
+.content pre, .content :not(pre) > code {{ background-color: {subtle} !important; }}
+.content mark {{ background-color: {mark} !important; }}
+",
+        link = style.link.css(),
+        mark = style.background.mix(style.link, 90).css(),
     )
 }
 
@@ -190,6 +213,21 @@ mod tests {
         assert_eq!(replace_iframes("<iframe></iframe>x"), "x");
         assert_eq!(replace_iframes("<iframe src=x"), "");
         assert_eq!(replace_iframes("no frames"), "no frames");
+    }
+
+    #[test]
+    fn author_colours_only_replaced_in_dark_mode() {
+        let doc = article(r#"<p style="color: #333">x</p>"#);
+        assert!(!doc.html_document(&STYLE).contains("!important"));
+        let dark = Style {
+            background: Rgb(0, 0, 0),
+            foreground: Rgb(255, 255, 255),
+            dark: true,
+            ..STYLE
+        };
+        let html = doc.html_document(&dark);
+        assert!(html.contains(".content * { color: inherit !important;"));
+        assert!(html.contains(".content a, .content a * { color: #0000ff !important; }"));
     }
 
     #[test]
