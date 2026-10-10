@@ -870,7 +870,6 @@ export component MainWindow inherits Window {
                 y: article.y;
                 width: article.width;
                 height: article.height;
-                background: Palette.background;
                 clip: true;
 
                 changed visible => {
@@ -943,6 +942,9 @@ export component MainWindow inherits Window {
                     y: page-bar.height;
                     width: parent.width;
                     height: parent.height - page-bar.height;
+                    // The frame covers it all; filling the background below
+                    // it too would cost a pass over every pixel per frame.
+                    background: root.page-image.width > 0 ? transparent : Palette.background;
 
                     changed width => {
                         root.page-resized();
