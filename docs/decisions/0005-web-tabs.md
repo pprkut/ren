@@ -6,7 +6,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # 0005 — Web pages in Servo tabs (spike S4)
 
 **Status:** accepted (2026-10-04), including the licence exception for
-`webpki-roots`.
+`webpki-roots`. The Servo version and the helper being the same
+binary as ren are superseded by `0011` (M7): Servo runs in a program of
+its own and follows its releases.
 
 ## Context
 

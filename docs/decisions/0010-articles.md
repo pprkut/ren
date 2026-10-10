@@ -274,7 +274,8 @@ Technica, LWN, Anime News Network and the GitHub Blog; and
   thumbnails of items aren't shown yet.
 - **The cache's size** is fixed at 100 MiB; a setting if it matters.
 - The Servo helper (M7) keeps glibc's dynamic threshold; decide with
-  M7's measurements.
+  M7's measurements. *M7: fixed in the helper too, compared with the
+  dynamic one by `just measure-tabs` (0011).*
 - From `0004`, still open: select all (Ctrl+A), smooth scrolling for
   the keyboard.
 - From `0009`: "Copy Link Address" in the item menu can now use the
