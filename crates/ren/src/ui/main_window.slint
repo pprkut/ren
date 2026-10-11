@@ -352,6 +352,13 @@ export component MainWindow inherits Window {
                     root.action("mark-feed-read");
                 }
             }
+            MenuItem {
+                title: "Mark All Feeds as Read";
+                shortcut: @keys(Control + Shift + R);
+                activated => {
+                    root.action("mark-all-read");
+                }
+            }
         }
 
         Menu {
