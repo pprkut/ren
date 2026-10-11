@@ -47,6 +47,10 @@ const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 /// shows on light and dark panels.
 const TRAY_ICON: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/tray.svg"));
 
+/// Time after the window was moved or resized until its size and position
+/// are kept: the window manager has updated its maximised state by then.
+const GEOMETRY_DELAY: Duration = Duration::from_millis(300);
+
 /// Time after the window was hidden until freed memory is given back.
 const HIDDEN_TRIM_DELAY: Duration = Duration::from_secs(1);
 
@@ -166,6 +170,8 @@ struct App {
     hidden: Cell<bool>,
     /// A tray icon may be shown: not while measuring.
     tray_allowed: bool,
+    /// Keeps the window's size and position a moment after it moved.
+    geometry_timer: slint::Timer,
 }
 
 #[derive(Default)]
@@ -235,6 +241,29 @@ impl App {
         });
         drop(saved);
         self.stash_layout(self.arrangement.get());
+    }
+
+    /// Keeps the window's size and position once it settled after a move
+    /// or a resize, so the size it had before it was maximised is known
+    /// when it closes maximised.
+    fn window_moved(&self) {
+        let weak = self.window.clone();
+        self.geometry_timer
+            .start(slint::TimerMode::SingleShot, GEOMETRY_DELAY, move || {
+                if let Some(window) = weak.upgrade() {
+                    window.invoke_action("window-moved".into());
+                }
+            });
+    }
+
+    fn remember_geometry(&self) {
+        if self.hidden.get() {
+            return;
+        }
+        let window = self.window();
+        self.saved.borrow_mut().change(|state| {
+            state.window = geometry::current(window.window(), &state.window);
+        });
     }
 
     /// Keeps the pane sizes and column widths of an arrangement.
@@ -409,10 +438,12 @@ impl App {
             return;
         }
         let window = self.window();
-        geometry::restore(window.window(), &self.saved.borrow().state().window);
+        let saved = self.saved.borrow().state().window.clone();
+        geometry::restore(window.window(), &saved);
         if let Err(err) = window.show() {
             eprintln!("ren: showing the window: {err}");
         }
+        geometry::place(self.window.clone(), saved);
         self.article.borrow_mut().resume();
         #[cfg(feature = "servo")]
         self.pages.borrow_mut().resume();
@@ -595,6 +626,7 @@ impl App {
                 let _ = slint::quit_event_loop();
             }
             "toggle-window" => self.toggle_window(),
+            "window-moved" => self.remember_geometry(),
             "sort-title" => self.sort_by(Column::Title),
             "sort-feed" => self.sort_by(Column::Feed),
             "sort-author" => self.sort_by(Column::Author),
@@ -1657,6 +1689,7 @@ fn run_window(
         close_to_tray: Cell::new(false),
         hidden: Cell::new(false),
         tray_allowed: !measuring,
+        geometry_timer: slint::Timer::default(),
     });
     app.restore();
     match &settings {
@@ -1810,7 +1843,13 @@ fn run_window(
         pages::start_measurement(Rc::downgrade(&app.pages), urls)
     });
     window.show()?;
-    geometry::keep_on_screen(window.as_weak());
+    geometry::place(window.as_weak(), app.saved.borrow().state().window.clone());
+    let weak = Rc::downgrade(&app);
+    geometry::on_moved(window.window(), move || {
+        if let Some(app) = weak.upgrade() {
+            app.window_moved();
+        }
+    });
     // Until quit: the window may be hidden in the tray.
     let result = slint::run_event_loop_until_quit();
     window.hide()?;
