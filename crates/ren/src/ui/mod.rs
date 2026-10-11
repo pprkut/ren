@@ -485,6 +485,11 @@ impl App {
             "mark-read" | "mark-unread" => self.set_read(id, action == "mark-read"),
             "toggle-star" => self.toggle_star(id),
             "open-tab" | "open-browser" => self.open_item(id, action == "open-browser"),
+            "copy-link" => match self.with_reader(|reader| reader.url(id)) {
+                Some(Some(url)) => self.window().invoke_copy_text(url.into()),
+                Some(None) => self.status("This article has no link"),
+                None => {}
+            },
             _ => self.not_implemented(action),
         }
     }
