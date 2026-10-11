@@ -174,6 +174,26 @@ impl ArticlePane {
         }
     }
 
+    /// Drops the HTML view while the window is hidden: Blitz's document
+    /// and the frame buffers. [`resume`](Self::resume) renders the article
+    /// again.
+    pub fn suspend(&mut self) {
+        #[cfg(feature = "html-view")]
+        if self.html.take().is_some() {
+            let window = self.window();
+            window.set_article_image(slint::Image::default());
+            window.set_article_scroll_max(0.0);
+        }
+    }
+
+    /// Shows the article again after [`suspend`](Self::suspend).
+    pub fn resume(&mut self) {
+        #[cfg(feature = "html-view")]
+        if self.html.is_none() {
+            self.load_html();
+        }
+    }
+
     /// Whether articles load images from their servers, from the next one
     /// on.
     pub fn set_load_images(&mut self, load: bool) {
