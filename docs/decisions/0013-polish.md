@@ -272,7 +272,10 @@ By hand:
 
 ## Open
 
-- **ksni's licence** needs the review's decision (above).
+- **The window's geometry on KWin** after the fix, and with two screens:
+  checked only under Openbox on one screen.
+- A drop-down opened by keyboard on a scrolled page still opens where
+  Servo's box says (there is no click to place it by).
 - A context menu or drop-down closed without a choice isn't reported to
   Servo until the next one replaces it (Slint has no closed callback for
   menus and popups).
