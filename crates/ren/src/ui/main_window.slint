@@ -88,6 +88,9 @@ export component MainWindow inherits Window {
     in property <string> page-url;
     in property <bool> page-can-go-back;
     in property <bool> page-can-go-forward;
+    // Content blocking is on, and whether it blocks on the page's site.
+    in property <bool> page-can-block;
+    in property <bool> page-blocking;
     out property <length> page-width: page-area.width;
     out property <length> page-height: page-area.height;
     callback tab-selected(index: int);
@@ -920,6 +923,13 @@ export component MainWindow inherits Window {
                             vertical-alignment: center;
                             color: Palette.foreground;
                             opacity: 0.8;
+                        }
+
+                        if root.page-can-block: ToolButton {
+                            text: root.page-blocking ? "Allow Ads Here" : "Block Ads Here";
+                            clicked => {
+                                root.action("toggle-site-blocking");
+                            }
                         }
 
                         ToolButton {

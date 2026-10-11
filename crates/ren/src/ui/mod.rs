@@ -323,6 +323,8 @@ impl App {
                 }
             }
             #[cfg(feature = "servo")]
+            "toggle-site-blocking" => self.toggle_site_blocking(),
+            #[cfg(feature = "servo")]
             "clear-site-data" => {
                 let result = self.pages.borrow_mut().clear_site_data();
                 match result {
@@ -519,6 +521,42 @@ impl App {
         let len = self.reader.borrow().len();
         if let Some(row) = item_list::step(current, key, len, page) {
             self.item_clicked(row);
+        }
+    }
+
+    /// Blocks ads and trackers on the site of the page shown, or stops
+    /// blocking them there (`pages.unblocked-sites`), and reloads it.
+    #[cfg(feature = "servo")]
+    fn toggle_site_blocking(&self) {
+        use crate::tabs::filters;
+        let Some(host) = self.pages.borrow().current_host() else {
+            return;
+        };
+        let changed = {
+            let mut file = self.settings.borrow_mut();
+            let Some(file) = file.as_mut() else {
+                self.status("Demo data has no settings");
+                return;
+            };
+            let (sites, unblocked, site) =
+                filters::toggle_site(file.settings().unblocked_sites(), &host);
+            file.set(
+                ren_settings::schema::UNBLOCKED_SITES,
+                &ren_settings::Value::List(sites),
+            )
+            .map(|()| (file.settings().clone(), unblocked, site))
+        };
+        match changed {
+            Ok((settings, unblocked, site)) => {
+                self.apply_settings(&settings);
+                self.pages.borrow_mut().navigate("reload");
+                self.status(if unblocked {
+                    format!("Ads and trackers are blocked on {site} again")
+                } else {
+                    format!("Ads and trackers aren't blocked on {site}")
+                });
+            }
+            Err(err) => self.status(format!("Changing the settings failed: {err}")),
         }
     }
 
