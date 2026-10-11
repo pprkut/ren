@@ -142,6 +142,31 @@ export component MainWindow inherits Window {
     // Overrides the desktop's colour scheme unless `unknown`.
     in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
 
+    // The shortcuts that stay the window's while a page has the focus: the
+    // menu's, but for those a page needs too (Ctrl+Return submits forms)
+    // and the browser's reload (`reload-key`). Editing keys (Ctrl+C,
+    // Ctrl+A, …) and others go only to the page.
+    pure function window-key(event: KeyEvent) -> bool {
+        let m = event.modifiers;
+        if m.alt && !m.control && !m.shift && !m.meta {
+            return event.text == Key.LeftArrow || event.text == Key.RightArrow;
+        }
+        if !m.control || m.alt || m.meta {
+            return false;
+        }
+        if m.shift {
+            return event.text == Key.UpArrow || event.text == Key.DownArrow || event.text == "A" || event.text == "a" || event.text == "N" || event.text == "n" || event.text == "R" || event.text == "r";
+        }
+        event.text == "w" || event.text == "q" || event.text == "f" || event.text == "l" || event.text == "u"
+    }
+
+    // F5 and Ctrl+R reload a page that has the focus, as in a browser,
+    // instead of fetching the feeds and marking a feed read.
+    pure function reload-key(event: KeyEvent) -> bool {
+        let m = event.modifiers;
+        (event.text == Key.F5 && !m.control && !m.alt && !m.meta) || (m.control && !m.shift && !m.alt && !m.meta && event.text == "r")
+    }
+
     // Called by the focus scopes: the one with the focus hears when the
     // window is activated.
     function check-activation(reason: FocusReason) {
@@ -1038,16 +1063,24 @@ export component MainWindow inherits Window {
                                     root.check-activation(reason);
                                 }
 
-                                // All keys go to the page; with modifiers they also
-                                // stay available as the window's shortcuts.
+                                // Keys go to the page, except the window's own
+                                // shortcuts (`window-key`), which go only to the
+                                // window.
                                 key-pressed(event) => {
-                                    root.page-key(event.text, html-pane.mods(event.modifiers), true);
-                                    if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                                    if root.window-key(event) {
                                         return reject;
                                     }
+                                    if root.reload-key(event) {
+                                        root.page-navigate("reload");
+                                        return accept;
+                                    }
+                                    root.page-key(event.text, html-pane.mods(event.modifiers), true);
                                     accept
                                 }
                                 key-released(event) => {
+                                    if root.window-key(event) || root.reload-key(event) {
+                                        return reject;
+                                    }
                                     root.page-key(event.text, html-pane.mods(event.modifiers), false);
                                     accept
                                 }
