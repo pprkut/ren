@@ -4,7 +4,7 @@
 //! The article as an HTML document with ren's stylesheet, for the Blitz
 //! view.
 
-use super::Article;
+use super::{Article, Kind};
 
 /// The article's font size, in CSS pixels.
 const FONT_SIZE: u32 = 15;
@@ -64,10 +64,55 @@ impl Article {
             "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title>\
              <style>{}</style></head><body><article>\
              <header><h1>{heading}</h1><p class=\"meta\">{}</p></header>\
-             <div class=\"content\">{body}</div></article></body></html>",
+             <div class=\"content\">{}{body}</div></article></body></html>",
             stylesheet(style),
             escape(&self.meta),
+            self.attachments(),
         )
+    }
+
+    /// The enclosure and the thumbnail, before the body: an image is
+    /// shown, other files are linked. A thumbnail is shown only if the
+    /// body has no image of its own, and a file only if the body doesn't
+    /// link to it already.
+    fn attachments(&self) -> String {
+        let mut html = String::new();
+        let mut image = false;
+        if let Some(enclosure) = &self.enclosure
+            && !self.body.contains(&enclosure.link)
+            && !self.body.contains(&escape(&enclosure.link))
+        {
+            let link = escape(&enclosure.link);
+            if enclosure.kind() == Kind::Image {
+                image = true;
+                html.push_str(&format!(
+                    r#"<figure class="enclosure"><img src="{link}" alt=""></figure>"#
+                ));
+            } else {
+                let mime = enclosure
+                    .mime
+                    .as_deref()
+                    .filter(|mime| !mime.is_empty())
+                    .map(|mime| format!(r#" <span class="type">({})</span>"#, escape(mime)))
+                    .unwrap_or_default();
+                html.push_str(&format!(
+                    r#"<p class="enclosure"><a href="{link}">{}: {}</a>{mime}</p>"#,
+                    enclosure.kind().title(),
+                    escape(enclosure.name()),
+                ));
+            }
+        }
+        let has_image = image || find_element(&self.body, "img").is_some();
+        if let Some(thumbnail) = self.thumbnail.as_ref().filter(|_| !has_image) {
+            html.insert_str(
+                0,
+                &format!(
+                    r#"<figure class="thumbnail"><img src="{}" alt=""></figure>"#,
+                    escape(thumbnail)
+                ),
+            );
+        }
+        html
     }
 }
 
@@ -213,6 +258,8 @@ a {{ color: {link}; }}
 img, video, iframe {{ max-width: 100%; height: auto; }}
 figure {{ margin: 1em 0; }}
 figcaption {{ font-size: 0.9em; color: {meta}; }}
+.enclosure {{ margin: 0 0 1em; }}
+.enclosure .type {{ font-size: 0.9em; color: {meta}; }}
 pre {{ white-space: pre-wrap; background: {subtle}; padding: 0.6em 0.8em; border-radius: 4px; }}
 code {{ font-family: monospace; font-size: 0.92em; }}
 :not(pre) > code {{ background: {subtle}; padding: 0.1em 0.3em; border-radius: 3px; }}
@@ -261,6 +308,7 @@ fn dark_overrides(style: &Style) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::article::Enclosure;
 
     const STYLE: Style = Style {
         background: Rgb(255, 255, 255),
@@ -275,7 +323,51 @@ mod tests {
             meta: "Feed · Someone".to_owned(),
             url: Some(r#"https://example.org/?a=1&b="2""#.to_owned()),
             body: body.to_owned(),
+            enclosure: None,
+            thumbnail: None,
         }
+    }
+
+    fn enclosure(link: &str, mime: &str) -> Option<Enclosure> {
+        Some(Enclosure {
+            link: link.to_owned(),
+            mime: Some(mime.to_owned()),
+        })
+    }
+
+    #[test]
+    fn enclosures_and_thumbnails() {
+        let podcast = Article {
+            enclosure: enclosure("https://cdn.example/ep1.mp3?a=1&b=2", "audio/mpeg"),
+            thumbnail: Some("https://cdn.example/cover.jpg".to_owned()),
+            ..article("<p>Notes</p>")
+        };
+        assert_eq!(
+            podcast.attachments(),
+            "<figure class=\"thumbnail\"><img src=\"https://cdn.example/cover.jpg\" alt=\"\"></figure>\
+             <p class=\"enclosure\"><a href=\"https://cdn.example/ep1.mp3?a=1&amp;b=2\">Audio: ep1.mp3</a> \
+             <span class=\"type\">(audio/mpeg)</span></p>"
+        );
+        let doc = podcast.html_document(&STYLE);
+        assert!(doc.contains("<div class=\"content\"><figure class=\"thumbnail\">"));
+
+        // The body has an image: no thumbnail; it links to the file: no link.
+        let linked = Article {
+            body: r#"<p><img src="x.png"> <a href="https://cdn.example/ep1.mp3?a=1&amp;b=2">Listen</a></p>"#
+                .to_owned(),
+            ..podcast.clone()
+        };
+        assert_eq!(linked.attachments(), "");
+
+        // An image enclosure is shown, and takes the thumbnail's place.
+        let picture = Article {
+            enclosure: enclosure("https://i.example/<big>.png", "image/png"),
+            ..podcast
+        };
+        assert_eq!(
+            picture.attachments(),
+            "<figure class=\"enclosure\"><img src=\"https://i.example/&lt;big&gt;.png\" alt=\"\"></figure>"
+        );
     }
 
     #[test]

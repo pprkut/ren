@@ -14,7 +14,7 @@ use ren_store::{
     ItemDetails, ItemQuery, ItemSummary, MarkReadScope, Result, Selection, Sort, Status, Store,
 };
 
-use crate::article::Article;
+use crate::article::{Article, Enclosure, web_link};
 use crate::feed_tree::{FeedTree, Key, Node, Row};
 use crate::item_list::{Column, ItemList, format_date};
 
@@ -283,6 +283,11 @@ impl Reader {
             meta,
             url: item.url,
             body: item.body.unwrap_or_default(),
+            enclosure: web_link(item.enclosure_link).map(|link| Enclosure {
+                link,
+                mime: item.enclosure_mime,
+            }),
+            thumbnail: web_link(item.media_thumbnail),
         }
     }
 
