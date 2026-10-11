@@ -474,7 +474,9 @@ mod tests {
         assert_eq!(filters.due(&urls, now), urls);
         write_atomically(&filters.path(&urls[0]), b"||a.example^\n").unwrap();
         assert_eq!(filters.due(&urls, now), urls[1..]);
-        assert_eq!(filters.due(&urls, now + MAX_AGE), urls);
+        // A minute more: the list was written after `now`.
+        let later = now + MAX_AGE + Duration::from_secs(60);
+        assert_eq!(filters.due(&urls, later), urls);
         fs::remove_dir_all(&dir).unwrap();
     }
 }
