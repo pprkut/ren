@@ -125,13 +125,7 @@ component ItemTableRow inherits Rectangle {
         border-color: Theme.selection-border;
     }
 
-    touch := TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    ContextMenuArea {
+    menu-area := ContextMenuArea {
         Menu {
             if root.tabs-available: MenuItem {
                 title: "Open Link in Tab";
@@ -168,6 +162,21 @@ component ItemTableRow inherits Rectangle {
                 title: root.entry.starred ? "Remove Star" : "Star";
                 activated => {
                     root.menu("toggle-star");
+                }
+            }
+        }
+
+        touch := TouchArea {
+            clicked => {
+                root.clicked();
+            }
+            // A right click selects the row before its menu opens, so the
+            // menu is about the article shown. This TouchArea takes the
+            // click before the ContextMenuArea sees it.
+            pointer-event(event) => {
+                if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                    root.clicked();
+                    menu-area.show({ x: self.mouse-x, y: self.mouse-y });
                 }
             }
         }
