@@ -4302,6 +4302,7 @@ dependencies = [
  "jpeg-decoder",
  "keyboard-types",
  "kurbo",
+ "libc",
  "nextcloud-news",
  "parley",
  "peniko",

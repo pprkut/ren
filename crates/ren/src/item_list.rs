@@ -144,8 +144,29 @@ impl ItemList {
     }
 }
 
-/// Formats unix seconds as `YYYY-MM-DD HH:MM` (UTC).
+/// Formats unix seconds as `YYYY-MM-DD HH:MM` in local time.
 pub fn format_date(secs: i64) -> String {
+    format_utc(secs.saturating_add(local_offset(secs)))
+}
+
+/// The local time zone's offset from UTC at `secs`, in seconds, from the C
+/// library (`TZ`, else `/etc/localtime`); 0 if it doesn't know.
+fn local_offset(secs: i64) -> i64 {
+    // 64 bits on the systems ren runs on.
+    let time = secs as libc::time_t;
+    // SAFETY: localtime_r only writes into the `tm` it is given; a zeroed
+    // `tm` is a valid value of the plain C struct.
+    unsafe {
+        let mut tm: libc::tm = std::mem::zeroed();
+        if libc::localtime_r(&time, &mut tm).is_null() {
+            return 0;
+        }
+        tm.tm_gmtoff
+    }
+}
+
+/// Formats unix seconds as `YYYY-MM-DD HH:MM` (UTC).
+fn format_utc(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
     // Howard Hinnant's civil_from_days.
@@ -333,8 +354,20 @@ pub(crate) mod tests {
 
     #[test]
     fn date_formatting() {
-        assert_eq!(format_date(0), "1970-01-01 00:00");
-        assert_eq!(format_date(1_788_220_800), "2026-09-01 00:00");
-        assert_eq!(format_date(951_827_696), "2000-02-29 12:34");
+        assert_eq!(format_utc(0), "1970-01-01 00:00");
+        assert_eq!(format_utc(1_788_220_800), "2026-09-01 00:00");
+        assert_eq!(format_utc(951_827_696), "2000-02-29 12:34");
+        assert_eq!(format_utc(-60), "1969-12-31 23:59");
+    }
+
+    #[test]
+    fn local_dates() {
+        // Whatever the time zone of the test, a date is the UTC one moved
+        // by the offset, which is less than a day.
+        for secs in [0, 951_827_696, 1_788_220_800] {
+            let offset = local_offset(secs);
+            assert!(offset.abs() < 86_400, "{offset}");
+            assert_eq!(format_date(secs), format_utc(secs + offset));
+        }
     }
 }
