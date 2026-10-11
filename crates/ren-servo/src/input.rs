@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Input from the window in Servo's terms, smooth wheel scrolling, and
-//! where pages may navigate to.
+//! Input from the window in Servo's terms, smooth wheel scrolling, user
+//! gestures, and where pages may navigate to.
 
 use std::time::{Duration, Instant};
 
-use ren_tabs::{ALT, Button, CONTROL, Key, META, Mods, NamedKey, SHIFT};
+use ren_tabs::{ALT, Button, CONTROL, Input, Key, META, Mods, NamedKey, SHIFT};
 use servo::{Modifiers, MouseButton};
 
 /// What happens when a page wants to go to a URL with a scheme.
@@ -29,6 +29,47 @@ pub fn navigation(scheme: &str) -> Navigation {
         "http" | "https" | "about" | "blob" => Navigation::Allow,
         "mailto" => Navigation::External,
         _ => Navigation::Deny,
+    }
+}
+
+/// How long after a click or key press a page may open a tab: browsers'
+/// transient activation (Servo's `dom_transient_activation_duration_ms`).
+pub const GESTURE_TIME: Duration = Duration::from_secs(5);
+
+/// Whether `input` is a user gesture, after which a page may open a tab:
+/// a mouse button or a key pressed, except Escape and the modifiers
+/// (<https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event>).
+pub fn is_gesture(input: &Input) -> bool {
+    match input {
+        Input::Down { .. } => true,
+        Input::Key {
+            key: Key::Named(named),
+            down: true,
+            ..
+        } => !matches!(
+            named,
+            NamedKey::Escape | NamedKey::Shift | NamedKey::Control | NamedKey::Alt | NamedKey::Meta
+        ),
+        Input::Key { down, .. } => *down,
+        Input::Up { .. } | Input::Move { .. } | Input::Wheel { .. } => false,
+    }
+}
+
+/// The last user gesture in a tab, which lets its page open one tab.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Gesture(Option<Instant>);
+
+impl Gesture {
+    pub fn note(&mut self, now: Instant) {
+        self.0 = Some(now);
+    }
+
+    /// Whether a page may open a tab now; uses the gesture up, so the
+    /// next tab needs another one.
+    pub fn consume(&mut self, now: Instant) -> bool {
+        self.0
+            .take()
+            .is_some_and(|at| now.saturating_duration_since(at) < GESTURE_TIME)
     }
 }
 
@@ -194,6 +235,42 @@ impl SmoothScroll {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gestures() {
+        let key = |key: Key, down| Input::Key { key, mods: 0, down };
+        assert!(is_gesture(&Input::Down {
+            button: Button::Left,
+            x: 0.0,
+            y: 0.0
+        }));
+        assert!(!is_gesture(&Input::Up {
+            button: Button::Left,
+            x: 0.0,
+            y: 0.0
+        }));
+        assert!(!is_gesture(&Input::Wheel {
+            dx: 0.0,
+            dy: 40.0,
+            x: 0.0,
+            y: 0.0
+        }));
+        assert!(!is_gesture(&Input::Move { x: 1.0, y: 1.0 }));
+        assert!(is_gesture(&key(Key::Character("a".into()), true)));
+        assert!(!is_gesture(&key(Key::Character("a".into()), false)));
+        assert!(is_gesture(&key(Key::Named(NamedKey::Enter), true)));
+        assert!(!is_gesture(&key(Key::Named(NamedKey::Escape), true)));
+        assert!(!is_gesture(&key(Key::Named(NamedKey::Control), true)));
+
+        let start = Instant::now();
+        let mut gesture = Gesture::default();
+        assert!(!gesture.consume(start));
+        gesture.note(start);
+        assert!(gesture.consume(start + Duration::from_secs(1)));
+        assert!(!gesture.consume(start + Duration::from_secs(1)));
+        gesture.note(start);
+        assert!(!gesture.consume(start + GESTURE_TIME));
+    }
 
     #[test]
     fn navigation_schemes() {

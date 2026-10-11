@@ -7,6 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Instant;
 
 use dpi::PhysicalSize;
 use euclid::Scale;
@@ -20,10 +21,12 @@ use servo::{
 use url::Url;
 
 use crate::blocking::{Blocker, Verdict};
-use crate::input::{self, Navigation};
+use crate::input::{self, Gesture, Navigation};
 
 /// The most tabs; pages can't open more.
 const MAX_TABS: usize = 50;
+/// The most tabs pages may have open that they opened themselves.
+const MAX_PAGE_TABS: usize = 10;
 
 pub struct Browser {
     servo: Servo,
@@ -50,6 +53,9 @@ struct Delegate {
     /// Web views that pages closed, until the browser drops them.
     closed: RefCell<Vec<WebViewId>>,
     next_page_tab: Cell<TabId>,
+    /// The last user gesture in each tab: pages may open a tab only right
+    /// after one.
+    gestures: RefCell<HashMap<WebViewId, Gesture>>,
     dark: Cell<bool>,
     size: Cell<Size>,
     blocker: RefCell<Blocker>,
@@ -178,12 +184,30 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    /// `window.open` and links to new windows open a tab.
+    /// `window.open` and links to new windows open a tab, but only right
+    /// after a click or key press in the page, once per gesture. Refused
+    /// requests are dropped: `window.open` returns null.
     fn request_create_new(&self, parent: WebView, request: CreateNewWebViewRequest) {
         let Some(opener) = self.tab(&parent) else {
             return;
         };
-        if self.tab_ids.borrow().len() >= MAX_TABS {
+        let gesture = self
+            .gestures
+            .borrow_mut()
+            .get_mut(&parent.id())
+            .is_some_and(|gesture| gesture.consume(Instant::now()));
+        if !gesture {
+            eprintln!("ren-servo: a page opened a tab without a click or key press; not opened");
+            return;
+        }
+        let page_tabs = self
+            .tab_ids
+            .borrow()
+            .values()
+            .filter(|&&tab| tab >= FIRST_PAGE_TAB)
+            .count();
+        if self.tab_ids.borrow().len() >= MAX_TABS || page_tabs >= MAX_PAGE_TABS {
+            eprintln!("ren-servo: too many tabs; a page's tab isn't opened");
             return;
         }
         let size = self.size.get();
@@ -256,6 +280,7 @@ impl Browser {
             opened: RefCell::default(),
             closed: RefCell::default(),
             next_page_tab: Cell::new(FIRST_PAGE_TAB),
+            gestures: RefCell::default(),
             dark: Cell::new(dark),
             size: Cell::new(size),
             blocker: RefCell::new(blocker),
@@ -324,6 +349,7 @@ impl Browser {
         };
         let (_, webview) = self.tabs.remove(index);
         self.delegate.tab_ids.borrow_mut().remove(&webview.id());
+        self.delegate.gestures.borrow_mut().remove(&webview.id());
         // The window activates another tab if it wants one.
         if self.active == Some(tab) {
             self.active = None;
@@ -383,6 +409,14 @@ impl Browser {
         let Some(webview) = self.active_webview() else {
             return;
         };
+        if input::is_gesture(&input) {
+            self.delegate
+                .gestures
+                .borrow_mut()
+                .entry(webview.id())
+                .or_default()
+                .note(Instant::now());
+        }
         let point = |x: f32, y: f32| DevicePoint::new(x, y).into();
         let event = match input {
             Input::Down { button, x, y } => InputEvent::MouseButton(MouseButtonEvent::new(
