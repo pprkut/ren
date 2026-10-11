@@ -46,6 +46,7 @@ fn main() -> ExitCode {
         cli::Mode::Window => ui::run(&options, started),
         cli::Mode::SetPassword => account::set_password(&options),
         cli::Mode::CheckSecretService => account::check_secret_service(&options),
+        cli::Mode::UpdateFilters => update_filters(&options),
         _ => remote::run(&options),
     };
     match result {
@@ -55,4 +56,23 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// `--update-filters`, with the lists of the settings file if there is one.
+#[cfg(feature = "servo")]
+fn update_filters(options: &cli::Options) -> Result<(), String> {
+    let path = match &options.settings {
+        Some(path) => path.clone(),
+        None => account::default_path()?,
+    };
+    let (file, reload) = ren_settings::SettingsFile::open(path);
+    if let ren_settings::Reload::Failed(problems) = reload {
+        return Err(format!("{}: {problems}", file.path().display()));
+    }
+    tabs::filters::update_now(file.settings())
+}
+
+#[cfg(not(feature = "servo"))]
+fn update_filters(_options: &cli::Options) -> Result<(), String> {
+    Err("built without web page tabs (the servo feature)".to_owned())
 }

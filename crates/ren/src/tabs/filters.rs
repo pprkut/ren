@@ -87,7 +87,7 @@ impl Filters {
                 let mut changed = false;
                 for url in &urls {
                     match filters.download(&agent, url) {
-                        Ok(()) => changed = true,
+                        Ok(_) => changed = true,
                         Err(err) => eprintln!("ren: downloading the filter list {url}: {err}"),
                     }
                 }
@@ -102,8 +102,9 @@ impl Filters {
     }
 
     /// Downloads the list from `url` and its includes, and writes it as
-    /// the engine reads it. A failure keeps the old list.
-    fn download(&self, agent: &ureq::Agent, url: &str) -> Result<(), String> {
+    /// the engine reads it; returns its size. A failure keeps the old
+    /// list.
+    pub fn download(&self, agent: &ureq::Agent, url: &str) -> Result<usize, String> {
         let fetch = |url: &str| -> Result<String, String> {
             let bytes = crate::http::fetch(agent, url, MAX_LIST_BYTES)?;
             String::from_utf8(bytes).map_err(|_| "not UTF-8".to_owned())
@@ -132,7 +133,8 @@ impl Filters {
         if list.len() as u64 > MAX_LIST_BYTES {
             return Err("too large with its includes".to_owned());
         }
-        write_atomically(&self.path(url), list.as_bytes()).map_err(|err| err.to_string())
+        write_atomically(&self.path(url), list.as_bytes()).map_err(|err| err.to_string())?;
+        Ok(list.len())
     }
 }
 
@@ -153,6 +155,45 @@ pub fn toggle_site(mut sites: Vec<String>, host: &str) -> (Vec<String>, bool, St
     } else {
         sites.retain(|site| !covering.contains(site));
         (sites, true, covering.join(", "))
+    }
+}
+
+/// `ren --update-filters`: downloads the filter lists of the settings (or
+/// the default ones) that are missing or old, and tells how it went.
+pub fn update_now(settings: &ren_settings::Settings) -> Result<(), String> {
+    let dir = ren_settings::paths::filter_lists(|name| std::env::var(name).ok())
+        .ok_or("cannot find the cache: neither XDG_CACHE_HOME nor HOME is set")?;
+    let filters = Filters::new(dir);
+    let urls = settings.filter_lists();
+    if urls.is_empty() {
+        println!("Content blocking is off (pages.block-content)");
+        return Ok(());
+    }
+    let due = filters.due(&urls, SystemTime::now());
+    let agent = crate::http::agent();
+    let mut failed = 0;
+    for url in &urls {
+        if !due.contains(url) {
+            println!("{url}: up to date");
+            continue;
+        }
+        let started = std::time::Instant::now();
+        match filters.download(&agent, url) {
+            Ok(len) => println!(
+                "{url}: {:.1} MiB in {:.1} s",
+                len as f64 / 1024.0 / 1024.0,
+                started.elapsed().as_secs_f64()
+            ),
+            Err(err) => {
+                println!("{url}: failed: {err}");
+                failed += 1;
+            }
+        }
+    }
+    println!("Kept in {}", filters.dir.display());
+    match failed {
+        0 => Ok(()),
+        n => Err(format!("{n} of {} lists failed", urls.len())),
     }
 }
 

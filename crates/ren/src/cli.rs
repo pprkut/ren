@@ -37,6 +37,11 @@ App password:
                        read and remove a test password, and tell whether
                        the app password is stored
 
+Web page tabs (with the servo feature):
+  --update-filters     Download the filter lists for blocking ads and
+                       trackers that are missing or older than four days
+                       (pages.filter-lists; otherwise when a tab opens)
+
 Window options:
   --database <FILE>  The database to show and sync (default:
                      $XDG_DATA_HOME/ren/ren.db)
@@ -101,6 +106,7 @@ pub enum Mode {
     Sync(PathBuf),
     SetPassword,
     CheckSecretService,
+    UpdateFilters,
 }
 
 /// Items per request of the server commands, see
@@ -184,13 +190,14 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--sync" => Some(Mode::Sync(value("--sync")?.into())),
             "--set-password" => Some(Mode::SetPassword),
             "--check-secret-service" => Some(Mode::CheckSecretService),
+            "--update-filters" => Some(Mode::UpdateFilters),
             _ => None,
         };
         if let Some(mode) = mode {
             if options.mode != Mode::Window {
                 return Err(
                     "only one of --check, --fetch-unread, --dump-items, --check-writes, \
-                     --sync, --set-password and --check-secret-service"
+                     --sync, --set-password, --check-secret-service and --update-filters"
                         .to_owned(),
                 );
             }
@@ -376,6 +383,7 @@ mod tests {
         for (arg, mode) in [
             ("--set-password", Mode::SetPassword),
             ("--check-secret-service", Mode::CheckSecretService),
+            ("--update-filters", Mode::UpdateFilters),
         ] {
             let Ok(Command::Run(options)) = parse_args(&[arg]) else {
                 panic!("parse failed");

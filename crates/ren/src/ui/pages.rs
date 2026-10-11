@@ -63,7 +63,8 @@ impl Pages {
             keep_site_data: true,
             filters: ren_settings::paths::filter_lists(|name| std::env::var(name).ok())
                 .map(Filters::new),
-            filter_lists: Vec::new(),
+            // Demo data has no settings file: the defaults.
+            filter_lists: ren_settings::Settings::default().filter_lists(),
             unblocked_sites: Vec::new(),
             lists_updated: Arc::default(),
             measure,

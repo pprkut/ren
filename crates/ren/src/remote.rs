@@ -37,7 +37,7 @@ pub fn run(options: &Options) -> Result<(), String> {
     let client = Client::new(&account.server, &credentials, &Config::new(USER_AGENT));
 
     let result = match &options.mode {
-        Mode::Window | Mode::SetPassword | Mode::CheckSecretService => {
+        Mode::Window | Mode::SetPassword | Mode::CheckSecretService | Mode::UpdateFilters => {
             unreachable!("not a remote mode")
         }
         Mode::Check => check(&client),
