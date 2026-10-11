@@ -234,6 +234,11 @@ impl Helper {
         self.send(&Command::Input(input));
     }
 
+    /// New settings or filter lists for content blocking.
+    pub fn set_blocking(&mut self, blocking: Option<Blocking>) {
+        self.send(&Command::Blocking(blocking));
+    }
+
     pub fn set_dark(&mut self, dark: bool) {
         self.send(&Command::Dark(dark));
     }

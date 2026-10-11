@@ -37,7 +37,7 @@ html-view = [
 # Full web pages in tabs, rendered by Servo in a helper process
 # (crates/ren-servo, built on its own), which is only started when the
 # first tab opens. Without it, pages open in the system browser.
-servo = ["dep:ren-tabs"]
+servo = ["dep:ren-tabs", "dep:rustls", "dep:ureq"]
 renderer-femtovg = ["slint/renderer-femtovg"]
 renderer-skia = ["slint/renderer-skia"]
 renderer-software = ["slint/renderer-software"]
@@ -80,7 +80,8 @@ ren-tabs = { path = "../ren-tabs", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
-# For images in articles; the same TLS setup as nextcloud-news.
+# For images in articles and the tabs' filter lists; the same TLS setup
+# as nextcloud-news.
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
 ureq = { version = "3.4", optional = true, default-features = false, features = ["rustls-no-provider", "platform-verifier", "gzip"] }
 

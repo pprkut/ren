@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use ren_tabs::stats::StageStats;
 use ren_tabs::{Button, Cursor, Event, Input, Key, Mods, NamedKey, Size, TabId};
@@ -18,6 +18,7 @@ use slint::{ComponentHandle, Model, SharedString, VecModel};
 
 use super::{MainWindow, TabRow};
 use crate::tabs::Waker;
+use crate::tabs::filters::Filters;
 use crate::tabs::helper::{self, Helper};
 use crate::tabs::list::{Changes, Tab, TabList};
 
@@ -29,6 +30,13 @@ pub struct Pages {
     /// Where Servo keeps cookies and site data, if it keeps them.
     site_data: Option<PathBuf>,
     keep_site_data: bool,
+    /// Where the filter lists for content blocking are kept, the URLs of
+    /// those to use (none blocks nothing), and the sites not blocked on.
+    filters: Option<Filters>,
+    filter_lists: Vec<String>,
+    unblocked_sites: Vec<String>,
+    /// Lists were downloaded, which the helper should load.
+    lists_updated: Arc<AtomicBool>,
     measure: bool,
     /// A pump is already queued on the event loop.
     pump_queued: Arc<AtomicBool>,
@@ -53,6 +61,11 @@ impl Pages {
             rows,
             site_data: ren_settings::paths::site_data(|name| std::env::var(name).ok()),
             keep_site_data: true,
+            filters: ren_settings::paths::filter_lists(|name| std::env::var(name).ok())
+                .map(Filters::new),
+            filter_lists: Vec::new(),
+            unblocked_sites: Vec::new(),
+            lists_updated: Arc::default(),
             measure,
             stats: StageStats::new("ui"),
             pump_queued: Arc::default(),
@@ -87,6 +100,44 @@ impl Pages {
     /// Whether the next helper keeps cookies and site data.
     pub fn set_keep_site_data(&mut self, keep: bool) {
         self.keep_site_data = keep;
+    }
+
+    /// Blocks ads and trackers with the filter lists from `lists` (URLs;
+    /// none blocks nothing), except on `unblocked` sites.
+    pub fn set_blocking(&mut self, lists: Vec<String>, unblocked: Vec<String>) {
+        if lists == self.filter_lists && unblocked == self.unblocked_sites {
+            return;
+        }
+        self.filter_lists = lists;
+        self.unblocked_sites = unblocked;
+        let blocking = self.blocking();
+        if let Some(helper) = &mut self.helper {
+            helper.set_blocking(blocking);
+            self.update_filters();
+        }
+    }
+
+    fn blocking(&self) -> Option<ren_tabs::Blocking> {
+        self.filters
+            .as_ref()?
+            .blocking(&self.filter_lists, &self.unblocked_sites)
+    }
+
+    /// Downloads the lists that are missing or old; the helper gets them
+    /// when they are there.
+    fn update_filters(&self) {
+        let Some(filters) = &self.filters else {
+            return;
+        };
+        let due = filters.due(&self.filter_lists, SystemTime::now());
+        let updated = self.lists_updated.clone();
+        let waker = self.waker();
+        filters.update(due, move |changed| {
+            if changed {
+                updated.store(true, Ordering::Release);
+                waker();
+            }
+        });
     }
 
     fn size(&self) -> Size {
@@ -132,7 +183,13 @@ impl Pages {
                     }
                 });
             let started = Instant::now();
-            let helper = Helper::start(self.waker(), self.size(), window.get_dark(), profile, None)?;
+            let helper = Helper::start(
+                self.waker(),
+                self.size(),
+                window.get_dark(),
+                profile,
+                self.blocking(),
+            )?;
             if self.measure {
                 eprintln!(
                     "ren: Servo started in {:.1} ms",
@@ -140,6 +197,7 @@ impl Pages {
                 );
             }
             self.helper = Some(helper);
+            self.update_filters();
         }
         Ok(self.helper.as_mut().expect("started above"))
     }
@@ -291,9 +349,16 @@ impl Pages {
 
     fn pump(&mut self) {
         self.pump_queued.store(false, Ordering::Release);
+        let blocking = self
+            .lists_updated
+            .swap(false, Ordering::AcqRel)
+            .then(|| self.blocking());
         let Some(helper) = &mut self.helper else {
             return;
         };
+        if let Some(blocking) = blocking {
+            helper.set_blocking(blocking);
+        }
         let events = helper.pump();
         let frame = helper.take_frame();
         let window = self.window();

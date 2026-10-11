@@ -328,6 +328,23 @@ impl Settings {
     pub fn keep_site_data(&self) -> bool {
         self.bool(schema::KEEP_SITE_DATA)
     }
+
+    /// The URLs of the filter lists to block ads and trackers with in web
+    /// pages; none if blocking is off.
+    pub fn filter_lists(&self) -> Vec<String> {
+        if !self.bool(schema::BLOCK_CONTENT) {
+            return Vec::new();
+        }
+        self.list(schema::FILTER_LISTS)
+            .iter()
+            .filter_map(|list| schema::filter_list_url(list).map(str::to_owned))
+            .collect()
+    }
+
+    /// Sites on which nothing is blocked.
+    pub fn unblocked_sites(&self) -> Vec<String> {
+        self.list(schema::UNBLOCKED_SITES)
+    }
 }
 
 /// A duration of `n` minutes, `None` for 0.
@@ -622,6 +639,8 @@ pub(crate) mod tests {
 
             [pages]
             keep-site-data = false
+            filter-lists = ["easylist", "https://lists.example/regional.txt"]
+            unblocked-sites = ["heise.de", ""]
         "#;
         let settings = Settings::parse(text).unwrap().settings;
         assert_eq!(
@@ -639,6 +658,18 @@ pub(crate) mod tests {
         );
         assert!(!settings.load_images());
         assert!(!settings.keep_site_data());
+        assert_eq!(
+            settings.filter_lists(),
+            [
+                "https://easylist.to/easylist/easylist.txt",
+                "https://lists.example/regional.txt"
+            ]
+        );
+        assert_eq!(settings.unblocked_sites(), ["heise.de"]);
+        let off = Settings::parse("[pages]\nblock-content = false\n")
+            .unwrap()
+            .settings;
+        assert_eq!(off.filter_lists(), Vec::<String>::new());
 
         let defaults = Settings::default();
         assert_eq!(defaults.sync_interval(), Some(Duration::from_secs(15 * 60)));
@@ -648,6 +679,27 @@ pub(crate) mod tests {
         );
         assert!(defaults.load_images());
         assert!(defaults.keep_site_data());
+        assert_eq!(defaults.filter_lists().len(), 5);
+        assert_eq!(defaults.unblocked_sites(), Vec::<String>::new());
+        assert_eq!(
+            problems_of(
+                "[pages]\nfilter-lists = [\"easylsit\"]\nunblocked-sites = [\"https://x.org\"]\n"
+            ),
+            [
+                "2:16: pages.filter-lists must name a known list or be an https:// URL: easylsit",
+                "3:19: pages.unblocked-sites must be a host name such as example.org: https://x.org",
+            ]
+        );
+    }
+
+    fn problems_of(text: &str) -> Vec<String> {
+        match Settings::parse(text) {
+            Ok(loaded) => loaded.warnings,
+            Err(Problems(problems)) => problems,
+        }
+        .iter()
+        .map(Problem::to_string)
+        .collect()
     }
 
     #[test]
