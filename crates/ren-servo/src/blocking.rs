@@ -125,7 +125,7 @@ impl Blocker {
             .into_iter()
             .flatten()
             .filter_map(Url::host_str)
-            .any(|host| is_unblocked(&config.unblocked, host))
+            .any(|host| config.unblocks(host))
         {
             return Verdict::Allow;
         }
@@ -190,18 +190,6 @@ pub fn request_type(destination: &str) -> &'static str {
         "" => "xmlhttprequest",
         _ => "other",
     }
-}
-
-/// Whether `host` is one of `sites` or a subdomain of one.
-pub fn is_unblocked(sites: &[String], host: &str) -> bool {
-    let host = host.trim_end_matches('.');
-    sites.iter().any(|site| {
-        let site = site.trim_end_matches('.');
-        !site.is_empty()
-            && host.len() >= site.len()
-            && host[host.len() - site.len()..].eq_ignore_ascii_case(site)
-            && (host.len() == site.len() || host.as_bytes()[host.len() - site.len() - 1] == b'.')
-    })
 }
 
 /// Whether the list files differ from those `old` was loaded from: other
@@ -372,18 +360,6 @@ mod tests {
         assert_eq!(request_type("video"), "media");
         assert_eq!(request_type(""), "xmlhttprequest");
         assert_eq!(request_type("manifest"), "other");
-    }
-
-    #[test]
-    fn unblocked_sites_cover_subdomains() {
-        let sites = vec!["heise.de".to_owned(), "".to_owned()];
-        assert!(is_unblocked(&sites, "heise.de"));
-        assert!(is_unblocked(&sites, "www.heise.de"));
-        assert!(is_unblocked(&sites, "WWW.Heise.DE."));
-        assert!(!is_unblocked(&sites, "notheise.de"));
-        assert!(!is_unblocked(&sites, "heise.de.example"));
-        assert!(!is_unblocked(&sites, "example.org"));
-        assert!(!is_unblocked(&[], "heise.de"));
     }
 
     fn temporary_dir(name: &str) -> PathBuf {

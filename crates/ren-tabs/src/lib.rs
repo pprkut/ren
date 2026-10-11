@@ -156,6 +156,40 @@ pub struct Blocking {
     pub unblocked: Vec<String>,
 }
 
+impl Blocking {
+    /// Whether nothing is blocked on pages from `host`.
+    pub fn unblocks(&self, host: &str) -> bool {
+        self.unblocked.iter().any(|site| site_covers(site, host))
+    }
+}
+
+/// Whether `site`, a host name, covers `host`: it's the same, or `host`
+/// is a subdomain of it. Case and a final dot don't matter.
+pub fn site_covers(site: &str, host: &str) -> bool {
+    let site = site.trim_end_matches('.');
+    let host = host.trim_end_matches('.');
+    if site.is_empty() || host.len() < site.len() {
+        return false;
+    }
+    let (rest, end) = host.split_at(host.len() - site.len());
+    end.eq_ignore_ascii_case(site) && (rest.is_empty() || rest.ends_with('.'))
+}
+
+/// The host of a web URL, without user, password and port.
+pub fn host_of(url: &str) -> Option<&str> {
+    let (_, rest) = url.split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = if host.starts_with('[') {
+        &host[..=host.find(']')?]
+    } else {
+        host.split(':').next()?
+    };
+    Some(host).filter(|host| !host.is_empty())
+}
+
 /// From the window to the helper.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Command {
@@ -266,6 +300,40 @@ pub enum Event {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sites_cover_their_subdomains() {
+        assert!(site_covers("heise.de", "heise.de"));
+        assert!(site_covers("heise.de", "www.heise.de"));
+        assert!(site_covers("heise.de.", "WWW.Heise.DE."));
+        assert!(!site_covers("heise.de", "notheise.de"));
+        assert!(!site_covers("heise.de", "heise.de.example"));
+        assert!(!site_covers("", "heise.de"));
+        assert!(!site_covers("www.heise.de", "heise.de"));
+        let blocking = Blocking {
+            lists: Vec::new(),
+            cache: "/c".into(),
+            unblocked: vec!["example.org".to_owned(), "heise.de".to_owned()],
+        };
+        assert!(blocking.unblocks("www.heise.de"));
+        assert!(!blocking.unblocks("example.com"));
+    }
+
+    #[test]
+    fn hosts() {
+        assert_eq!(
+            host_of("https://www.heise.de/news?x#y"),
+            Some("www.heise.de")
+        );
+        assert_eq!(
+            host_of("https://user:pw@example.org:8443/"),
+            Some("example.org")
+        );
+        assert_eq!(host_of("http://[::1]:8000/"), Some("[::1]"));
+        assert_eq!(host_of("https://example.org"), Some("example.org"));
+        assert_eq!(host_of("about:blank"), None);
+        assert_eq!(host_of("file:///etc/passwd"), None);
+    }
 
     #[test]
     fn commands_are_one_line() {
