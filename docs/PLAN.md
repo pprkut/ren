@@ -696,6 +696,12 @@ From here on every milestone ships with tests for what it adds.
     modifiers go to the page and to the window's shortcuts (Ctrl+F in a
     page also focuses ren's search). Decide which keys stay ren's (tab
     and window shortcuts) and send the rest only to the page.
+  - **Drop-downs and the context menu in pages** (M7, 0011): Servo asks
+    the embedder to show a `<select>`'s options and a page's context
+    menu. The helper passes the request (options or menu entries, and
+    where) to ren, which shows them as a Slint popup and sends the
+    choice back. The context menu: open the link in a new tab, copy the
+    link, copy the selection, back/forward/reload.
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
@@ -749,6 +755,14 @@ From here on every milestone ships with tests for what it adds.
   - A `.desktop` file, an app icon, AppStream metadata, the install layout
     (binary, the Servo helper in `libexec/ren/`, notices, icons), and a
     SlackBuild. The notices cover both workspaces (ren's and the helper's).
+
+### Phase 5 — Later
+
+- **M12 — The rest of Servo's embedder controls** (M7, 0011): file
+  pickers (uploads, through the desktop's portal or a Slint dialog),
+  colour pickers, input methods (IME, for Chinese, Japanese or Korean
+  text), and the `alert`/`confirm`/`prompt` dialogs, which are dismissed
+  now. Drop-downs and the context menu come earlier, in M8.
 
 ## Conventions
 
