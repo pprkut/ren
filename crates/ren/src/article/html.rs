@@ -32,8 +32,7 @@ use super::cache::ImageCache;
 use super::document::CONTENT_WIDTH;
 use super::images::{self, Limits};
 use super::paint::SelectionPainter;
-
-const USER_AGENT: &str = concat!("ren/", env!("CARGO_PKG_VERSION"));
+use crate::http;
 
 /// Largest image (or other resource) fetched for an article.
 const RESOURCE_LIMIT: u64 = 20 * 1024 * 1024;
@@ -271,7 +270,7 @@ impl NetShared {
                     self.shell.request_redraw();
                     return;
                 }
-                None => fetch(agent, &url).inspect(|bytes| {
+                None => http::fetch(agent, &url, RESOURCE_LIMIT).inspect(|bytes| {
                     count(&self.stats.fetched);
                     if let Some(cache) = &self.cache {
                         cache.put(&url, bytes);
@@ -324,7 +323,7 @@ impl Net {
     fn start_workers(&self) -> mpsc::Sender<Job> {
         let (tx, rx) = mpsc::channel::<Job>();
         let rx = Arc::new(Mutex::new(rx));
-        let agent = http_agent();
+        let agent = http::agent();
         for n in 0..FETCH_THREADS {
             let rx = rx.clone();
             let agent = agent.clone();
@@ -375,34 +374,6 @@ impl NetProvider for Net {
             self.shared.queued.fetch_sub(1, Ordering::AcqRel);
         }
     }
-}
-
-fn http_agent() -> ureq::Agent {
-    use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(RootCerts::PlatformVerifier)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .user_agent(USER_AGENT)
-        .timeout_connect(Some(Duration::from_secs(10)))
-        .timeout_global(Some(Duration::from_secs(60)))
-        .build()
-        .new_agent()
-}
-
-fn fetch(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
-    agent
-        .get(url)
-        .call()
-        .map_err(|err| err.to_string())?
-        .into_body()
-        .into_with_config()
-        .limit(RESOURCE_LIMIT)
-        .read_to_vec()
-        .map_err(|err| err.to_string())
 }
 
 /// The payload of a `data:` URL.

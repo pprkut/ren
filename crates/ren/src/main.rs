@@ -7,6 +7,8 @@ mod cli;
 mod demo;
 mod feed_tree;
 mod hash;
+#[cfg(feature = "html-view")]
+mod http;
 mod item_list;
 mod procstat;
 mod reader;
