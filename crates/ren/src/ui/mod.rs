@@ -42,6 +42,10 @@ const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
 const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 
+/// Time between the start and the first automatic sync, so that it
+/// doesn't compete with the first frames.
+const FIRST_SYNC_DELAY: Duration = Duration::from_secs(3);
+
 /// How often the lists are read again while a full sync stores items, so
 /// that they fill up during the first sync.
 const SYNC_REFRESH: Duration = Duration::from_secs(2);
@@ -136,6 +140,13 @@ struct App {
     saved: RefCell<Saved>,
     /// The arrangement whose pane sizes the window shows.
     arrangement: Cell<Arrangement>,
+    /// Starts the automatic syncs (`sync.interval-minutes`), counted from
+    /// the end of the last sync.
+    sync_timer: slint::Timer,
+    /// The interval `sync_timer` runs at; `None` while it is stopped.
+    sync_interval: Cell<Option<Duration>>,
+    /// Syncs start by themselves; not with demo data or while measuring.
+    auto_sync: bool,
 }
 
 #[derive(Default)]
@@ -430,6 +441,7 @@ impl App {
                 }
             }
             "fetch-feed" | "fetch-all" => self.start_sync(),
+            "auto-sync" => self.auto_sync(),
             "cancel-sync" => self.cancel_sync(),
             #[cfg(feature = "servo")]
             "close-tab" => self.pages.borrow_mut().close_current(),
@@ -697,6 +709,7 @@ impl App {
     /// Applies the settings the window uses itself; the sync reads its own
     /// when it starts.
     fn apply_settings(&self, settings: &Settings) {
+        self.schedule_syncs(settings.sync_interval());
         self.article
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
@@ -712,14 +725,49 @@ impl App {
         self.reload_settings();
     }
 
+    /// Starts the automatic syncs at `interval`, or stops them. A new
+    /// interval counts from now.
+    fn schedule_syncs(&self, interval: Option<Duration>) {
+        let interval = interval.filter(|_| self.auto_sync);
+        if self.sync_interval.replace(interval) == interval {
+            return;
+        }
+        match interval {
+            Some(interval) => {
+                let weak = self.window.clone();
+                self.sync_timer
+                    .start(slint::TimerMode::Repeated, interval, move || {
+                        if let Some(window) = weak.upgrade() {
+                            window.invoke_action("auto-sync".into());
+                        }
+                    });
+            }
+            None => self.sync_timer.stop(),
+        }
+    }
+
     /// Starts a sync, unless one is running.
     fn start_sync(&self) {
+        self.sync_now(true);
+    }
+
+    /// Starts an automatic sync: as a sync asked for, but quietly skipped
+    /// while one runs or no account is set up.
+    fn auto_sync(&self) {
+        if self.auto_sync {
+            self.sync_now(false);
+        }
+    }
+
+    fn sync_now(&self, asked: bool) {
         let Some(database) = self.database.clone() else {
             self.status("Demo data isn't synced");
             return;
         };
         if self.sync.borrow().running.is_some() {
-            self.status("A sync is already running");
+            if asked {
+                self.status("A sync is already running");
+            }
             return;
         }
         let Some(settings) = self.reload_settings() else {
@@ -727,6 +775,7 @@ impl App {
         };
         let account = match settings.account() {
             Ok(account) => account,
+            Err(_) if !asked => return,
             Err(err) => {
                 let first = err.lines().next().unwrap_or_default();
                 self.status_until_next(format!("No account: {first} (settings.toml)"));
@@ -819,6 +868,10 @@ impl App {
                         }
                     }
                     self.window().set_syncing(false);
+                    // The next automatic sync is an interval after this one.
+                    if self.sync_timer.running() {
+                        self.sync_timer.restart();
+                    }
                     self.reload_view();
                     let text = sync_thread::result_text(&result);
                     if self.measure {
@@ -1299,6 +1352,13 @@ fn run_window(
     #[cfg(feature = "servo")]
     let pages = pages::Pages::new(&window, options.measure || options.measure_tabs);
 
+    // Measurements start alike, without syncs of their own.
+    let auto_sync = database.is_some()
+        && !(options.measure
+            || options.measure_sync
+            || options.measure_tabs
+            || options.autoscroll
+            || options.cycle_articles.is_some());
     let app = Rc::new(App {
         window: window.as_weak(),
         reader,
@@ -1316,6 +1376,9 @@ fn run_window(
         no_images: options.no_images,
         saved: RefCell::new(saved),
         arrangement: Cell::new(arrangement),
+        sync_timer: slint::Timer::default(),
+        sync_interval: Cell::new(None),
+        auto_sync,
     });
     app.restore();
     match &settings {
@@ -1432,6 +1495,15 @@ fn run_window(
         }
     });
 
+    // The first automatic sync, soon after the start.
+    if app.sync_interval.get().is_some() {
+        let weak = Rc::downgrade(&app);
+        slint::Timer::single_shot(FIRST_SYNC_DELAY, move || {
+            if let Some(app) = weak.upgrade() {
+                app.auto_sync();
+            }
+        });
+    }
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
     let _measure_sync = options
         .measure_sync
