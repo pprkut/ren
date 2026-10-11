@@ -357,7 +357,8 @@ pub enum Event {
     /// A drop-down (`<select>`) of the page shown was opened: the window
     /// shows its options below `area` and answers with
     /// [`Command::Select`]. `selected` are the ids of the options
-    /// selected.
+    /// selected. `area` is as Servo 0.7 reports it: CSS pixels relative
+    /// to the document, not the view.
     Select {
         tab: TabId,
         control: u32,

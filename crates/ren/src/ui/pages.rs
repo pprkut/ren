@@ -42,6 +42,9 @@ pub struct Pages {
     /// The addresses of the tabs closed while the window is hidden, and
     /// the one shown.
     suspended: Option<(Vec<String>, Option<usize>)>,
+    /// Where the last button went down in the page, in physical pixels:
+    /// where a drop-down opens.
+    last_press: Option<(f32, f32)>,
     /// The drop-down and the context menu shown, if they are.
     select: Option<controls::Select>,
     menu: Option<controls::Menu>,
@@ -76,6 +79,7 @@ impl Pages {
             lists_updated: Arc::default(),
             measure,
             suspended: None,
+            last_press: None,
             select: None,
             menu: None,
             stats: StageStats::new("ui"),
@@ -494,6 +498,7 @@ impl Pages {
         }
         let window = self.window();
         let scale = self.scale();
+        let area = controls::select_area(area, self.last_press, scale);
         let rows: Vec<PageOption> = select
             .rows()
             .into_iter()
@@ -637,6 +642,9 @@ impl Pages {
             }
             _ => Button::Left,
         };
+        if kind == 0 {
+            self.last_press = Some((x, y));
+        }
         self.input(match kind {
             0 => Input::Down { button, x, y },
             1 => Input::Up { button, x, y },
