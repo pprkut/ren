@@ -1370,9 +1370,16 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
         if Instant::now() < started {
             return;
         }
+        // With the helper's, if it runs.
+        let log = |when: &str| {
+            #[cfg(feature = "servo")]
+            pages::log_memory(when, &app.pages.borrow());
+            #[cfg(not(feature = "servo"))]
+            log_rss(when);
+        };
         match step {
             0 => {
-                log_rss("at the start");
+                log("at the start");
                 if app.reader.borrow().len() > 0 {
                     app.item_clicked(0);
                 }
@@ -1386,14 +1393,14 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
                 let _ = &urls;
             }
             1 => {
-                log_rss("shown");
+                log("shown");
                 app.hide_window();
             }
             2 => {
-                log_rss("hidden");
+                log("hidden");
                 app.show_window();
             }
-            3 => log_rss("shown again"),
+            3 => log("shown again"),
             _ => {
                 let _ = slint::quit_event_loop();
             }
