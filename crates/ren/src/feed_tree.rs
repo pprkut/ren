@@ -131,6 +131,13 @@ impl FeedTree {
         }
     }
 
+    /// Collapses the folders in `collapsed` and expands the others.
+    pub fn set_collapsed(&mut self, collapsed: &HashSet<u64>) {
+        for folder in &mut self.folders {
+            folder.expanded = !collapsed.contains(&folder.id);
+        }
+    }
+
     /// The collapsed folders, to build the tree again after the feeds
     /// changed.
     pub fn collapsed(&self) -> HashSet<u64> {

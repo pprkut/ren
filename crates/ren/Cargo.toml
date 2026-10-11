@@ -79,7 +79,9 @@ ren-sync = { path = "../ren-sync" }
 ren-tabs = { path = "../ren-tabs", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit"] }
+# unstable-winit-030: the screens and the window's position, to keep a
+# restored window on a screen (winit 0.30 is Slint's backend already).
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit", "unstable-winit-030"] }
 # For images in articles and the tabs' filter lists; the same TLS setup
 # as nextcloud-news.
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
