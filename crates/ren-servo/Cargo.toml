@@ -30,6 +30,10 @@ surfman = "0.14"
 # ring, as in the window.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 url = "2.5"
+# Content blocking with filter lists (docs/decisions/0012-content-blocking.md).
+# Without `single-thread`, so the engine can be made on a thread: as
+# fast and as small.
+adblock = { version = "0.13", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
 # The parent death signal, and ending the helper if Servo's shutdown
 # hangs.
 rustix = { version = "1", default-features = false, features = ["std", "process"] }

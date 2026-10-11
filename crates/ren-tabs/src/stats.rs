@@ -28,12 +28,16 @@ impl StageStats {
     }
 
     pub fn count(&mut self, name: &'static str) {
-        if !self.enabled {
+        self.add(name, 1);
+    }
+
+    pub fn add(&mut self, name: &'static str, count: u32) {
+        if !self.enabled || count == 0 {
             return;
         }
         match self.counts.iter_mut().find(|(n, _)| *n == name) {
-            Some((_, c)) => *c += 1,
-            None => self.counts.push((name, 1)),
+            Some((_, c)) => *c += count,
+            None => self.counts.push((name, count)),
         }
     }
 

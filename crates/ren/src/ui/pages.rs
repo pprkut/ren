@@ -132,7 +132,7 @@ impl Pages {
                     }
                 });
             let started = Instant::now();
-            let helper = Helper::start(self.waker(), self.size(), window.get_dark(), profile)?;
+            let helper = Helper::start(self.waker(), self.size(), window.get_dark(), profile, None)?;
             if self.measure {
                 eprintln!(
                     "ren: Servo started in {:.1} ms",
