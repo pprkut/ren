@@ -317,6 +317,17 @@ impl Settings {
         minutes(self.number(schema::KEEP_READ) * 24 * 60)
     }
 
+    /// Whether ren shows an icon in the system tray.
+    pub fn tray_icon(&self) -> bool {
+        self.bool(schema::TRAY_ICON)
+    }
+
+    /// Whether closing the window hides it in the tray; only with the
+    /// tray icon.
+    pub fn close_to_tray(&self) -> bool {
+        self.tray_icon() && self.bool(schema::CLOSE_TO_TRAY)
+    }
+
     /// Whether the feeds' icons are downloaded from their sites.
     pub fn feed_icons(&self) -> bool {
         self.bool(schema::FEED_ICONS)
@@ -685,6 +696,11 @@ pub(crate) mod tests {
             Some(Duration::from_secs(30 * 24 * 60 * 60))
         );
         assert!(defaults.feed_icons());
+        assert!(defaults.tray_icon());
+        assert!(!defaults.close_to_tray());
+        let tray = |text: &str| Settings::parse(text).unwrap().settings;
+        assert!(tray("[window]\nclose-to-tray = true\n").close_to_tray());
+        assert!(!tray("[window]\nclose-to-tray = true\ntray-icon = false\n").close_to_tray());
         assert!(defaults.load_images());
         assert!(defaults.keep_site_data());
         assert_eq!(defaults.filter_lists().len(), 5);
