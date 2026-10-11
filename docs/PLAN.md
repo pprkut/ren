@@ -666,6 +666,10 @@ From here on every milestone ships with tests for what it adds.
   Then the implementation in the helper, a setting to turn it off
   (default on), and per-site exceptions if pages break. Measured with
   `just measure-tabs` on the heavy pages of M7.
+  Also from M7 (0011): **popups** need a user gesture. Pages can open
+  tabs by themselves now, up to the limit of 50 tabs, at 200–470 MiB
+  each; allow a new tab only right after a click or key press in the
+  page, with a much lower limit for the tabs pages open themselves.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -688,6 +692,10 @@ From here on every milestone ships with tests for what it adds.
     list yet: decide on it like the `webpki-roots` exception. Measure RSS
     with the window hidden; free what a hidden window doesn't need (the
     article's frame buffers, the Blitz view, Servo tabs).
+  - **Shortcuts while a page has the focus** (M7, 0011): keys with
+    modifiers go to the page and to the window's shortcuts (Ctrl+F in a
+    page also focuses ren's search). Decide which keys stay ren's (tab
+    and window shortcuts) and send the rest only to the page.
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
