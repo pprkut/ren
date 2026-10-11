@@ -99,19 +99,33 @@ Servo doesn't export).
 |---|---|---|---|---|
 | EasyList | 2.1 MB | 81,387 lines | GPL-3.0-or-later or CC-BY-SA-3.0-or-later | 4 days |
 | EasyPrivacy | 1.5 MB | 57,079 lines | as EasyList | 4 days |
-| uBlock filters | 0.5 MB | 10,875 lines | GPL-3.0 | 5 days |
-| uBlock filters – Privacy | 0.2 MB | 3,370 lines | GPL-3.0 | 7 days |
-| uBlock filters – Unbreak | 0.3 MB | 4,490 lines | GPL-3.0 | 5 days |
+| uBlock filters | 2.3 MB | 41,265 lines | GPL-3.0 | 5 days |
+| uBlock filters – Privacy | 0.2 MB | 3,487 lines | GPL-3.0 | 7 days |
+| uBlock filters – Unbreak | 0.3 MB | 6,007 lines | GPL-3.0 | 5 days |
 | EasyList Germany | 0.3 MB | 6,056 lines | as EasyList | 1 day |
 | Fanboy's Annoyance | 1.7 MB | 50,691 lines | as EasyList | 4 days |
 
-(Sizes and lines of 2026-10-11. EasyList's licence from its licence page,
-which the container couldn't reach; uBlock's `LICENSE` is the GPLv3.)
+(Sizes and lines of 2026-10-11, uBlock's with their includes. EasyList's
+licence from its licence page, which the container couldn't reach;
+uBlock's `LICENSE` is the GPLv3.)
+
+- **uBlock's lists aren't complete files:** `filters.txt` pulls in ten
+  others with `!#include` (`filters-general.txt`, one per year since
+  2020, link shorteners; 0.5 MB of its own, 2.3 MB with them), and
+  `privacy.txt` one; parts are only for some browsers or platforms
+  (`!#if env_mobile`, `!#if env_firefox`, …, `!#else`, `!#endif`). The
+  adblock crate handles neither: it reads the directives as comments, so
+  the included rules would be missing and the conditional ones always
+  apply. Brave prepares the lists before its engine loads them; ren does
+  the same when it downloads them: includes from the same directory are
+  inserted (one level, as uBlock does), and conditions are evaluated with
+  only `ext_ublock` true (uBlock's syntax; no browser, not mobile).
 
 - **The default set:** EasyList, EasyPrivacy, uBlock filters, uBlock
   Privacy and uBlock Unbreak, as uBlock Origin and Brave start with. The
   Unbreak list is exceptions for rules of the others that break pages
-  (343 of the sample's requests fewer blocked).
+  (as measured with uBlock's top files alone, 343 of the sample's requests
+fewer blocked).
 - **Regional and annoyance lists** are options: EasyList Germany (for
   heise and the like), Fanboy's Annoyance (cookie banners, newsletter
   pop-ups, mostly cosmetic rules, so of little use without cosmetic
@@ -170,25 +184,29 @@ rules only:
 | lists | build from text | peak while building | engine saved | load saved engine | RSS after loading | + after 2,000 requests | blocked (100,000) | per request mean / p99 / max (100,000) |
 |---|---|---|---|---|---|---|---|---|
 | EasyList, EasyPrivacy | 0.12 s | +18 MiB | 4.6 MiB | 47 ms | +5.4 MiB | | 42.9 % | 6.1 / 32 / 1564 µs |
-| + uBlock filters, Privacy | 0.16 s | +19 MiB | 4.8 MiB | 50 ms | +5.6 MiB | +3.0 MiB | 43.0 % | 8.2 / 41 / 1140 µs |
-| + uBlock Unbreak (default) | 0.13 s | +21 MiB | 5.0 MiB | 47–56 ms | +5.7 MiB | +3.1 MiB | 42.6 % | 8.1 / 38 / 1068 µs |
-| default + EasyList Germany | 0.12 s | +22 MiB | 5.1 MiB | 44 ms | +5.9 MiB | +3.2 MiB | | |
-| + Fanboy's Annoyance | 0.13 s | +24 MiB | 5.4 MiB | 36 ms | +6.0 MiB | | 43.7 % | 8.8 / 44 / 1096 µs |
-| the same with cosmetic rules | 0.20 s | +36 MiB | 8.8 MiB | 49 ms | +9.5 MiB | | 43.7 % | 8.5 / 42 / 2142 µs |
+| + uBlock filters, Privacy, Unbreak (the default) | 0.16 s | +24 MiB | 5.3 MiB | 40 ms | +6.2 MiB | +4.9 MiB | 42.8 % | 9.8 / 46 / 1573 µs |
+| default + EasyList Germany | 0.12 s | +24 MiB | 5.4 MiB | 34 ms | +6.5 MiB | +4.8 MiB | | |
+| + Fanboy's Annoyance | 0.16 s | +26 MiB | 5.7 MiB | 42 ms | +6.5 MiB | | 43.5 % | 10.5 / 49 / 2192 µs |
+| the same with cosmetic rules | 0.25 s | +40 MiB | 10.3 MiB | 55 ms | +11.2 MiB | | 43.5 % | 11.8 / 55 / 1636 µs |
 
-- **About 9 MiB for the helper** with the default lists: 5.7 MiB for the
-  loaded engine and 3 MiB that matching adds over the first couple of
-  thousand requests (regular expressions compiled on first use), once
+uBlock's lists with their includes resolved and conditions evaluated as
+described under "Lists" (a first run with uBlock's top files alone, a
+fifth of its rules, used 0.5–2 MiB less).
+
+- **About 11 MiB for the helper** with the default lists: 6.2 MiB for
+  the loaded engine and 5 MiB that matching adds over the first couple
+  of thousand requests (regular expressions compiled on first use), once
   per helper, not per tab. Against 160–470 MiB per heavy tab.
-- **Building from the lists** takes a tenth of a second and 21 MiB for a
-  moment; the helper saves the engine and loads it in about 50 ms next
+- **Building from the lists** takes a sixth of a second and 24 MiB for a
+  moment; the helper saves the engine and loads it in about 40 ms next
   time, on a thread while Servo starts.
-- **8 µs per request** on average, 40 µs for 99 %; the slowest, about a
-  millisecond, compile a regular expression. A page with 200 requests
-  waits about 2 ms in total.
-- Without `single-thread`: the same (8.1–9.5 µs per request, 5.4–5.5
-  MiB loaded, in two runs each).
-- Cosmetic rules in the engine cost 3.5 MiB more even if unused, so the
+- **10 µs per request** on average, 46 µs for 99 %; the slowest, about
+  1.5 ms, compile a regular expression. A page with 200 requests waits
+  about 2 ms in total.
+- Without `single-thread`: the same (with EasyList, EasyPrivacy and
+  uBlock's top files: 8.1–9.5 µs per request, 5.4–5.5 MiB loaded, in two
+  runs each).
+- Cosmetic rules in the engine cost 4.7 MiB more even if unused, so the
   helper parses network rules only.
 
 ## Design
