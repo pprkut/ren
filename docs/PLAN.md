@@ -695,7 +695,8 @@ From here on every milestone ships with tests for what it adds.
   instead of 60, the helper at 36 % of a core instead of 155 %. Light
   pages cost 7–9 MiB more. Ars Technica scrolled slowly with and
   without blocking (48 and 38 frames, 162 in 0011): M10.
-- **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
+- **M8 — Polish.** *(done; see `docs/decisions/0013-polish.md`)*
+  Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
   - **Window size, position and maximised state** in the state file too
@@ -735,6 +736,30 @@ From here on every milestone ships with tests for what it adds.
     logos) readable in dark mode, e.g. on a light backdrop.
   - **Enclosures and thumbnails** (0010): podcast episodes
     (`enclosureLink`) and the items' media thumbnails.
+
+  *Result:* the window's state (list, order, collapsed folders, the
+  item shown, pane sizes and column widths per arrangement, the window's
+  size, position and maximised state) in `state.toml`, written when the
+  window closes, only with the default database; a window off the
+  screens is centred on the primary one (winit through Slint's
+  `unstable-winit-030`). j/k/s/m/o from the tree, list and article; Mark
+  All Feeds as Read; a sync at start and every interval (purging was
+  done in M4/M5). Favicons downloaded after a sync, kept as 32 pixel PNGs
+  in `$XDG_CACHE_HOME/ren/favicons` (`sync.feed-icons`). The item list:
+  right click selects, Copy Link Address (Slint's clipboard, through a
+  hidden text input), local dates. In tabs, the window keeps its menu's
+  shortcuts and the page gets the other keys (F5 and Ctrl+R reload the
+  page); Servo's drop-downs and context menus are shown by the window.
+  The article: select all, smooth scrolling by keyboard, a light
+  backdrop for images in dark mode, enclosures and thumbnails. A tray
+  icon (Slint's `SystemTrayIcon`, ksni; its Unlicense is an exception
+  proposed for the review) with the unread count and a menu;
+  `window.close-to-tray` hides the window there, only where the desktop
+  shows tray icons, and drops the article's view and the tabs while
+  hidden. In the container only, under Xvfb (tabs with a stand-in for
+  the helper); the memory with the window hidden (`just
+  measure-hidden`), the tray on Plasma and the page menus with Servo
+  are for the desktop.
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
