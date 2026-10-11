@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use ren_tabs::frames::{SharedFrames, frame_len};
 use ren_tabs::wire::{self, Receiver};
-use ren_tabs::{Command, Event, Input, Size, TabId};
+use ren_tabs::{Blocking, Command, Event, Input, Size, TabId};
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
 use super::{FrameStats, Waker};
@@ -109,12 +109,13 @@ fn lock(inbox: &Mutex<Inbox>) -> std::sync::MutexGuard<'_, Inbox> {
 
 impl Helper {
     /// Starts the helper. With `profile`, Servo keeps cookies and site
-    /// data there.
+    /// data there; with `blocking`, it blocks ads and trackers.
     pub fn start(
         waker: Waker,
         size: Size,
         dark: bool,
         profile: Option<PathBuf>,
+        blocking: Option<Blocking>,
     ) -> Result<Self, String> {
         let path = helper_path()?;
         let (socket, theirs) =
@@ -155,6 +156,7 @@ impl Helper {
             size,
             dark,
             profile,
+            blocking,
         });
         helper.send_buffer();
         Ok(helper)

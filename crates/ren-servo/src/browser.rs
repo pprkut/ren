@@ -10,15 +10,16 @@ use std::rc::Rc;
 
 use dpi::PhysicalSize;
 use euclid::Scale;
-use ren_tabs::{Cursor, Event, FIRST_PAGE_TAB, Input, Size, TabId};
+use ren_tabs::{Blocking, Cursor, Event, FIRST_PAGE_TAB, Input, Size, TabId};
 use servo::{
     CreateNewWebViewRequest, DevicePoint, EventLoopWaker, InputEvent, KeyState, KeyboardEvent,
     LoadStatus, Location, MouseButtonAction, MouseButtonEvent, MouseMoveEvent, NavigationRequest,
-    Opts, RenderingContext, Servo, ServoBuilder, Theme, WebView, WebViewBuilder, WebViewDelegate,
-    WebViewId, WheelDelta, WheelEvent, WheelMode,
+    Opts, RenderingContext, Servo, ServoBuilder, Theme, WebResourceLoad, WebResourceResponse,
+    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
 };
 use url::Url;
 
+use crate::blocking::{Blocker, Verdict};
 use crate::input::{self, Navigation};
 
 /// The most tabs; pages can't open more.
@@ -26,6 +27,7 @@ const MAX_TABS: usize = 50;
 
 pub struct Browser {
     servo: Servo,
+    waker: Waker,
     delegate: Rc<Delegate>,
     tabs: Vec<(TabId, WebView)>,
     active: Option<TabId>,
@@ -50,6 +52,9 @@ struct Delegate {
     next_page_tab: Cell<TabId>,
     dark: Cell<bool>,
     size: Cell<Size>,
+    blocker: RefCell<Blocker>,
+    /// Loads that wait for the filter engine.
+    waiting: RefCell<Vec<(WebView, WebResourceLoad)>>,
 }
 
 impl Delegate {
@@ -143,6 +148,36 @@ impl WebViewDelegate for Delegate {
         }
     }
 
+    /// Ads and trackers aren't loaded (`docs/decisions/0012-content-blocking.md`).
+    /// Servo asks for one request at a time and waits for the answer, so
+    /// this must not wait for anything.
+    fn load_web_resource(&self, webview: WebView, load: WebResourceLoad) {
+        let request = load.request();
+        // The page the reader opened is always loaded.
+        if request.is_for_main_frame {
+            return;
+        }
+        // The tab's URL may still be the last page's while the first
+        // requests of the next one come in; the referrer, if the page
+        // sends one, is the document that asked.
+        let tab = webview.url();
+        let verdict = self.blocker.borrow_mut().check(
+            &request.url,
+            request.referrer_url.as_ref(),
+            tab.as_ref(),
+            request.destination.as_str(),
+        );
+        match verdict {
+            // Dropping the load lets it go on.
+            Verdict::Allow => {}
+            Verdict::Block => {
+                let response = WebResourceResponse::new(request.url.clone());
+                load.intercept(response).cancel();
+            }
+            Verdict::Wait => self.waiting.borrow_mut().push((webview, load)),
+        }
+    }
+
     /// `window.open` and links to new windows open a tab.
     fn request_create_new(&self, parent: WebView, request: CreateNewWebViewRequest) {
         let Some(opener) = self.tab(&parent) else {
@@ -194,6 +229,7 @@ impl Browser {
         size: Size,
         dark: bool,
         profile: Option<PathBuf>,
+        blocking: Option<Blocking>,
     ) -> Self {
         // Servo's networking has rustls with two crypto providers, so one
         // must be chosen.
@@ -205,9 +241,11 @@ impl Browser {
             config_dir: profile,
             ..Opts::default()
         };
+        let mut blocker = Blocker::default();
+        blocker.configure(blocking, &waker);
         let servo = ServoBuilder::default()
             .opts(opts)
-            .event_loop_waker(Box::new(ServoWaker(waker)))
+            .event_loop_waker(Box::new(ServoWaker(waker.clone())))
             .build();
         let delegate = Rc::new(Delegate {
             context,
@@ -220,9 +258,12 @@ impl Browser {
             next_page_tab: Cell::new(FIRST_PAGE_TAB),
             dark: Cell::new(dark),
             size: Cell::new(size),
+            blocker: RefCell::new(blocker),
+            waiting: RefCell::default(),
         });
         Self {
             servo,
+            waker,
             delegate,
             tabs: Vec::new(),
             active: None,
@@ -379,9 +420,39 @@ impl Browser {
         webview.notify_input_event(event);
     }
 
+    /// Blocks content with `blocking` from now on.
+    pub fn set_blocking(&mut self, blocking: Option<Blocking>) {
+        self.delegate
+            .blocker
+            .borrow_mut()
+            .configure(blocking, &self.waker);
+        self.check_waiting();
+    }
+
+    /// The requests checked and blocked since the last call.
+    pub fn take_block_counts(&mut self) -> (u32, u32) {
+        self.delegate.blocker.borrow_mut().take_counts()
+    }
+
+    /// Checks the loads that waited for the filter engine, once it's
+    /// there (or failed to load).
+    fn check_waiting(&self) {
+        let ready = {
+            let mut blocker = self.delegate.blocker.borrow_mut();
+            blocker.poll();
+            blocker.is_ready()
+        };
+        if ready {
+            for (webview, load) in self.delegate.waiting.take() {
+                self.delegate.load_web_resource(webview, load);
+            }
+        }
+    }
+
     /// Lets Servo handle its messages; returns what happened.
     pub fn spin(&mut self) -> Vec<Event> {
         self.servo.spin_event_loop();
+        self.check_waiting();
         self.tabs.append(&mut self.delegate.opened.borrow_mut());
         for id in self.delegate.closed.take() {
             let tab = self.delegate.tab_ids.borrow().get(&id).copied();

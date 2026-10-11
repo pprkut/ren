@@ -141,6 +141,21 @@ pub enum Cursor {
     Text,
 }
 
+/// Blocking ads and trackers by filter lists
+/// (`docs/decisions/0012-content-blocking.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Blocking {
+    /// The filter lists, in Adblock Plus or uBlock Origin syntax, in
+    /// order. Lists that don't exist (yet) are left out.
+    pub lists: Vec<std::path::PathBuf>,
+    /// Where the helper saves the engine it made from the lists, to load
+    /// it faster next time.
+    pub cache: std::path::PathBuf,
+    /// Sites nothing is blocked on: host names, each with its
+    /// subdomains.
+    pub unblocked: Vec<String>,
+}
+
 /// From the window to the helper.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Command {
@@ -151,6 +166,8 @@ pub enum Command {
         /// Where Servo keeps cookies and site data; none keeps nothing
         /// after the helper exits.
         profile: Option<std::path::PathBuf>,
+        /// Content blocking; none blocks nothing.
+        blocking: Option<Blocking>,
     },
     /// The shared memory for frames, sent with its file descriptor; `len`
     /// bytes, sealed against shrinking. Replaces the previous buffer.
@@ -187,6 +204,9 @@ pub enum Command {
     Resize(Size),
     Input(Input),
     Dark(bool),
+    /// New settings or lists for content blocking. The helper loads the
+    /// lists again if they changed; until then it blocks with the old ones.
+    Blocking(Option<Blocking>),
     /// The window copied the last frame out of the buffer.
     FrameTaken,
 }
@@ -258,7 +278,13 @@ mod tests {
                 },
                 dark: true,
                 profile: Some("/home/u/.local/share/ren/servo".into()),
+                blocking: Some(Blocking {
+                    lists: vec!["/home/u/.cache/ren/filters/easylist.txt".into()],
+                    cache: "/home/u/.cache/ren/filters/engine.dat".into(),
+                    unblocked: vec!["example.org".to_owned()],
+                }),
             },
+            Command::Blocking(None),
             Command::Open {
                 tab: 3,
                 url: "https://example.org/\n".to_owned(),

@@ -9,6 +9,7 @@
 //! Usage: `ren-servo --parent <PID>`, with a Unix socket to ren as
 //! standard input.
 
+mod blocking;
 mod browser;
 mod headless;
 mod input;
@@ -212,6 +213,7 @@ fn run() -> Result<(), String> {
             size,
             dark,
             profile,
+            blocking,
         },
         _,
     )) = receiver.recv()
@@ -228,7 +230,7 @@ fn run() -> Result<(), String> {
     let waker: Waker = Arc::new(move || {
         let _ = sender.send(Message::Wake);
     });
-    let mut browser = Browser::new(waker, context.clone(), size, dark, profile);
+    let mut browser = Browser::new(waker, context.clone(), size, dark, profile, blocking);
     let mut frames = Frames {
         context,
         buffer: None,
@@ -295,6 +297,9 @@ fn run() -> Result<(), String> {
             .finish(&out, &mut stats)
             .map_err(|err| err.to_string())?;
         frames.paint(&mut browser, &mut stats);
+        let (checked, blocked) = browser.take_block_counts();
+        stats.add("checked", checked);
+        stats.add("blocked", blocked);
         stats.report();
     }
     // Shut Servo down, so it saves cookies and site data; but not for
@@ -350,6 +355,7 @@ fn handle(
         }
         Command::Input(input) => browser.input(input),
         Command::Dark(dark) => browser.set_dark(dark),
+        Command::Blocking(blocking) => browser.set_blocking(blocking),
         Command::FrameTaken => frames.taken = true,
     }
 }
