@@ -32,6 +32,7 @@ with a spike; if one fails, we pivot and record why in `docs/decisions/`.
 | UI toolkit     | **Slint** (confirmed in S1, software renderer by default: [0001](decisions/0001-ui-toolkit.md)) | Designed for low-resource targets; software, FemtoVG and Skia renderers; virtualised `ListView`; maintained Servo embedding (`examples/servo` in the Slint repo, GPU texture sharing on Linux via Vulkan external memory). Published on crates.io. |
 | Article view   | **Blitz** (`blitz-dom`, `blitz-html`, `blitz-paint`) | HTML/CSS engine built on Servo's Stylo, without a JS engine or networking stack. Painted on the CPU (`anyrender_vello_cpu`) into a Slint image, so no GPU stack is needed for reading articles. Feed bodies are already sanitised and must not run JS anyway. |
 | Full-page tabs | **Servo** (`servo` crate), in a helper program (`ren-servo`, [0011](decisions/0011-tabs.md)) | Opening the original page of an article in an in-app tab. Created on demand, torn down when the last tab closes. |
+| Content blocking | **adblock** (Brave's adblock-rust) in the helper, with EasyList, EasyPrivacy and uBlock's lists ([0012](decisions/0012-content-blocking.md)) | Ads and trackers make heavy pages big and busy. Network rules only; lists downloaded by ren. |
 | HTTP           | **ureq 3** (blocking, rustls)        | No async runtime needed for a single background sync thread; small dependency tree. |
 | JSON           | serde / serde_json                   | Streaming deserialisation from the response reader. |
 | Storage        | **SQLite** via rusqlite (`bundled`)  | Paged queries for the list views, so only visible rows are ever in memory. |
@@ -644,7 +645,8 @@ From here on every milestone ships with tests for what it adds.
   each frame. RGB frames and no background under the frame cut a third
   of that per frame; the rest is M10's.
 
-- **M7b — Content blocking.** Block ads and trackers in the web page
+- **M7b — Content blocking.** *(done, desktop measurements to come; see
+  `docs/decisions/0012-content-blocking.md`)* Block ads and trackers in the web page
   tabs: they make heavy pages big (heise: 470 MiB per tab once its
   consent is accepted, M7) and repaint all the time, and they are a
   privacy matter. Starts with research, recorded in a decision record:
@@ -670,6 +672,24 @@ From here on every milestone ships with tests for what it adds.
   tabs by themselves now, up to the limit of 50 tabs, at 200–470 MiB
   each; allow a new tab only right after a click or key press in the
   page, with a much lower limit for the tabs pages open themselves.
+
+  *Result:* Brave's `adblock` crate in the helper checks every request
+  of a page in Servo's `load_web_resource` (which all requests already
+  pass through, one at a time) against the network rules of EasyList,
+  EasyPrivacy and uBlock's filters, Privacy and Unbreak by default;
+  network blocking only, cosmetic filtering went to the backlog. ren
+  downloads the lists when a tab opens and they are older than four
+  days (into `$XDG_CACHE_HOME/ren/filters`, at `nice` 10), resolving
+  uBlock's `!#include` and `!#if`, which the engine doesn't; the helper
+  makes its engine on a thread and saves it. Settings
+  `pages.block-content`, `pages.filter-lists`, `pages.unblocked-sites`
+  (ren-settings got list settings), "Allow Ads Here" in the navigation
+  bar, `ren --update-filters`. Pages open a tab only within 5 s of a
+  click or key press in them, once per gesture, at most 10 at a time. In
+  the container: about 11 MiB for the helper with the default lists
+  (once, not per tab), 10 µs per request on average, the engine made in
+  a sixth of a second and loaded in 40 ms next time. `just measure-tabs`
+  compares with and without blocking on the desktop.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -783,6 +803,11 @@ From here on every milestone ships with tests for what it adds.
 ### Backlog
 
 Not planned into a milestone; picked up when articles or users need them.
+
+- **Cosmetic filtering in the tabs** (0012): hiding elements and
+  uBlock's scriptlets, through a user content manager per web view
+  updated when the main frame navigates; consent banners and empty ad
+  frames stay without it. Try once M7b's network blocking is measured.
 
 - **`srcset` and `<picture>`** in the article view, to fetch the smaller
   image a page offers (0.7 % and 0.2 % of the articles in S3; 0010).
