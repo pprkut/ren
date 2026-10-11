@@ -859,6 +859,21 @@ Not planned into a milestone; picked up when articles or users need them.
   (fontconfig, or Parley's font collection, which knows them already).
   Report upstream first; until then nothing in ren can reach
   `FONT_DB`.
+- **Servo drops the text of one SVG on the same page** (in a tab):
+  the remote diagram (`vector-widths-…svg` from imgix, light and dark
+  versions) shows its boxes without any text, while the two `data:`
+  SVGs render with theirs. All three use the same `font-family` list;
+  usvg 0.48 alone renders the text of all three (so not the `&apos;`
+  in the remote file's attribute, nor the system's fonts). Servo
+  resolves SVG fonts through its own font system (`select_font` in
+  `servo-net`'s `image_cache.rs`, an empty `fontdb` filled on demand),
+  so the difference is likely there. Opened on its own ("Open Image in
+  New Tab") the same SVG (the dark version, which the page shows in
+  dark mode) renders with its text, so it depends on the
+  page around it: the `<picture>` with a `prefers-color-scheme` source,
+  the size it's drawn at, or the timing among the page's other images
+  (the page has no web fonts). Check with servoshell 0.7 and report to
+  Servo.
 - **`srcset` and `<picture>`** in the article view, to fetch the smaller
   image a page offers (0.7 % and 0.2 % of the articles in S3; 0010).
 - **AVIF** in the article view (13 articles in S3): the `image` crate's
