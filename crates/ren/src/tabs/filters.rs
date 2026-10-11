@@ -136,6 +136,26 @@ impl Filters {
     }
 }
 
+/// The sites without blocking after the reader toggled blocking on the
+/// page from `host`: without the sites that cover `host` if there are
+/// any, else with `host`'s site (without `www.`). Also returns whether
+/// `host` was unblocked before, and the sites removed or added.
+pub fn toggle_site(mut sites: Vec<String>, host: &str) -> (Vec<String>, bool, String) {
+    let covering: Vec<String> = sites
+        .iter()
+        .filter(|site| ren_tabs::site_covers(site, host))
+        .cloned()
+        .collect();
+    if covering.is_empty() {
+        let site = host.strip_prefix("www.").unwrap_or(host).to_owned();
+        sites.push(site.clone());
+        (sites, false, site)
+    } else {
+        sites.retain(|site| !covering.contains(site));
+        (sites, true, covering.join(", "))
+    }
+}
+
 /// Writes a new file and renames it over the old one, so the helper never
 /// reads half a list.
 fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
@@ -175,11 +195,7 @@ pub fn prepare(text: &str, include: &mut Include) -> String {
     out
 }
 
-fn add_lines(
-    text: &str,
-    out: &mut String,
-    mut include: Option<&mut Include>,
-) {
+fn add_lines(text: &str, out: &mut String, mut include: Option<&mut Include>) {
     // Whether each open `!#if` section is taken.
     let mut sections: Vec<bool> = Vec::new();
     for line in text.lines() {
@@ -365,6 +381,34 @@ mod tests {
         assert_eq!(include_url(base, "https://other.example/x.txt"), None);
         assert_eq!(include_url(base, ".hidden"), None);
         assert_eq!(include_url(base, ""), None);
+    }
+
+    #[test]
+    fn toggling_sites() {
+        let sites = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            toggle_site(sites(&["a.example"]), "www.heise.de"),
+            (
+                sites(&["a.example", "heise.de"]),
+                false,
+                "heise.de".to_owned()
+            )
+        );
+        assert_eq!(
+            toggle_site(
+                sites(&["heise.de", "a.example", "www.heise.de"]),
+                "www.heise.de"
+            ),
+            (
+                sites(&["a.example"]),
+                true,
+                "heise.de, www.heise.de".to_owned()
+            )
+        );
+        assert_eq!(
+            toggle_site(sites(&[]), "example.org"),
+            (sites(&["example.org"]), false, "example.org".to_owned())
+        );
     }
 
     #[test]

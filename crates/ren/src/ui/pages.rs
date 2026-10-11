@@ -110,6 +110,7 @@ impl Pages {
         }
         self.filter_lists = lists;
         self.unblocked_sites = unblocked;
+        self.show_navigation();
         let blocking = self.blocking();
         if let Some(helper) = &mut self.helper {
             helper.set_blocking(blocking);
@@ -271,6 +272,20 @@ impl Pages {
         window.set_page_url(tab.map_or(SharedString::new(), |t| t.url.as_str().into()));
         window.set_page_can_go_back(tab.is_some_and(|t| t.back));
         window.set_page_can_go_forward(tab.is_some_and(|t| t.forward));
+        let blocking = self.blocking();
+        let host = self.current_host();
+        window.set_page_can_block(blocking.is_some() && host.is_some());
+        window.set_page_blocking(
+            blocking
+                .zip(host)
+                .is_some_and(|(blocking, host)| !blocking.unblocks(&host)),
+        );
+    }
+
+    /// The host of the page shown, if one is.
+    pub fn current_host(&self) -> Option<String> {
+        let tab = self.list.current_tab()?;
+        ren_tabs::host_of(&tab.url).map(str::to_owned)
     }
 
     pub fn close(&mut self, index: usize) {
