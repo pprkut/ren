@@ -1,0 +1,100 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ListView, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// An entry of a page's drop-down (`<select>`): an option, or the heading
+// of a group of options.
+export struct PageOption {
+    label: string,
+    enabled: bool,
+    heading: bool,
+    selected: bool,
+}
+
+// What a page's context menu offers: the link and image under the
+// pointer ("" if none), and which of Servo's actions apply.
+export struct PageMenu {
+    link: string,
+    image: string,
+    cut: bool,
+    copy: bool,
+    paste: bool,
+    select-all: bool,
+    back: bool,
+    forward: bool,
+    reload: bool,
+}
+
+component OptionRow inherits Rectangle {
+    in property <PageOption> entry;
+    callback clicked();
+
+    height: Theme.row-height;
+    background: !root.entry.heading && root.entry.enabled && touch.has-hover ? Theme.hover : root.entry.selected ? Theme.selection(false) : transparent;
+
+    touch := TouchArea {
+        enabled: !root.entry.heading && root.entry.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        x: Theme.row-padding + (root.entry.heading ? 0px : 8px);
+        width: parent.width - self.x - Theme.row-padding;
+        text: root.entry.label;
+        overflow: elide;
+        vertical-alignment: center;
+        font-weight: root.entry.heading ? 700 : 400;
+        color: Palette.foreground;
+        opacity: root.entry.enabled || root.entry.heading ? 1 : 0.5;
+    }
+}
+
+// The options of a page's drop-down, below the element (above it if
+// there's no room below), as a list that scrolls.
+export component SelectPopup inherits PopupWindow {
+    in property <[PageOption]> options;
+    // Where the element is, relative to the popup's parent.
+    in property <length> element-x;
+    in property <length> element-y;
+    in property <length> element-width;
+    in property <length> element-height;
+    // The parent's size, to keep the popup inside it.
+    in property <length> area-width;
+    in property <length> area-height;
+    // An option was chosen.
+    callback chosen(index: int);
+
+    property <length> list-height: min(root.options.length * Theme.row-height + 2px, 400px, root.area-height);
+    property <bool> below: root.element-y + root.element-height + self.list-height <= root.area-height;
+
+    width: min(max(root.element-width, 180px), root.area-width);
+    height: self.list-height;
+    x: max(0px, min(root.element-x, root.area-width - self.width));
+    y: self.below ? root.element-y + root.element-height : max(0px, root.element-y - self.list-height);
+    close-policy: close-on-click-outside;
+
+    Rectangle {
+        background: Palette.background;
+        border-width: 1px;
+        border-color: Theme.separator;
+
+        ListView {
+            x: 1px;
+            y: 1px;
+            width: parent.width - 2px;
+            height: parent.height - 2px;
+
+            for entry[i] in root.options: OptionRow {
+                entry: entry;
+                clicked => {
+                    root.chosen(i);
+                    root.close();
+                }
+            }
+        }
+    }
+}

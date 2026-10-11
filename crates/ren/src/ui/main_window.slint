@@ -7,10 +7,11 @@ import { ItemTable, ItemRow, ItemStatus } from "item_table.slint";
 import { Splitter } from "splitter.slint";
 import { StatusBar, ToolBar, ToolButton } from "toolbar.slint";
 import { TabBar, TabRow } from "tab_bar.slint";
+import { PageMenu, PageOption, SelectPopup } from "page_controls.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 
-export { FeedRow, ItemRow, ItemStatus, Icons, TabRow }
+export { FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, TabRow }
 
 // Where the item list goes relative to the article.
 export enum Arrangement {
@@ -106,6 +107,34 @@ export component MainWindow inherits Window {
     callback page-theme-changed();
     // Called when Servo has work for the UI thread (from a wake-up).
     callback page-pump();
+    // The context menu of the page shown, and its entries' actions:
+    // "open-link", "browser-link", "copy-link", "open-image",
+    // "copy-image", "cut", "copy", "paste", "select-all", "back",
+    // "forward", "reload".
+    in property <PageMenu> page-menu;
+    callback page-menu-action(action: string);
+    // A drop-down of the page shown: its options, and where the element
+    // is (relative to the page).
+    in property <[PageOption]> page-options;
+    in property <length> page-select-x;
+    in property <length> page-select-y;
+    in property <length> page-select-width;
+    in property <length> page-select-height;
+    callback page-select-chosen(index: int);
+
+    // Opens the page's context menu at a position relative to the page.
+    public function show-page-menu(x: length, y: length) {
+        page-menu-area.show({ x: x, y: y });
+    }
+
+    // Opens and closes the page's drop-down.
+    public function show-page-select() {
+        select-popup.show();
+    }
+
+    public function close-page-select() {
+        select-popup.close();
+    }
 
     in-out property <Arrangement> arrangement: Arrangement.beside;
     // Pane sizes, changed by the splitters.
@@ -1056,6 +1085,119 @@ export component MainWindow inherits Window {
                                 height: parent.height;
                                 source: root.page-image;
                                 image-fit: fill;
+                            }
+
+                            // Shown by the window when Servo asks for it, after a
+                            // right click that went to the page (the TouchArea
+                            // above takes the clicks).
+                            page-menu-area := ContextMenuArea {
+                                Menu {
+                                    if root.page-menu.link != "": MenuItem {
+                                        title: "Open Link in New Tab";
+                                        activated => {
+                                            root.page-menu-action("open-link");
+                                        }
+                                    }
+                                    if root.page-menu.link != "": MenuItem {
+                                        title: "Open Link in Browser";
+                                        activated => {
+                                            root.page-menu-action("browser-link");
+                                        }
+                                    }
+                                    if root.page-menu.link != "": MenuItem {
+                                        title: "Copy Link Address";
+                                        activated => {
+                                            root.page-menu-action("copy-link");
+                                        }
+                                    }
+                                    if root.page-menu.image != "": MenuItem {
+                                        title: "Open Image in New Tab";
+                                        activated => {
+                                            root.page-menu-action("open-image");
+                                        }
+                                    }
+                                    if root.page-menu.image != "": MenuItem {
+                                        title: "Copy Image Address";
+                                        activated => {
+                                            root.page-menu-action("copy-image");
+                                        }
+                                    }
+                                    if root.page-menu.link != "" || root.page-menu.image != "": MenuSeparator { }
+                                    MenuItem {
+                                        title: "Cut";
+                                        enabled: root.page-menu.cut;
+                                        activated => {
+                                            root.page-menu-action("cut");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Copy";
+                                        enabled: root.page-menu.copy;
+                                        activated => {
+                                            root.page-menu-action("copy");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Paste";
+                                        enabled: root.page-menu.paste;
+                                        activated => {
+                                            root.page-menu-action("paste");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Select All";
+                                        enabled: root.page-menu.select-all;
+                                        activated => {
+                                            root.page-menu-action("select-all");
+                                        }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        title: "Back";
+                                        icon: Icons.back;
+                                        enabled: root.page-menu.back;
+                                        activated => {
+                                            root.page-menu-action("back");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Forward";
+                                        icon: Icons.forward;
+                                        enabled: root.page-menu.forward;
+                                        activated => {
+                                            root.page-menu-action("forward");
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Reload";
+                                        icon: Icons.reload;
+                                        enabled: root.page-menu.reload;
+                                        activated => {
+                                            root.page-menu-action("reload");
+                                        }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        title: "Open Page in Browser";
+                                        icon: Icons.browser;
+                                        activated => {
+                                            root.action("page-browser");
+                                        }
+                                    }
+                                }
+                            }
+
+                            select-popup := SelectPopup {
+                                options: root.page-options;
+                                element-x: root.page-select-x;
+                                element-y: root.page-select-y;
+                                element-width: root.page-select-width;
+                                element-height: root.page-select-height;
+                                area-width: page-area.width;
+                                area-height: page-area.height;
+                                chosen(index) => {
+                                    root.page-select-chosen(index);
+                                }
                             }
 
                             page-focus := FocusScope {

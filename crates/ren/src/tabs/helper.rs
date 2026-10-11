@@ -230,6 +230,16 @@ impl Helper {
         self.send(&Command::Resize(size));
     }
 
+    /// Answers a drop-down: the options chosen, none to dismiss it.
+    pub fn answer_select(&mut self, control: u32, selected: Option<Vec<usize>>) {
+        self.send(&Command::Select { control, selected });
+    }
+
+    /// Answers a context menu: the entry chosen, none to dismiss it.
+    pub fn answer_menu(&mut self, control: u32, action: Option<ren_tabs::MenuAction>) {
+        self.send(&Command::ContextMenu { control, action });
+    }
+
     pub fn input(&mut self, input: Input) {
         self.send(&Command::Input(input));
     }

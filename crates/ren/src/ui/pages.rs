@@ -16,8 +16,9 @@ use ren_tabs::stats::StageStats;
 use ren_tabs::{Button, Cursor, Event, Input, Key, Mods, NamedKey, Size, TabId};
 use slint::{ComponentHandle, Model, SharedString, VecModel};
 
-use super::{MainWindow, TabRow};
+use super::{MainWindow, PageMenu, PageOption, TabRow};
 use crate::tabs::Waker;
+use crate::tabs::controls::{self, Choice};
 use crate::tabs::filters::Filters;
 use crate::tabs::helper::{self, Helper};
 use crate::tabs::list::{Changes, Tab, TabList};
@@ -38,6 +39,9 @@ pub struct Pages {
     /// Lists were downloaded, which the helper should load.
     lists_updated: Arc<AtomicBool>,
     measure: bool,
+    /// The drop-down and the context menu shown, if they are.
+    select: Option<controls::Select>,
+    menu: Option<controls::Menu>,
     /// A pump is already queued on the event loop.
     pump_queued: Arc<AtomicBool>,
     stats: StageStats,
@@ -68,6 +72,8 @@ impl Pages {
             unblocked_sites: Vec::new(),
             lists_updated: Arc::default(),
             measure,
+            select: None,
+            menu: None,
             stats: StageStats::new("ui"),
             pump_queued: Arc::default(),
         }));
@@ -238,6 +244,15 @@ impl Pages {
         Ok(())
     }
 
+    /// Closes the drop-down and forgets the menu of a page that is no
+    /// longer shown; the helper dismisses them.
+    fn forget_controls(&mut self) {
+        self.menu = None;
+        if self.select.take().is_some() {
+            self.window().invoke_close_page_select();
+        }
+    }
+
     /// Shows the article instead of a page; the tabs stay open.
     pub fn show_article(&mut self) {
         if self.list.select(None) {
@@ -253,6 +268,7 @@ impl Pages {
 
     /// Shows the list's current tab, or the article.
     fn show_current(&mut self) {
+        self.forget_controls();
         let window = self.window();
         window.set_current_tab(self.list.current().map_or(-1, |i| i as i32));
         self.show_navigation();
@@ -403,10 +419,120 @@ impl Pages {
                     Cursor::Pointer => 1,
                     Cursor::Text => 2,
                 }),
+                Event::Select {
+                    tab,
+                    control,
+                    area,
+                    entries,
+                    selected,
+                    multiple,
+                } => {
+                    let select = controls::Select::new(tab, control, entries, selected, multiple);
+                    self.show_select(select, area);
+                }
+                Event::ContextMenu {
+                    tab,
+                    control,
+                    area,
+                    entries,
+                    link,
+                    image,
+                } => self.show_menu(
+                    controls::Menu::new(tab, control, entries, link, image),
+                    area,
+                ),
+                Event::ControlHidden { control } => {
+                    if self.select.as_ref().is_some_and(|s| s.control == control) {
+                        self.select = None;
+                        window.invoke_close_page_select();
+                    }
+                    if self.menu.as_ref().is_some_and(|m| m.control == control) {
+                        self.menu = None;
+                    }
+                }
                 event => self.list.apply(event, &mut changes),
             }
         }
         self.apply(changes);
+    }
+
+    /// Shows a drop-down of the page shown, below the element.
+    fn show_select(&mut self, select: controls::Select, area: ren_tabs::Area) {
+        if Some(select.tab) != self.current_id() {
+            return;
+        }
+        let window = self.window();
+        let scale = self.scale();
+        let rows: Vec<PageOption> = select
+            .rows()
+            .into_iter()
+            .map(|row| PageOption {
+                label: row.label.into(),
+                enabled: row.enabled,
+                heading: row.heading,
+                selected: row.selected,
+            })
+            .collect();
+        window.set_page_options(Rc::new(VecModel::from(rows)).into());
+        window.set_page_select_x(area.x as f32 / scale);
+        window.set_page_select_y(area.y as f32 / scale);
+        window.set_page_select_width(area.width as f32 / scale);
+        window.set_page_select_height(area.height as f32 / scale);
+        self.select = Some(select);
+        window.invoke_show_page_select();
+    }
+
+    /// The reader chose the option in `row` of the drop-down.
+    fn select_chosen(&mut self, row: usize) {
+        let Some(select) = self.select.take() else {
+            return;
+        };
+        let selected = select.choose(row);
+        if let Some(helper) = &mut self.helper {
+            helper.answer_select(select.control, selected);
+        }
+    }
+
+    /// Shows a context menu of the page shown where it was asked for.
+    fn show_menu(&mut self, menu: controls::Menu, area: ren_tabs::Area) {
+        use ren_tabs::MenuAction;
+        if Some(menu.tab) != self.current_id() {
+            return;
+        }
+        let window = self.window();
+        let scale = self.scale();
+        window.set_page_menu(PageMenu {
+            link: menu.link.clone().unwrap_or_default().into(),
+            image: menu.image.clone().unwrap_or_default().into(),
+            cut: menu.enabled(MenuAction::Cut),
+            copy: menu.enabled(MenuAction::Copy),
+            paste: menu.enabled(MenuAction::Paste),
+            select_all: menu.enabled(MenuAction::SelectAll),
+            back: menu.enabled(MenuAction::Back),
+            forward: menu.enabled(MenuAction::Forward),
+            reload: menu.enabled(MenuAction::Reload),
+        });
+        self.menu = Some(menu);
+        window.invoke_show_page_menu(area.x as f32 / scale, area.y as f32 / scale);
+    }
+
+    /// The reader chose an entry of the context menu.
+    fn menu_chosen(&mut self, name: &str) {
+        let Some(menu) = self.menu.take() else {
+            return;
+        };
+        let chosen = menu.choose(name);
+        if let Some(helper) = &mut self.helper {
+            helper.answer_menu(menu.control, chosen.as_ref().map(|(_, action)| *action));
+        }
+        let window = self.window();
+        match chosen.map(|(choice, _)| choice) {
+            Some(Choice::Copy(url)) => window.invoke_copy_text(url.into()),
+            // After this call: opening a tab needs the pages.
+            Some(Choice::Open(url)) => link_later(&window, url, "open"),
+            Some(Choice::Browser(url)) => link_later(&window, url, "browser"),
+            Some(Choice::Page(_)) | None => {}
+        }
     }
 
     /// Shows what events changed.
@@ -535,6 +661,17 @@ impl Pages {
     }
 }
 
+/// Opens a link of a page's menu as a link of the article, once the
+/// current callback has returned.
+fn link_later(window: &MainWindow, url: String, action: &'static str) {
+    let weak = window.as_weak();
+    slint::Timer::single_shot(Duration::ZERO, move || {
+        if let Some(window) = weak.upgrade() {
+            window.invoke_article_link_action(url.into(), action.into());
+        }
+    });
+}
+
 /// Creates `dir` readable only by the user, as it holds cookies.
 fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -631,6 +768,10 @@ fn connect(window: &MainWindow, pages: &Rc<RefCell<Pages>>) {
     window.on_page_resized(move || w(&|p| p.resized()));
     let w = with.clone();
     window.on_page_theme_changed(move || w(&|p| p.theme_changed()));
+    let w = with.clone();
+    window.on_page_select_chosen(move |row| w(&|p| p.select_chosen(row as usize)));
+    let w = with.clone();
+    window.on_page_menu_action(move |action| w(&|p| p.menu_chosen(&action)));
     window.on_page_pump(move || with(&|p| p.pump()));
 }
 
