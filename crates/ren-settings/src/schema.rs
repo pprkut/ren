@@ -27,6 +27,7 @@ pub enum Category {
     Sync,
     Articles,
     Pages,
+    Window,
 }
 
 impl Category {
@@ -36,6 +37,7 @@ impl Category {
             Category::Sync => "Sync",
             Category::Articles => "Articles",
             Category::Pages => "Web pages",
+            Category::Window => "Window",
         }
     }
 }
@@ -262,6 +264,8 @@ pub const KEEP_SITE_DATA: &str = "pages.keep-site-data";
 pub const BLOCK_CONTENT: &str = "pages.block-content";
 pub const FILTER_LISTS: &str = "pages.filter-lists";
 pub const UNBLOCKED_SITES: &str = "pages.unblocked-sites";
+pub const TRAY_ICON: &str = "window.tray-icon";
+pub const CLOSE_TO_TRAY: &str = "window.close-to-tray";
 
 /// A filter list for content blocking that `pages.filter-lists` can name.
 #[derive(Debug)]
@@ -446,6 +450,24 @@ pub static SETTINGS: &[Setting] = &[
             default: &[],
             check: Some(check_site),
         },
+    },
+    Setting {
+        key: TRAY_ICON,
+        title: "Icon in the system tray",
+        description: "Show an icon with the number of unread articles in the desktop's system \
+                      tray (Plasma; GNOME needs the AppIndicator extension), with a menu to show \
+                      or hide the window, fetch the feeds and quit.",
+        category: Category::Window,
+        kind: Kind::Switch { default: true },
+    },
+    Setting {
+        key: CLOSE_TO_TRAY,
+        title: "Close to the tray",
+        description: "Closing the window hides it in the system tray instead of quitting, so \
+                      the feeds are still fetched; the tray's menu quits. Only with the icon \
+                      in the tray, and a desktop that shows it.",
+        category: Category::Window,
+        kind: Kind::Switch { default: false },
     },
 ];
 
