@@ -20,8 +20,10 @@ use crate::feed_tree::{self, Node, Row, changed_rows};
 use crate::item_list::{self, Column, format_date};
 use crate::reader::{Changes, Reader};
 use crate::sync_thread::{self, Event, Running};
+use crate::window_state::{self, Saved};
 
 mod article;
+mod geometry;
 mod icons;
 #[cfg(feature = "servo")]
 mod pages;
@@ -130,6 +132,10 @@ struct App {
     measure: bool,
     /// `--no-images`: articles never load images from their servers.
     no_images: bool,
+    /// The window's state, written when the window closes.
+    saved: RefCell<Saved>,
+    /// The arrangement whose pane sizes the window shows.
+    arrangement: Cell<Arrangement>,
 }
 
 #[derive(Default)]
@@ -156,6 +162,104 @@ impl App {
         result
             .map_err(|err| self.status(format!("Database error: {err}")))
             .ok()
+    }
+
+    /// Shows what was kept from the last run: the list, its order and the
+    /// collapsed folders, the item shown (without marking it read), the
+    /// pane sizes. Before the window is shown.
+    fn restore(&self) {
+        let (view, item) = {
+            let saved = self.saved.borrow();
+            let state = saved.state();
+            let item = state.selection.and_then(|selection| selection.item);
+            (window_state::view(state), item)
+        };
+        self.with_reader(|reader| reader.restore(&view));
+        self.refresh_tree();
+        self.show_sort();
+        self.apply_layout(self.arrangement.get());
+        let row = item.and_then(|id| self.reader.borrow().row_of(id));
+        if let Some(row) = row {
+            self.window().set_current_item(row as i32);
+            // The web page of a full-page feed isn't loaded: that would
+            // start Servo at start.
+            if let Some(Some(article)) = self.with_reader(|reader| reader.show(row)) {
+                self.article.borrow_mut().show(article);
+                self.update_current_starred();
+            }
+        }
+    }
+
+    /// Keeps what the window shows in the state, to be written when it
+    /// closes.
+    fn remember(&self) {
+        let window = self.window();
+        let (view, item) = {
+            let reader = self.reader.borrow();
+            (reader.view(), reader.current())
+        };
+        let mut saved = self.saved.borrow_mut();
+        saved.change(|state| {
+            window_state::set_view(state, &view, item);
+            state.window = geometry::current(window.window(), &state.window);
+        });
+        drop(saved);
+        self.stash_layout(self.arrangement.get());
+    }
+
+    /// Keeps the pane sizes and column widths of an arrangement.
+    fn stash_layout(&self, arrangement: Arrangement) {
+        let window = self.window();
+        let list_size = match arrangement {
+            Arrangement::Beside => window.get_list_width(),
+            Arrangement::Above => window.get_list_height(),
+        };
+        self.saved.borrow_mut().change(|state| {
+            let layout = layout_mut(state, arrangement);
+            layout.tree_width = Some(window.get_tree_width());
+            layout.list_size = Some(list_size);
+            layout.columns = ren_settings::Columns {
+                feed: Some(window.get_feed_width()),
+                author: Some(window.get_author_width()),
+                date: Some(window.get_date_width()),
+            };
+        });
+    }
+
+    /// Shows the pane sizes and column widths kept for an arrangement.
+    fn apply_layout(&self, arrangement: Arrangement) {
+        let window = self.window();
+        let layout = layout(self.saved.borrow().state(), arrangement).clone();
+        if let Some(width) = layout.tree_width {
+            window.set_tree_width(width);
+        }
+        if let Some(size) = layout.list_size {
+            match arrangement {
+                Arrangement::Beside => window.set_list_width(size),
+                Arrangement::Above => window.set_list_height(size),
+            }
+        }
+        let columns = &layout.columns;
+        if let Some(width) = columns.feed {
+            window.set_feed_width(width);
+        }
+        if let Some(width) = columns.author {
+            window.set_author_width(width);
+        }
+        if let Some(width) = columns.date {
+            window.set_date_width(width);
+        }
+    }
+
+    /// The View menu switched the arrangement: the sizes of the old one are
+    /// kept, those of the new one shown.
+    fn arrangement_changed(&self) {
+        let new = self.window().get_arrangement();
+        let old = self.arrangement.replace(new);
+        if old != new {
+            self.stash_layout(old);
+            self.apply_layout(new);
+        }
     }
 
     /// Updates the feed tree: only the rows that changed, unless rows were
@@ -285,6 +389,7 @@ impl App {
         let current = self.reader.borrow().current();
         match name {
             "quit" => {
+                self.remember();
                 let _ = slint::quit_event_loop();
             }
             "sort-title" => self.sort_by(Column::Title),
@@ -778,6 +883,24 @@ impl App {
     }
 }
 
+/// The pane sizes kept for an arrangement.
+fn layout(state: &ren_settings::State, arrangement: Arrangement) -> &ren_settings::Layout {
+    match arrangement {
+        Arrangement::Beside => &state.beside,
+        Arrangement::Above => &state.above,
+    }
+}
+
+fn layout_mut(
+    state: &mut ren_settings::State,
+    arrangement: Arrangement,
+) -> &mut ren_settings::Layout {
+    match arrangement {
+        Arrangement::Beside => &mut state.beside,
+        Arrangement::Above => &mut state.above,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LinkKind {
     /// http or https.
@@ -1089,6 +1212,15 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
     };
     let store = Store::open(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let reader = Reader::new(store).map_err(|err| format!("{}: {err}", path.display()))?;
+    // The window's state goes with the default database: the ids in it are
+    // that database's, and measurements with other ones start alike.
+    let state_path = (demo.is_none() && options.database.is_none())
+        .then(|| ren_settings::paths::state(|name| std::env::var(name).ok()))
+        .flatten();
+    let saved = match state_path {
+        Some(path) => Saved::load(path),
+        None => (Saved::unsaved(), None),
+    };
     // Demo data has neither settings nor a sync.
     let (settings, database) = match demo {
         Some(_) => (None, None),
@@ -1097,7 +1229,7 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
             Some(path),
         ),
     };
-    run_window(options, started, reader, settings, database).map_err(|err| err.to_string())
+    run_window(options, started, reader, settings, database, saved).map_err(|err| err.to_string())
 }
 
 fn run_window(
@@ -1106,6 +1238,7 @@ fn run_window(
     reader: Reader,
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
+    (saved, state_problem): (Saved, Option<String>),
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
 
@@ -1119,10 +1252,12 @@ fn run_window(
         });
     }
     icons::load(&window, !options.bundled_icons, dark);
-    window.set_arrangement(match options.arrangement {
+    let arrangement = match options.arrangement {
         cli::Arrangement::Beside => Arrangement::Beside,
         cli::Arrangement::Above => Arrangement::Above,
-    });
+    };
+    window.set_arrangement(arrangement);
+    geometry::restore(window.window(), &saved.state().window);
     if options.measure {
         log_elapsed(started, "window created");
         report_startup(&window, started);
@@ -1166,9 +1301,10 @@ fn run_window(
         sync: RefCell::default(),
         measure: options.measure || options.measure_sync,
         no_images: options.no_images,
+        saved: RefCell::new(saved),
+        arrangement: Cell::new(arrangement),
     });
-    app.refresh_tree();
-    app.show_sort();
+    app.restore();
     match &settings {
         Some((file, _)) => app.apply_settings(file.settings()),
         None => app.apply_settings(&Settings::default()),
@@ -1178,6 +1314,9 @@ fn run_window(
             app.status_until_next(message);
         }
         *app.settings.borrow_mut() = Some(file);
+    }
+    if let Some(problem) = state_problem {
+        eprintln!("ren: the window's state: {problem}");
     }
     if app.database.is_some() && app.reader.borrow().tree_rows().len() <= 2 {
         app.status_until_next(
@@ -1254,6 +1393,19 @@ fn run_window(
         }
     });
     let weak = Rc::downgrade(&app);
+    window.on_arrangement_changed(move || {
+        if let Some(app) = weak.upgrade() {
+            app.arrangement_changed();
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.window().on_close_requested(move || {
+        if let Some(app) = weak.upgrade() {
+            app.remember();
+        }
+        slint::CloseRequestResponse::HideWindow
+    });
+    let weak = Rc::downgrade(&app);
     window.on_window_activated(move || {
         if let Some(app) = weak.upgrade() {
             app.window_activated();
@@ -1291,7 +1443,13 @@ fn run_window(
         }
         pages::start_measurement(Rc::downgrade(&app.pages), urls)
     });
-    let result = window.run();
+    window.show()?;
+    geometry::keep_on_screen(window.as_weak());
+    let result = slint::run_event_loop();
+    window.hide()?;
+    if let Err(err) = app.saved.borrow_mut().save() {
+        eprintln!("ren: saving the window's state: {err}");
+    }
     // Closing the tabs ends the helper; it saves the site data before it
     // exits, which ren's exit would cut short.
     #[cfg(feature = "servo")]

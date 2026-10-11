@@ -44,7 +44,9 @@ Web page tabs (with the servo feature):
 
 Window options:
   --database <FILE>  The database to show and sync (default:
-                     $XDG_DATA_HOME/ren/ren.db)
+                     $XDG_DATA_HOME/ren/ren.db). The window's state (sizes,
+                     the selection) is kept only with the default one, in
+                     $XDG_STATE_HOME/ren/state.toml.
   --backend <NAME>   Slint backend: winit or qt (default: qt when built
                      with the Qt style, else winit)
   --renderer <NAME>  Slint renderer for winit: software, femtovg or skia

@@ -30,6 +30,15 @@ pub struct Changes {
     pub list: bool,
 }
 
+/// What the window shows that is kept for the next start: the collapsed
+/// folders, the order of the list and the list selected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct View {
+    pub collapsed: HashSet<u64>,
+    pub sort: Sort,
+    pub selected: Node,
+}
+
 /// Rows fetched at a time when looking for the next unread item.
 const SCAN_CHUNK: usize = 100;
 
@@ -99,6 +108,28 @@ impl Reader {
         Ok(())
     }
 
+    /// What is kept for the next start.
+    pub fn view(&self) -> View {
+        View {
+            collapsed: self.tree.collapsed(),
+            sort: self.list.sort(),
+            selected: self.selected,
+        }
+    }
+
+    /// Shows what was kept from the last run. A list that is gone falls
+    /// back to all items.
+    pub fn restore(&mut self, view: &View) -> Result<()> {
+        self.tree.set_collapsed(&view.collapsed);
+        self.list.set_sort(view.sort);
+        if self.tree.contains(view.selected) {
+            self.selected = view.selected;
+            self.list.set_selection(view.selected.selection());
+        }
+        self.current = None;
+        self.list.load(&self.store)
+    }
+
     pub fn tree_rows(&self) -> Vec<Row> {
         self.tree.rows()
     }
@@ -149,6 +180,11 @@ impl Reader {
         self.current.and_then(|id| self.list.row_of(id))
     }
 
+    /// The row of an item, if the list has it.
+    pub fn row_of(&self, id: u64) -> Option<usize> {
+        self.list.row_of(id)
+    }
+
     /// The fields of a row, `None` if the row or its item is gone.
     pub fn row(&self, row: usize) -> Result<Option<ItemSummary>> {
         let Some(id) = self.list.id(row) else {
@@ -178,6 +214,27 @@ impl Reader {
     /// Shows the item in a row: it becomes the current item and is marked
     /// read. `None` if the row or its item is gone.
     pub fn open(&mut self, row: usize) -> Result<Option<(Article, Changes)>> {
+        let Some((id, status, article)) = self.show_item(row)? else {
+            return Ok(None);
+        };
+        let mut changes = Changes::default();
+        if status != Status::Read && self.store.set_unread(&[id], false)? > 0 {
+            self.load_counts()?;
+            changes.counts = true;
+            changes.rows.push(row);
+        }
+        Ok(Some((article, changes)))
+    }
+
+    /// Shows the item in a row without marking it read, as when the last
+    /// item shown is shown again at start.
+    pub fn show(&mut self, row: usize) -> Result<Option<Article>> {
+        Ok(self.show_item(row)?.map(|(_, _, article)| article))
+    }
+
+    /// Makes the item in a row the current one; its id, status and
+    /// article.
+    fn show_item(&mut self, row: usize) -> Result<Option<(u64, Status, Article)>> {
         let Some(id) = self.list.id(row) else {
             return Ok(None);
         };
@@ -187,13 +244,8 @@ impl Reader {
             return Ok(None);
         };
         self.current_feed = Some(item.summary.feed_id);
-        let mut changes = Changes::default();
-        if item.summary.status != Status::Read && self.store.set_unread(&[id], false)? > 0 {
-            self.load_counts()?;
-            changes.counts = true;
-            changes.rows.push(row);
-        }
-        Ok(Some((self.article(item), changes)))
+        let status = item.summary.status;
+        Ok(Some((id, status, self.article(item))))
     }
 
     fn article(&self, item: ItemDetails) -> Article {
@@ -472,6 +524,54 @@ mod tests {
         let (_, changes) = reader.open(1).unwrap().unwrap();
         assert_eq!(changes, Changes::default());
         assert!(reader.open(6).unwrap().is_none());
+    }
+
+    #[test]
+    fn showing_keeps_unread() {
+        let mut reader = reader();
+        let article = reader.show(1).unwrap().unwrap();
+        assert_eq!(article.title, "Item 5");
+        assert_eq!(reader.current(), Some(5));
+        assert_ne!(reader.row(1).unwrap().unwrap().status, Status::Read);
+        assert_eq!(reader.unread(), 6);
+        assert!(reader.show(6).unwrap().is_none());
+    }
+
+    #[test]
+    fn view_restored() {
+        let mut reader = reader();
+        reader.toggle_folder(7);
+        reader.sort_by(Column::Title).unwrap();
+        reader.select(Node::Feed(2)).unwrap();
+        let view = reader.view();
+        assert_eq!(
+            view,
+            View {
+                collapsed: HashSet::from([7]),
+                sort: Sort {
+                    column: SortColumn::Title,
+                    ascending: true,
+                },
+                selected: Node::Feed(2),
+            }
+        );
+
+        let mut restored = super::tests::reader();
+        restored.restore(&view).unwrap();
+        assert_eq!(restored.view(), view);
+        assert_eq!(ids(&restored), [3, 4]);
+        // The folder's feeds aren't shown.
+        assert_eq!(restored.tree_rows().len(), 4);
+
+        // A feed that is gone falls back to all items.
+        let mut restored = super::tests::reader();
+        let gone = View {
+            selected: Node::Feed(99),
+            ..view
+        };
+        restored.restore(&gone).unwrap();
+        assert_eq!(restored.selected(), Node::All);
+        assert_eq!(ids(&restored), [1, 2, 3, 4, 5, 6]);
     }
 
     #[test]

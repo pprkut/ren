@@ -114,6 +114,11 @@ impl ItemList {
         text.trim().clone_into(&mut self.query.search);
     }
 
+    /// Sorts in `sort`'s order; [`load`](Self::load) fetches the items.
+    pub fn set_sort(&mut self, sort: Sort) {
+        self.sort = sort;
+    }
+
     /// Sorts by `column`; ascending first for text columns, newest first for
     /// the date. Selecting the current column again reverses the order.
     /// [`load`](Self::load) fetches the items in the new order.

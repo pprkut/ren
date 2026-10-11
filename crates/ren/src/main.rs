@@ -17,6 +17,7 @@ mod sync_thread;
 #[cfg(feature = "servo")]
 mod tabs;
 mod ui;
+mod window_state;
 
 use std::process::ExitCode;
 use std::time::Instant;

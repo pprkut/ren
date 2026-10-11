@@ -112,6 +112,17 @@ export component MainWindow inherits Window {
     in-out property <length> tree-width: 240px;
     in-out property <length> list-width: 420px;
     in-out property <length> list-height: 300px;
+    // Widths of the item table's columns, changed by dragging their edges.
+    in-out property <length> feed-width <=> item-list.feed-width;
+    in-out property <length> author-width <=> item-list.author-width;
+    in-out property <length> date-width <=> item-list.date-width;
+    // The arrangement changed (View menu), so that each one keeps its own
+    // pane sizes.
+    callback arrangement-changed();
+
+    changed arrangement => {
+        root.arrangement-changed();
+    }
 
     // For the autoscroll measurement.
     in-out property <length> item-list-content-y <=> item-list.content-y;
