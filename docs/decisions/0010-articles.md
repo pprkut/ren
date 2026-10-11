@@ -261,22 +261,22 @@ Technica, LWN, Anime News Network and the GitHub Blog; and
 - **Very large PNGs** are decoded at full size before they are scaled
   (the 800×12,000 PNG: 29 MiB for a moment); only JPEGs are decoded at a
   fraction. Decoding PNGs row by row into the scaled image would remove
-  that; worth it if real articles show such peaks.
+  that; worth it if real articles show such peaks. *M10.*
 - **Very tall images** (over 4 million pixels at the content's width)
-  are shown narrower than the content.
+  are shown narrower than the content. *M10.*
 - **`srcset` and `<picture>`** aren't used to fetch a smaller image
-  (0.7 % and 0.2 % of the articles in S3).
+  (0.7 % and 0.2 % of the articles in S3). *Backlog.*
 - **AVIF** (13 articles in S3) isn't decoded: the `image` crate's
-  decoder needs dav1d.
+  decoder needs dav1d. *Backlog.*
 - **Transparent images** with dark lines (diagrams, logos) are hard to
-  see in dark mode.
+  see in dark mode. *M8.*
 - **Enclosures** (podcast episodes, `enclosureLink`) and media
-  thumbnails of items aren't shown yet.
-- **The cache's size** is fixed at 100 MiB; a setting if it matters.
+  thumbnails of items aren't shown yet. *M8.*
+- **The cache's size** is fixed at 100 MiB; a setting if it matters. *M8b.*
 - The Servo helper (M7) keeps glibc's dynamic threshold; decide with
   M7's measurements. *M7: fixed in the helper too, compared with the
   dynamic one by `just measure-tabs` (0011).*
 - From `0004`, still open: select all (Ctrl+A), smooth scrolling for
-  the keyboard.
+  the keyboard. *M8.*
 - From `0009`: "Copy Link Address" in the item menu can now use the
-  article view's clipboard (once the view exists).
+  article view's clipboard (once the view exists). *M8.*

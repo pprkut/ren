@@ -702,6 +702,14 @@ From here on every milestone ships with tests for what it adds.
     where) to ren, which shows them as a Slint popup and sends the
     choice back. The context menu: open the link in a new tab, copy the
     link, copy the selection, back/forward/reload.
+  - **Item list** (0009): select the row on right click before its
+    context menu opens; "Copy Link Address" in the item menu (with the
+    article view's clipboard, M6); dates in local time, not UTC.
+  - **Article view** (0004, 0010): select all (Ctrl+A); smooth scrolling
+    for the keyboard; transparent images with dark lines (diagrams,
+    logos) readable in dark mode, e.g. on a light backdrop.
+  - **Enclosures and thumbnails** (0010): podcast episodes
+    (`enclosureLink`) and the items' media thumbnails.
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
@@ -709,7 +717,8 @@ From here on every milestone ships with tests for what it adds.
   Settings for the pane arrangement and the item status colours. The
   account page: Login Flow v2 with a "waiting for the browser" state, the
   manual app password fallback, and log out (revoking the app password).
-  First run opens the account page. Edits to the file by hand apply when
+  First run opens the account page. A setting for the image cache's size
+  (fixed at 100 MiB, 0010). Edits to the file by hand apply when
   it's saved, as in Zed: a thread sleeps on inotify for the config
   directory (editors save by renaming a new file over the old one) and
   wakes the UI to reload. That replaces the reload on window activation,
@@ -744,6 +753,13 @@ From here on every milestone ships with tests for what it adds.
     scrolling articles feels less smooth than pages.
   - **The article view's last frame** is probably kept while a page is
     shown (Slint keeps the image of an element it doesn't draw, 0011).
+  From M6 (0010):
+  - **Very large PNGs** are decoded at full size before they are scaled
+    (an 800×12,000 PNG: 29 MiB for a moment); JPEGs are decoded at a
+    fraction already. Decode PNGs row by row into the scaled image if
+    real articles show such peaks.
+  - **Very tall images** (over 4 million pixels at the content's width)
+    are shown narrower than the content.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
@@ -763,6 +779,15 @@ From here on every milestone ships with tests for what it adds.
   colour pickers, input methods (IME, for Chinese, Japanese or Korean
   text), and the `alert`/`confirm`/`prompt` dialogs, which are dismissed
   now. Drop-downs and the context menu come earlier, in M8.
+
+### Backlog
+
+Not planned into a milestone; picked up when articles or users need them.
+
+- **`srcset` and `<picture>`** in the article view, to fetch the smaller
+  image a page offers (0.7 % and 0.2 % of the articles in S3; 0010).
+- **AVIF** in the article view (13 articles in S3): the `image` crate's
+  decoder needs dav1d (0010).
 
 ## Conventions
 
