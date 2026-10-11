@@ -190,6 +190,53 @@ pub fn host_of(url: &str) -> Option<&str> {
     Some(host).filter(|host| !host.is_empty())
 }
 
+/// An entry of a page's drop-down (`<select>`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SelectEntry {
+    /// An option; `id` selects it.
+    Option {
+        id: usize,
+        label: String,
+        enabled: bool,
+    },
+    /// The heading of a group (`<optgroup>`); its options follow.
+    Group(String),
+}
+
+/// What a page's context menu can do. Servo decides which apply; the
+/// window opens and copies links itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MenuAction {
+    Back,
+    Forward,
+    Reload,
+    OpenLink,
+    CopyLink,
+    OpenImage,
+    CopyImageLink,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+/// An entry of a page's context menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MenuEntry {
+    Action { action: MenuAction, enabled: bool },
+    Separator,
+}
+
+/// Where a page's control was activated, in physical pixels relative to
+/// the page area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Area {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 /// From the window to the helper.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Command {
@@ -243,6 +290,18 @@ pub enum Command {
     Blocking(Option<Blocking>),
     /// The window copied the last frame out of the buffer.
     FrameTaken,
+    /// The options chosen in a drop-down ([`Event::Select`]); none
+    /// dismisses it.
+    Select {
+        control: u32,
+        selected: Option<Vec<usize>>,
+    },
+    /// The entry chosen in a context menu ([`Event::ContextMenu`]); none
+    /// dismisses it.
+    ContextMenu {
+        control: u32,
+        action: Option<MenuAction>,
+    },
 }
 
 /// From the helper to the window.
@@ -294,6 +353,34 @@ pub enum Event {
     Crashed {
         tab: TabId,
         reason: String,
+    },
+    /// A drop-down (`<select>`) of the page shown was opened: the window
+    /// shows its options below `area` and answers with
+    /// [`Command::Select`]. `selected` are the ids of the options
+    /// selected.
+    Select {
+        tab: TabId,
+        control: u32,
+        area: Area,
+        entries: Vec<SelectEntry>,
+        selected: Vec<usize>,
+        multiple: bool,
+    },
+    /// A context menu was asked for in the page shown, at `area`: the
+    /// window shows it and answers with [`Command::ContextMenu`]. `link`
+    /// and `image` are the URLs of the link and image under the pointer.
+    ContextMenu {
+        tab: TabId,
+        control: u32,
+        area: Area,
+        entries: Vec<MenuEntry>,
+        link: Option<String>,
+        image: Option<String>,
+    },
+    /// The page took back a drop-down or context menu it asked for (it
+    /// navigated away, the element went away); the window closes it.
+    ControlHidden {
+        control: u32,
     },
 }
 
@@ -363,6 +450,14 @@ mod tests {
                 down: true,
             }),
             Command::FrameTaken,
+            Command::Select {
+                control: 2,
+                selected: Some(vec![4]),
+            },
+            Command::ContextMenu {
+                control: 3,
+                action: Some(MenuAction::Copy),
+            },
         ];
         for command in commands {
             let line = serde_json::to_string(&command).unwrap();
