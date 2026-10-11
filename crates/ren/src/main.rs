@@ -5,9 +5,9 @@ mod account;
 mod article;
 mod cli;
 mod demo;
+mod favicons;
 mod feed_tree;
 mod hash;
-#[cfg(any(feature = "html-view", feature = "servo"))]
 mod http;
 mod item_list;
 mod procstat;

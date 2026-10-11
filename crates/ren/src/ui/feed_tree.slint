@@ -22,6 +22,8 @@ export struct FeedRow {
     guides: [bool],
     // A feed whose articles show their web page instead.
     full-page: bool,
+    // A feed's own icon, if it has one; otherwise the feed icon.
+    icon: image,
 }
 
 component Chevron inherits Path {
@@ -207,8 +209,9 @@ component FeedTreeRow inherits Rectangle {
             width: Theme.tree-icon-size;
             height: Theme.tree-icon-size;
             y: (parent.height - self.height) / 2;
-            source: root.entry.depth == 0 ? Icons.all-items : root.entry.starred ? Icons.starred : root.entry.is-folder ? Icons.folder : Icons.feed;
-            colorize: Icons.monochrome ? Palette.foreground : transparent;
+            property <bool> own-icon: root.is-feed && root.entry.icon.width > 0;
+            source: root.entry.depth == 0 ? Icons.all-items : root.entry.starred ? Icons.starred : root.entry.is-folder ? Icons.folder : self.own-icon ? root.entry.icon : Icons.feed;
+            colorize: Icons.monochrome && !self.own-icon ? Palette.foreground : transparent;
         }
 
         Text {

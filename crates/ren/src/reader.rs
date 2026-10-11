@@ -53,6 +53,8 @@ pub struct Reader {
     current_feed: Option<u64>,
     /// Feed titles by id, for the item rows.
     feed_titles: HashMap<u64, String>,
+    /// The links of the feeds' icons, by feed id.
+    favicon_links: HashMap<u64, String>,
     /// Feeds whose articles show their web page instead.
     full_page: HashSet<u64>,
 }
@@ -68,6 +70,7 @@ impl Reader {
             current: None,
             current_feed: None,
             feed_titles: HashMap::new(),
+            favicon_links: HashMap::new(),
             full_page: HashSet::new(),
         };
         reader.reload()?;
@@ -81,6 +84,10 @@ impl Reader {
         let folders = self.store.folders()?;
         let feeds = self.store.feeds()?;
         self.tree = FeedTree::new(&folders, &feeds, &self.tree.collapsed());
+        self.favicon_links = feeds
+            .iter()
+            .filter_map(|feed| Some((feed.id, feed.favicon_link.clone()?)))
+            .collect();
         self.feed_titles = feeds
             .into_iter()
             .map(|feed| {
@@ -191,6 +198,16 @@ impl Reader {
             return Ok(None);
         };
         Ok(self.store.item_summaries(&[id])?.pop())
+    }
+
+    /// The link to a feed's icon, if the News app found one.
+    pub fn favicon_link(&self, feed_id: u64) -> Option<&str> {
+        self.favicon_links.get(&feed_id).map(String::as_str)
+    }
+
+    /// The links to the feeds' icons.
+    pub fn favicon_links(&self) -> impl Iterator<Item = &str> {
+        self.favicon_links.values().map(String::as_str)
     }
 
     pub fn feed_title(&self, feed_id: u64) -> &str {
@@ -427,7 +444,10 @@ mod tests {
             .unwrap();
         store
             .replace_feeds(&[
-                api_feed(1, Some(7), "One"),
+                types::Feed {
+                    favicon_link: Some("https://example.org/favicon.ico".into()),
+                    ..api_feed(1, Some(7), "One")
+                },
                 api_feed(2, Some(7), "Two"),
                 api_feed(3, None, ""),
             ])
@@ -472,6 +492,15 @@ mod tests {
         assert_eq!(reader.current(), None);
         // A feed without a title goes by its URL.
         assert_eq!(reader.feed_title(3), "https://example.org/3/feed");
+        assert_eq!(
+            reader.favicon_link(1),
+            Some("https://example.org/favicon.ico")
+        );
+        assert_eq!(reader.favicon_link(2), None);
+        assert_eq!(
+            reader.favicon_links().collect::<Vec<_>>(),
+            ["https://example.org/favicon.ico"]
+        );
     }
 
     #[test]
