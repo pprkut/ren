@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The HTTP client for what ren fetches besides the server: the images of
-//! articles and the filter lists of the tabs. The same TLS setup as
-//! nextcloud-news.
+//! The HTTP client for what ren fetches besides the server: the feeds'
+//! icons, the images of articles and the filter lists of the tabs. The
+//! same TLS setup as nextcloud-news.
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -6,7 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use ren_settings::{Reload, Settings, SettingsFile};
 use ren_store::{Status, Store};
@@ -16,6 +16,7 @@ use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedSt
 
 use crate::cli::{self, Options};
 use crate::demo::DemoDb;
+use crate::favicons::Favicons;
 use crate::feed_tree::{self, Node, Row, changed_rows};
 use crate::item_list::{self, Column, format_date};
 use crate::reader::{Changes, Reader};
@@ -100,8 +101,8 @@ impl Model for ItemListModel {
 }
 
 /// A row of the feed tree; `full_page` for feeds whose articles show their
-/// web page instead.
-fn feed_row(row: &Row, full_page: bool) -> FeedRow {
+/// web page instead, `icon` a feed's own icon (or none).
+fn feed_row(row: &Row, full_page: bool, icon: slint::Image) -> FeedRow {
     FeedRow {
         title: row.title.as_str().into(),
         depth: row.depth.into(),
@@ -112,6 +113,7 @@ fn feed_row(row: &Row, full_page: bool) -> FeedRow {
         last: row.last,
         guides: ModelRc::new(VecModel::from(row.guides.clone())),
         full_page,
+        icon,
     }
 }
 
@@ -147,6 +149,8 @@ struct App {
     sync_interval: Cell<Option<Duration>>,
     /// Syncs start by themselves; not with demo data or while measuring.
     auto_sync: bool,
+    /// The feeds' icons; `None` without a cache directory.
+    favicons: Option<Favicons>,
 }
 
 #[derive(Default)]
@@ -301,11 +305,56 @@ impl App {
     }
 
     fn feed_row(&self, row: &Row) -> FeedRow {
-        let full_page = match row.node {
-            Node::Feed(id) => self.reader.borrow().is_full_page(id),
-            _ => false,
+        let Node::Feed(id) = row.node else {
+            return feed_row(row, false, slint::Image::default());
         };
-        feed_row(row, full_page)
+        let reader = self.reader.borrow();
+        let icon = self
+            .favicons
+            .as_ref()
+            .zip(reader.favicon_link(id))
+            .and_then(|(favicons, link)| favicons.icon(link))
+            .and_then(|path| slint::Image::load_from_path(&path).ok())
+            .unwrap_or_default();
+        feed_row(row, reader.is_full_page(id), icon)
+    }
+
+    /// Shows the feeds' icons again, after some were downloaded.
+    fn reload_icons(&self) {
+        let rows: Vec<FeedRow> = self
+            .tree_rows
+            .borrow()
+            .iter()
+            .map(|row| self.feed_row(row))
+            .collect();
+        self.feeds.set_vec(rows);
+    }
+
+    /// Downloads the icons of the feeds that have none yet or an old one,
+    /// unless `sync.feed-icons` is off.
+    fn update_favicons(&self) {
+        let Some(favicons) = &self.favicons else {
+            return;
+        };
+        let enabled = self
+            .settings
+            .borrow()
+            .as_ref()
+            .is_some_and(|file| file.settings().feed_icons());
+        if !enabled {
+            return;
+        }
+        let due = favicons.due(self.reader.borrow().favicon_links(), SystemTime::now());
+        let weak = self.window.clone();
+        favicons.update(due, move |changed| {
+            if changed {
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.invoke_action("favicons-updated".into());
+                    }
+                });
+            }
+        });
     }
 
     /// Switches whether a feed's articles show their web page instead.
@@ -316,7 +365,7 @@ impl App {
             .is_some()
             && let Some(tree_row) = self.tree_rows.borrow().get(row)
         {
-            self.feeds.set_row_data(row, feed_row(tree_row, full_page));
+            self.feeds.set_row_data(row, self.feed_row(tree_row));
         }
     }
 
@@ -442,6 +491,7 @@ impl App {
             }
             "fetch-feed" | "fetch-all" => self.start_sync(),
             "auto-sync" => self.auto_sync(),
+            "favicons-updated" => self.reload_icons(),
             "cancel-sync" => self.cancel_sync(),
             #[cfg(feature = "servo")]
             "close-tab" => self.pages.borrow_mut().close_current(),
@@ -878,6 +928,9 @@ impl App {
                         self.sync_timer.restart();
                     }
                     self.reload_view();
+                    if result.is_ok() {
+                        self.update_favicons();
+                    }
                     let text = sync_thread::result_text(&result);
                     if self.measure {
                         eprintln!("ren: sync result: {text}");
@@ -1384,6 +1437,7 @@ fn run_window(
         sync_timer: slint::Timer::default(),
         sync_interval: Cell::new(None),
         auto_sync,
+        favicons: Favicons::default_dir().map(Favicons::new),
     });
     app.restore();
     match &settings {
