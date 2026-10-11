@@ -11,6 +11,7 @@
 
 mod blocking;
 mod browser;
+mod controls;
 mod headless;
 mod input;
 
@@ -360,5 +361,7 @@ fn handle(
         Command::Blocking(blocking) => browser
             .set_blocking(blocking.filter(|_| std::env::var_os("REN_SERVO_NO_BLOCKING").is_none())),
         Command::FrameTaken => frames.taken = true,
+        Command::Select { control, selected } => browser.answer_select(control, selected),
+        Command::ContextMenu { control, action } => browser.answer_menu(control, action),
     }
 }

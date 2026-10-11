@@ -11,16 +11,18 @@ use std::time::Instant;
 
 use dpi::PhysicalSize;
 use euclid::Scale;
-use ren_tabs::{Blocking, Cursor, Event, FIRST_PAGE_TAB, Input, Size, TabId};
+use ren_tabs::{Blocking, Cursor, Event, FIRST_PAGE_TAB, Input, MenuAction, Size, TabId};
 use servo::{
-    CreateNewWebViewRequest, DevicePoint, EventLoopWaker, InputEvent, KeyState, KeyboardEvent,
-    LoadStatus, Location, MouseButtonAction, MouseButtonEvent, MouseMoveEvent, NavigationRequest,
-    Opts, RenderingContext, Servo, ServoBuilder, Theme, WebResourceLoad, WebResourceResponse,
-    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
+    ContextMenu, CreateNewWebViewRequest, DevicePoint, EmbedderControl, EmbedderControlId,
+    EventLoopWaker, InputEvent, KeyState, KeyboardEvent, LoadStatus, Location, MouseButtonAction,
+    MouseButtonEvent, MouseMoveEvent, NavigationRequest, Opts, RenderingContext, SelectElement,
+    Servo, ServoBuilder, Theme, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
+    WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
 };
 use url::Url;
 
 use crate::blocking::{Blocker, Verdict};
+use crate::controls;
 use crate::input::{self, Gesture, Navigation};
 
 /// The most tabs; pages can't open more.
@@ -35,6 +37,22 @@ pub struct Browser {
     tabs: Vec<(TabId, WebView)>,
     active: Option<TabId>,
     size: Size,
+}
+
+/// A drop-down or context menu the window shows, until it answers.
+/// Dropping one dismisses it.
+enum Control {
+    Select(SelectElement),
+    Menu(ContextMenu),
+}
+
+/// A [`Control`] with the number the window knows it by, its tab and
+/// Servo's id.
+struct Shown {
+    number: u32,
+    tab: TabId,
+    id: EmbedderControlId,
+    control: Control,
 }
 
 /// Called from any thread when Servo has work for the helper's main
@@ -61,6 +79,9 @@ struct Delegate {
     blocker: RefCell<Blocker>,
     /// Loads that wait for the filter engine.
     waiting: RefCell<Vec<(WebView, WebResourceLoad)>>,
+    /// Drop-downs and context menus the window shows.
+    controls: RefCell<Vec<Shown>>,
+    next_control: Cell<u32>,
 }
 
 impl Delegate {
@@ -72,6 +93,13 @@ impl Delegate {
         if let Some(tab) = self.tab(webview) {
             self.events.borrow_mut().push(event(tab));
         }
+    }
+
+    /// Takes the control the window answers.
+    fn take_control(&self, number: u32) -> Option<Control> {
+        let mut controls = self.controls.borrow_mut();
+        let index = controls.iter().position(|shown| shown.number == number)?;
+        Some(controls.remove(index).control)
     }
 
     fn theme(&self) -> Theme {
@@ -184,6 +212,72 @@ impl WebViewDelegate for Delegate {
         }
     }
 
+    /// Drop-downs and context menus of the page shown go to the window.
+    /// Colour and file pickers, input methods and the `alert`, `confirm`
+    /// and `prompt` dialogs are dismissed (M12), as are controls of
+    /// hidden tabs.
+    fn show_embedder_control(&self, webview: WebView, control: EmbedderControl) {
+        if self.active.get() != Some(webview.id()) {
+            return;
+        }
+        let Some(tab) = self.tab(&webview) else {
+            return;
+        };
+        let number = self.next_control.get();
+        let id = control.id();
+        let (event, control) = match control {
+            EmbedderControl::SelectElement(select) => (
+                Event::Select {
+                    tab,
+                    control: number,
+                    area: controls::area(select.position()),
+                    entries: controls::select_entries(select.options()),
+                    selected: select.selected_options(),
+                    multiple: select.allow_select_multiple(),
+                },
+                Control::Select(select),
+            ),
+            EmbedderControl::ContextMenu(menu) => {
+                let info = menu.element_info();
+                (
+                    Event::ContextMenu {
+                        tab,
+                        control: number,
+                        area: controls::area(menu.position()),
+                        entries: controls::menu_entries(menu.items()),
+                        link: info.link_url.as_ref().map(Url::to_string),
+                        image: info.image_url.as_ref().map(Url::to_string),
+                    },
+                    Control::Menu(menu),
+                )
+            }
+            _ => return,
+        };
+        self.next_control.set(number.wrapping_add(1));
+        // The window doesn't tell when a menu was closed without a choice:
+        // a new control replaces the tab's older ones, which are dismissed.
+        let mut controls = self.controls.borrow_mut();
+        controls.retain(|shown| shown.tab != tab);
+        controls.push(Shown {
+            number,
+            tab,
+            id,
+            control,
+        });
+        self.events.borrow_mut().push(event);
+    }
+
+    /// The page took back a control: the window closes it.
+    fn hide_embedder_control(&self, _webview: WebView, control_id: EmbedderControlId) {
+        let mut controls = self.controls.borrow_mut();
+        if let Some(index) = controls.iter().position(|shown| shown.id == control_id) {
+            let shown = controls.remove(index);
+            self.events.borrow_mut().push(Event::ControlHidden {
+                control: shown.number,
+            });
+        }
+    }
+
     /// `window.open` and links to new windows open a tab, but only right
     /// after a click or key press in the page, once per gesture. Refused
     /// requests are dropped: `window.open` returns null.
@@ -285,6 +379,8 @@ impl Browser {
             size: Cell::new(size),
             blocker: RefCell::new(blocker),
             waiting: RefCell::default(),
+            controls: RefCell::default(),
+            next_control: Cell::new(0),
         });
         Self {
             servo,
@@ -350,6 +446,7 @@ impl Browser {
         let (_, webview) = self.tabs.remove(index);
         self.delegate.tab_ids.borrow_mut().remove(&webview.id());
         self.delegate.gestures.borrow_mut().remove(&webview.id());
+        self.dismiss_controls(|shown| shown == tab);
         // The window activates another tab if it wants one.
         if self.active == Some(tab) {
             self.active = None;
@@ -374,6 +471,37 @@ impl Browser {
         }
         self.active = tab;
         self.delegate.frame_ready.set(tab.is_some());
+        // The window closed those of the tab it hid.
+        self.dismiss_controls(|shown| Some(shown) != tab);
+    }
+
+    /// Dismisses the drop-downs and menus of the tabs `which` picks.
+    fn dismiss_controls(&self, which: impl Fn(TabId) -> bool) {
+        self.delegate
+            .controls
+            .borrow_mut()
+            .retain(|shown| !which(shown.tab));
+    }
+
+    /// The window's answer to a drop-down: the options chosen, or none to
+    /// leave it as it was.
+    pub fn answer_select(&mut self, number: u32, selected: Option<Vec<usize>>) {
+        if let Some(Control::Select(mut select)) = self.delegate.take_control(number) {
+            if let Some(selected) = selected {
+                select.select(selected);
+            }
+            select.submit();
+        }
+    }
+
+    /// The window's answer to a context menu: the entry chosen, or none.
+    pub fn answer_menu(&mut self, number: u32, action: Option<MenuAction>) {
+        if let Some(Control::Menu(menu)) = self.delegate.take_control(number) {
+            match action.and_then(controls::servo_action) {
+                Some(action) => menu.select(action),
+                None => menu.dismiss(),
+            }
+        }
     }
 
     pub fn resize(&mut self, size: Size) {
