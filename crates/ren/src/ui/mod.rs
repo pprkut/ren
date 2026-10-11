@@ -43,6 +43,13 @@ const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
 const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 
+/// The icon in the system tray: the feed icon on an orange square, which
+/// shows on light and dark panels.
+const TRAY_ICON: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/tray.svg"));
+
+/// Time after the window was hidden until freed memory is given back.
+const HIDDEN_TRIM_DELAY: Duration = Duration::from_secs(1);
+
 /// Time between the start and the first automatic sync, so that it
 /// doesn't compete with the first frames.
 const FIRST_SYNC_DELAY: Duration = Duration::from_secs(3);
@@ -151,6 +158,14 @@ struct App {
     auto_sync: bool,
     /// The feeds' icons; `None` without a cache directory.
     favicons: Option<Favicons>,
+    /// The icon in the system tray, if `window.tray-icon` is on.
+    tray: RefCell<Option<Tray>>,
+    /// Closing the window hides it in the tray (`window.close-to-tray`).
+    close_to_tray: Cell<bool>,
+    /// The window is hidden in the tray.
+    hidden: Cell<bool>,
+    /// A tray icon may be shown: not while measuring.
+    tray_allowed: bool,
 }
 
 #[derive(Default)]
@@ -302,6 +317,124 @@ impl App {
         let window = self.window();
         window.set_current_feed(current.map_or(-1, |i| i as i32));
         window.set_unread_text(format!("{unread} unread articles").into());
+        if let Some(tray) = &*self.tray.borrow() {
+            tray.set_text(format!("ren: {unread} unread articles").into());
+        }
+    }
+
+    /// Shows or removes the icon in the system tray.
+    fn set_tray(&self, shown: bool) {
+        let mut tray = self.tray.borrow_mut();
+        if shown == tray.is_some() {
+            return;
+        }
+        if !shown {
+            *tray = None;
+            drop(tray);
+            // Without the tray, a hidden window couldn't come back.
+            if self.hidden.get() {
+                self.show_window();
+            }
+            return;
+        }
+        let created = match Tray::new() {
+            Ok(created) => created,
+            Err(err) => {
+                eprintln!("ren: no icon in the system tray: {err}");
+                return;
+            }
+        };
+        if let Ok(icon) = slint::Image::load_from_svg_data(TRAY_ICON) {
+            created.set_image(icon);
+        }
+        created.set_window_shown(!self.hidden.get());
+        created.set_syncing(self.sync.borrow().running.is_some());
+        let weak = self.window.clone();
+        created.on_toggle_window(move || {
+            if let Some(window) = weak.upgrade() {
+                window.invoke_action("toggle-window".into());
+            }
+        });
+        let weak = self.window.clone();
+        created.on_action(move |action| {
+            if let Some(window) = weak.upgrade() {
+                window.invoke_action(action);
+            }
+        });
+        *tray = Some(created);
+        drop(tray);
+        self.refresh_tree();
+    }
+
+    /// The window was asked to close: it hides in the tray, or ren quits.
+    /// Only a desktop that shows tray icons gets the window back from the
+    /// tray: Slint makes the icon either way.
+    fn close_requested(&self) -> slint::CloseRequestResponse {
+        self.remember();
+        let to_tray = self.close_to_tray.get() && self.tray.borrow().is_some();
+        if to_tray && tray_host() {
+            self.hide_window();
+        } else {
+            if to_tray {
+                eprintln!("ren: the desktop shows no tray icons; quitting instead");
+            }
+            let _ = slint::quit_event_loop();
+        }
+        slint::CloseRequestResponse::HideWindow
+    }
+
+    /// Hides the window in the tray. What only a shown window needs goes:
+    /// the article's view and frames, the tabs (Servo's helper); the sync
+    /// goes on.
+    fn hide_window(&self) {
+        if self.hidden.replace(true) {
+            return;
+        }
+        self.remember();
+        let _ = self.window().hide();
+        self.article.borrow_mut().suspend();
+        #[cfg(feature = "servo")]
+        self.pages.borrow_mut().suspend();
+        if let Some(tray) = &*self.tray.borrow() {
+            tray.set_window_shown(false);
+        }
+        slint::Timer::single_shot(HIDDEN_TRIM_DELAY, || {
+            crate::procstat::trim_heap();
+        });
+    }
+
+    /// Shows the window again where it was, with its article and tabs.
+    fn show_window(&self) {
+        if !self.hidden.replace(false) {
+            return;
+        }
+        let window = self.window();
+        geometry::restore(window.window(), &self.saved.borrow().state().window);
+        if let Err(err) = window.show() {
+            eprintln!("ren: showing the window: {err}");
+        }
+        self.article.borrow_mut().resume();
+        #[cfg(feature = "servo")]
+        self.pages.borrow_mut().resume();
+        if let Some(tray) = &*self.tray.borrow() {
+            tray.set_window_shown(true);
+        }
+    }
+
+    /// Shows in the window and the tray whether a sync runs.
+    fn set_syncing(&self, syncing: bool) {
+        self.window().set_syncing(syncing);
+        if let Some(tray) = &*self.tray.borrow() {
+            tray.set_syncing(syncing);
+        }
+    }
+
+    fn toggle_window(&self) {
+        if self.hidden.get() {
+            self.show_window();
+        } else {
+            self.hide_window();
+        }
     }
 
     fn feed_row(&self, row: &Row) -> FeedRow {
@@ -456,9 +589,12 @@ impl App {
         let current = self.reader.borrow().current();
         match name {
             "quit" => {
-                self.remember();
+                if !self.hidden.get() {
+                    self.remember();
+                }
                 let _ = slint::quit_event_loop();
             }
+            "toggle-window" => self.toggle_window(),
             "sort-title" => self.sort_by(Column::Title),
             "sort-feed" => self.sort_by(Column::Feed),
             "sort-author" => self.sort_by(Column::Author),
@@ -765,6 +901,8 @@ impl App {
     /// when it starts.
     fn apply_settings(&self, settings: &Settings) {
         self.schedule_syncs(settings.sync_interval());
+        self.close_to_tray.set(settings.close_to_tray());
+        self.set_tray(settings.tray_icon() && self.tray_allowed);
         self.article
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
@@ -868,7 +1006,7 @@ impl App {
                 sync.running = Some(running);
                 sync.account = Some(account);
                 sync.refreshed = Some(Instant::now());
-                self.window().set_syncing(true);
+                self.set_syncing(true);
                 self.status_until_next(sync_thread::progress_text(None));
             }
             Err(err) => self.status(format!("Starting the sync failed: {err}")),
@@ -922,7 +1060,7 @@ impl App {
                             sync.password = None;
                         }
                     }
-                    self.window().set_syncing(false);
+                    self.set_syncing(false);
                     // The next automatic sync is an interval after this one.
                     if self.sync_timer.running() {
                         self.sync_timer.restart();
@@ -1023,6 +1161,23 @@ fn layout_mut(
         Arrangement::Beside => &mut state.beside,
         Arrangement::Above => &mut state.above,
     }
+}
+
+/// Whether the desktop shows tray icons: a StatusNotifierWatcher with a
+/// host is on the session bus (Plasma; GNOME with the AppIndicator
+/// extension).
+fn tray_host() -> bool {
+    let host = || -> zbus::Result<bool> {
+        let bus = zbus::blocking::Connection::session()?;
+        let watcher = zbus::blocking::Proxy::new(
+            &bus,
+            "org.kde.StatusNotifierWatcher",
+            "/StatusNotifierWatcher",
+            "org.kde.StatusNotifierWatcher",
+        )?;
+        watcher.get_property("IsStatusNotifierHostRegistered")
+    };
+    host().unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1410,13 +1565,14 @@ fn run_window(
     #[cfg(feature = "servo")]
     let pages = pages::Pages::new(&window, options.measure || options.measure_tabs);
 
-    // Measurements start alike, without syncs of their own.
-    let auto_sync = database.is_some()
-        && !(options.measure
-            || options.measure_sync
-            || options.measure_tabs
-            || options.autoscroll
-            || options.cycle_articles.is_some());
+    // Measurements start alike, without syncs of their own, and without a
+    // tray icon.
+    let measuring = options.measure
+        || options.measure_sync
+        || options.measure_tabs
+        || options.autoscroll
+        || options.cycle_articles.is_some();
+    let auto_sync = database.is_some() && !measuring;
     let app = Rc::new(App {
         window: window.as_weak(),
         reader,
@@ -1438,6 +1594,10 @@ fn run_window(
         sync_interval: Cell::new(None),
         auto_sync,
         favicons: Favicons::default_dir().map(Favicons::new),
+        tray: RefCell::new(None),
+        close_to_tray: Cell::new(false),
+        hidden: Cell::new(false),
+        tray_allowed: !measuring,
     });
     app.restore();
     match &settings {
@@ -1534,12 +1694,12 @@ fn run_window(
         }
     });
     let weak = Rc::downgrade(&app);
-    window.window().on_close_requested(move || {
-        if let Some(app) = weak.upgrade() {
-            app.remember();
-        }
-        slint::CloseRequestResponse::HideWindow
-    });
+    window
+        .window()
+        .on_close_requested(move || match weak.upgrade() {
+            Some(app) => app.close_requested(),
+            None => slint::CloseRequestResponse::HideWindow,
+        });
     let weak = Rc::downgrade(&app);
     window.on_window_activated(move || {
         if let Some(app) = weak.upgrade() {
@@ -1589,8 +1749,10 @@ fn run_window(
     });
     window.show()?;
     geometry::keep_on_screen(window.as_weak());
-    let result = slint::run_event_loop();
+    // Until quit: the window may be hidden in the tray.
+    let result = slint::run_event_loop_until_quit();
     window.hide()?;
+    *app.tray.borrow_mut() = None;
     if let Err(err) = app.saved.borrow_mut().save() {
         eprintln!("ren: saving the window's state: {err}");
     }

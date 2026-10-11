@@ -39,6 +39,9 @@ pub struct Pages {
     /// Lists were downloaded, which the helper should load.
     lists_updated: Arc<AtomicBool>,
     measure: bool,
+    /// The addresses of the tabs closed while the window is hidden, and
+    /// the one shown.
+    suspended: Option<(Vec<String>, Option<usize>)>,
     /// The drop-down and the context menu shown, if they are.
     select: Option<controls::Select>,
     menu: Option<controls::Menu>,
@@ -72,6 +75,7 @@ impl Pages {
             unblocked_sites: Vec::new(),
             lists_updated: Arc::default(),
             measure,
+            suspended: None,
             select: None,
             menu: None,
             stats: StageStats::new("ui"),
@@ -323,6 +327,33 @@ impl Pages {
             let window = self.window();
             window.set_current_tab(self.list.current().map_or(-1, |i| i as i32));
         }
+    }
+
+    /// Closes the tabs while the window is hidden, which ends the helper
+    /// and gives Servo's memory back; [`resume`](Self::resume) opens them
+    /// again.
+    pub fn suspend(&mut self) {
+        if self.list.is_empty() {
+            return;
+        }
+        let urls = self.list.tabs().iter().map(|tab| tab.url.clone()).collect();
+        self.suspended = Some((urls, self.list.current()));
+        self.close_all();
+    }
+
+    /// Opens the tabs closed by [`suspend`](Self::suspend) again.
+    pub fn resume(&mut self) {
+        let Some((urls, current)) = self.suspended.take() else {
+            return;
+        };
+        for url in &urls {
+            if let Err(err) = self.open(url) {
+                eprintln!("ren: opening the tabs again: {err}");
+                return;
+            }
+        }
+        self.list.select(current);
+        self.show_current();
     }
 
     pub fn close_all(&mut self) {
