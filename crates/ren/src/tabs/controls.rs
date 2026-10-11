@@ -7,7 +7,7 @@
 //! window. The helper runs web content, so what it sends is limited
 //! again here.
 
-use ren_tabs::{MenuAction, MenuEntry, SelectEntry, TabId};
+use ren_tabs::{Area, MenuAction, MenuEntry, SelectEntry, TabId};
 
 /// The most entries shown of a drop-down.
 const MAX_ENTRIES: usize = 2_000;
@@ -91,6 +91,35 @@ impl Select {
             None => selected.push(*id),
         }
         Some(selected)
+    }
+}
+
+/// Where a drop-down's element is, in physical pixels relative to the
+/// page area. Servo 0.7 reports it in CSS pixels relative to the document
+/// (a FIXME in its script crate), so it is off by the page's scroll and the
+/// scale factor. The element is under the click that opened it: where the
+/// reported box doesn't contain the click, the box is moved there, centred
+/// on it. Without a click (opened by keyboard), the box as reported.
+pub fn select_area(css: Area, click: Option<(f32, f32)>, scale: f32) -> Area {
+    let px = |value: i32| (value as f32 * scale).round() as i32;
+    let (x, y, width, height) = (px(css.x), px(css.y), px(css.width), px(css.height));
+    let place = |start: i32, len: i32, click: f32| {
+        let click = click.round() as i32;
+        if (start..=start + len).contains(&click) {
+            start
+        } else {
+            click - len / 2
+        }
+    };
+    let (x, y) = match click {
+        Some((cx, cy)) => (place(x, width, cx), place(y, height, cy)),
+        None => (x, y),
+    };
+    Area {
+        x,
+        y,
+        width,
+        height,
     }
 }
 
@@ -231,6 +260,46 @@ mod tests {
         assert_eq!(
             Select::new(1, 1, entries, Vec::new(), false).rows().len(),
             MAX_ENTRIES
+        );
+    }
+
+    #[test]
+    fn drop_downs_under_the_click() {
+        let css = Area {
+            x: 100,
+            y: 900,
+            width: 150,
+            height: 20,
+        };
+        // Scrolled by 800 CSS pixels: the box is moved to the click.
+        assert_eq!(
+            select_area(css, Some((170.0, 108.0)), 1.0),
+            Area {
+                x: 100,
+                y: 98,
+                width: 150,
+                height: 20
+            }
+        );
+        // At a scale of 2, not scrolled: the box, in physical pixels.
+        assert_eq!(
+            select_area(css, Some((300.0, 1810.0)), 2.0),
+            Area {
+                x: 200,
+                y: 1800,
+                width: 300,
+                height: 40
+            }
+        );
+        // Opened by keyboard: as reported.
+        assert_eq!(
+            select_area(css, None, 1.5),
+            Area {
+                x: 150,
+                y: 1350,
+                width: 225,
+                height: 30
+            }
         );
     }
 
