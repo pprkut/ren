@@ -417,6 +417,13 @@ impl ArticlePane {
         }
     }
 
+    fn select_all(&mut self) {
+        if let Some(html) = &mut self.html {
+            html.view.select_all();
+            self.schedule_render();
+        }
+    }
+
     /// The URL of the link at `x`, `y` (logical pixels), or an empty string.
     fn link_at(&self, x: f32, y: f32) -> SharedString {
         self.html
@@ -480,6 +487,8 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     window.on_article_render(move || w(&|p| p.render()));
     let w = with.clone();
     window.on_article_theme_changed(move || w(&|p| p.load_html()));
+    let w = with.clone();
+    window.on_article_select_all(move || w(&|p| p.select_all()));
     window.on_article_copy(move || with(&|p| p.copy()));
     let weak = Rc::downgrade(pane);
     window.on_article_link_at(move |x, y| {

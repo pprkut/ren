@@ -62,6 +62,7 @@ export component MainWindow inherits Window {
     callback article-resized();
     callback article-theme-changed();
     callback article-copy();
+    callback article-select-all();
     // The URL of the link at a position in the article, or "".
     callback article-link-at(x: length, y: length) -> string;
     // A link in the article: action "open" (clicked with any button, or
@@ -882,6 +883,12 @@ export component MainWindow inherits Window {
                                         title: "Copy";
                                         activated => {
                                             root.article-copy();
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Select All";
+                                        activated => {
+                                            root.article-select-all();
                                         }
                                     }
                                 }

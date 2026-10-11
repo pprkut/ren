@@ -740,9 +740,17 @@ impl HtmlView {
 
     /// A key press; `text` is the character for printable keys. Returns
     /// whether the article handled it: only copy (Ctrl+C), which Blitz
-    /// handles itself through the shell's clipboard.
+    /// handles itself through the shell's clipboard, and select all
+    /// (Ctrl+A).
     pub fn key(&mut self, text: &str, mods: Mods) -> bool {
-        if !((mods.control || mods.meta) && text.eq_ignore_ascii_case("c")) {
+        if !(mods.control || mods.meta) {
+            return false;
+        }
+        if text.eq_ignore_ascii_case("a") {
+            self.select_all();
+            return true;
+        }
+        if !text.eq_ignore_ascii_case("c") {
             return false;
         }
         let event = BlitzKeyEvent {
@@ -789,6 +797,47 @@ impl HtmlView {
         let by = doc.viewport_scroll().y - f64::from(offset);
         doc.scroll_viewport_by(0.0, by);
         self.shell.request_redraw();
+    }
+
+    /// Selects all text of the article: from the start of its first block
+    /// of text to the end of its last one. Returns whether it has text.
+    pub fn select_all(&mut self) -> bool {
+        let Some(doc) = &mut self.doc else {
+            return false;
+        };
+        let Some(root) = doc.try_root_element() else {
+            return false;
+        };
+        // The blocks of text (inline roots) in document order, through the
+        // layout's children, which include anonymous blocks.
+        let mut first = None;
+        let mut last = None;
+        let mut stack = vec![root.id];
+        while let Some(id) = stack.pop() {
+            let Some(node) = doc.get_node(id) else {
+                continue;
+            };
+            let text = node
+                .element_data()
+                .and_then(|data| data.inline_layout_data.as_ref())
+                .map(|layout| layout.text.len());
+            if let Some(len) = text {
+                first.get_or_insert(id);
+                last = Some((id, len));
+                continue;
+            }
+            let children: Vec<_> = match node.layout_children.borrow().as_ref() {
+                Some(children) => children.to_vec(),
+                None => node.children.to_vec(),
+            };
+            stack.extend(children.into_iter().rev());
+        }
+        let (Some(first), Some((last, end))) = (first, last) else {
+            return false;
+        };
+        doc.set_text_selection(first, 0, last, end);
+        self.shell.request_redraw();
+        true
     }
 
     /// Copies the selected text to the clipboard. Returns whether there
@@ -898,6 +947,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    #[test]
+    fn select_all_selects_the_article() {
+        let mut view = view(
+            "<h1>Title</h1><div>Loose <b>text</b><p>Para</p></div><p>End</p>",
+            false,
+        );
+        assert!(view.select_all());
+        let text = view.doc.as_ref().unwrap().get_selected_text().unwrap();
+        assert!(text.starts_with("Title"), "{text}");
+        assert!(text.contains("Para"), "{text}");
+        assert!(text.ends_with("End"), "{text}");
     }
 
     #[test]
