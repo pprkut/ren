@@ -1352,6 +1352,57 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
     timer
 }
 
+/// The steps of `--measure-hidden`, `HIDDEN_STEP` apart: the article (and
+/// pages) shown, the window hidden, shown again.
+const HIDDEN_STEP: Duration = Duration::from_secs(4);
+
+/// Shows the first article (and opens `urls` in tabs), hides the window as
+/// in the tray and shows it again, logging memory use at each step, then
+/// quits. After `CYCLE_DELAY`.
+fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let started = Instant::now() + CYCLE_DELAY;
+    let mut step = 0;
+    timer.start(slint::TimerMode::Repeated, HIDDEN_STEP, move || {
+        let Some(app) = app.upgrade() else {
+            return;
+        };
+        if Instant::now() < started {
+            return;
+        }
+        match step {
+            0 => {
+                log_rss("at the start");
+                if app.reader.borrow().len() > 0 {
+                    app.item_clicked(0);
+                }
+                #[cfg(feature = "servo")]
+                for url in &urls {
+                    if let Err(err) = app.pages.borrow_mut().open(url) {
+                        eprintln!("ren: --measure-hidden: {err}");
+                    }
+                }
+                #[cfg(not(feature = "servo"))]
+                let _ = &urls;
+            }
+            1 => {
+                log_rss("shown");
+                app.hide_window();
+            }
+            2 => {
+                log_rss("hidden");
+                app.show_window();
+            }
+            3 => log_rss("shown again"),
+            _ => {
+                let _ = slint::quit_event_loop();
+            }
+        }
+        step += 1;
+    });
+    timer
+}
+
 /// Time before `--measure-sync` starts, and after the last sync.
 const MEASURE_SYNC_DELAY: Duration = Duration::from_secs(2);
 /// The syncs of `--measure-sync`: into a new database, the first one is
@@ -1569,6 +1620,7 @@ fn run_window(
     // tray icon.
     let measuring = options.measure
         || options.measure_sync
+        || options.measure_hidden
         || options.measure_tabs
         || options.autoscroll
         || options.cycle_articles.is_some();
@@ -1727,6 +1779,9 @@ fn run_window(
     let _measure_sync = options
         .measure_sync
         .then(|| start_sync_measurement(Rc::downgrade(&app)));
+    let _measure_hidden = options
+        .measure_hidden
+        .then(|| start_hidden_measurement(Rc::downgrade(&app), options.tab_urls.clone()));
     let _cycle = options
         .cycle_articles
         .map(|count| start_article_cycle(Rc::downgrade(&app), count));

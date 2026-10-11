@@ -68,6 +68,9 @@ Window options:
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
+  --measure-hidden   After 2 s, show the first article (and the --tab-url
+                     pages), hide the window as in the tray and show it
+                     again, print memory use at each step, and quit
   --measure-sync     After 2 s, sync twice (into a new database, a full
                      and an incremental sync), print time, CPU and memory
                      use, and quit
@@ -141,6 +144,7 @@ pub struct Options {
     pub measure: bool,
     pub autoscroll: bool,
     pub measure_sync: bool,
+    pub measure_hidden: bool,
     pub tab_urls: Vec<String>,
     pub measure_tabs: bool,
 }
@@ -166,6 +170,7 @@ impl Default for Options {
             measure: false,
             autoscroll: false,
             measure_sync: false,
+            measure_hidden: false,
             tab_urls: Vec::new(),
             measure_tabs: false,
         }
@@ -253,6 +258,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--measure" => options.measure = true,
             "--autoscroll" => options.autoscroll = true,
             "--measure-sync" => options.measure_sync = true,
+            "--measure-hidden" => options.measure_hidden = true,
             "--tab-url" => options.tab_urls.push(value("--tab-url")?),
             "--measure-tabs" => options.measure_tabs = true,
             "-h" | "--help" => return Ok(Command::Help),
@@ -296,6 +302,7 @@ mod tests {
             measure: true,
             autoscroll: true,
             measure_sync: true,
+            measure_hidden: true,
             tab_urls: vec!["https://a/".to_owned(), "https://b/".to_owned()],
             measure_tabs: true,
         };
@@ -323,6 +330,7 @@ mod tests {
                 "--measure",
                 "--autoscroll",
                 "--measure-sync",
+                "--measure-hidden",
                 "--tab-url",
                 "https://a/",
                 "--tab-url",
