@@ -408,6 +408,7 @@ impl App {
             "next-unread" => self.next_unread(),
             "load-images" => self.article.borrow_mut().load_images_once(),
             "mark-feed-read" => self.mark_node_read(self.reader.borrow().selected()),
+            "mark-all-read" => self.mark_node_read(Node::All),
             "mark-read" | "mark-unread" => {
                 if let Some(id) = current {
                     self.set_read(id, name == "mark-read");
