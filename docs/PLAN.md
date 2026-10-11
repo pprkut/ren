@@ -645,7 +645,7 @@ From here on every milestone ships with tests for what it adds.
   each frame. RGB frames and no background under the frame cut a third
   of that per frame; the rest is M10's.
 
-- **M7b — Content blocking.** *(done, desktop measurements to come; see
+- **M7b — Content blocking.** *(done; see
   `docs/decisions/0012-content-blocking.md`)* Block ads and trackers in the web page
   tabs: they make heavy pages big (heise: 470 MiB per tab once its
   consent is accepted, M7) and repaint all the time, and they are a
@@ -688,8 +688,13 @@ From here on every milestone ships with tests for what it adds.
   click or key press in them, once per gesture, at most 10 at a time. In
   the container: about 11 MiB for the helper with the default lists
   (once, not per tab), 10 µs per request on average, the engine made in
-  a sixth of a second and loaded in 40 ms next time. `just measure-tabs`
-  compares with and without blocking on the desktop.
+  a sixth of a second and loaded in 40 ms next time. On the desktop:
+  the helper with one Ars Technica tab 96 MiB smaller (263 instead of
+  359), with three 224 MiB (439 instead of 663); heise 59 MiB smaller
+  with one tab, 116 with three, and it scrolls at 134 frames in 3 s
+  instead of 60, the helper at 36 % of a core instead of 155 %. Light
+  pages cost 7–9 MiB more. Ars Technica scrolled slowly with and
+  without blocking (48 and 38 frames, 162 in 0011): M10.
 - **M8 — Polish.** Keyboard navigation (j/k, s, m, o), mark-all-read,
   periodic sync, purge settings, favicons (cached on disk), persisted pane
   sizes, column widths and sort order (state file).
@@ -765,6 +770,11 @@ From here on every milestone ships with tests for what it adds.
     desktop before RGB frames; 0011): Slint's software renderer drawing
     every frame. Compare with the GPU renderers, and whether the software
     renderer can draw an opaque image without its per-pixel path.
+  - **Ars Technica scrolls slowly** (0012): 38–48 frames in 3 s with
+    and without content blocking, 58 ms from a painted frame to the
+    window, against 162 frames and 11 ms in 0011; the other pages are as
+    fast as before. Find out whether it's Servo's paint or the GPU's
+    readback (the `helper stats` lines of `REN_TAB_STATS`).
   - **Two frames under way** in the tabs (two slots in the shared
     buffer), so the GPU's work on the next frame overlaps the window's
     copy of the last; heise scrolled at about 25 frames per second with
