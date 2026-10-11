@@ -41,7 +41,7 @@ exceptions = [
     # The StatusNotifierItem (tray icon) client behind Slint's
     # SystemTrayIcon. The Unlicense dedicates the code to the public
     # domain, with a permissive licence as fallback; the FSF lists it as
-    # compatible with the GPL. Proposed in M8 for this crate only, to be
-    # decided in its review, see docs/decisions/0013-polish.md.
+    # compatible with the GPL. Approved for this crate only in the M8
+    # review, see docs/decisions/0013-polish.md.
     { name = "ksni", allow = ["Unlicense"] },
 ]
