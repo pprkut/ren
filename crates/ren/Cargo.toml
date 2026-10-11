@@ -72,6 +72,8 @@ image = { version = "0.25", optional = true, default-features = false, features 
 # Decodes large JPEGs at 1/2, 1/4 or 1/8 of their size, which the image
 # crate's decoder can't.
 jpeg-decoder = { version = "0.3", optional = true, default-features = false }
+# localtime_r, for dates in local time.
+libc = "0.2"
 nextcloud-news = { path = "../nextcloud-news" }
 ren-settings = { path = "../ren-settings" }
 ren-store = { path = "../ren-store" }

@@ -512,7 +512,7 @@ mod tests {
         assert_eq!(article.title, "Item 5");
         assert_eq!(
             article.meta,
-            "https://example.org/3/feed · Ada · 1970-01-01 00:08"
+            format!("https://example.org/3/feed · Ada · {}", format_date(500))
         );
         assert_eq!(article.url.as_deref(), Some("https://example.org/3/5"));
         assert_eq!(article.body, "<p>Body 5</p>");
