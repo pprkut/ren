@@ -362,6 +362,13 @@ impl App {
         }
     }
 
+    /// Marks a read item unread, an unread one read.
+    fn toggle_read(&self, id: u64) {
+        if let Some(changes) = self.with_reader(|reader| reader.toggle_read(id)) {
+            self.apply(changes);
+        }
+    }
+
     fn toggle_star(&self, id: u64) {
         if let Some(changes) = self.with_reader(|reader| reader.toggle_star(id)) {
             self.apply(changes);
@@ -409,6 +416,11 @@ impl App {
             "toggle-star" => {
                 if let Some(id) = current {
                     self.toggle_star(id);
+                }
+            }
+            "toggle-read" => {
+                if let Some(id) = current {
+                    self.toggle_read(id);
                 }
             }
             "open-tab" | "open-browser" => {
