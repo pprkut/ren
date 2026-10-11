@@ -5,8 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0013 — Polish (M8)
 
-**Status:** done (2026-10-11), for review; not measured on the desktop
-yet (see "To measure and check on the desktop").
+**Status:** done (2026-10-11), for review; measured and checked on the
+desktop on 2026-10-11, which found two bugs, fixed (see "On the
+desktop").
 
 ## Context
 
@@ -46,6 +47,19 @@ A crash loses the run's changes.
 **Only with the default database:** the ids are that database's, and
 the measurement scripts, which use copies (`--database`) or demo data,
 start alike.
+
+**Maximised, and window managers:** winit asks to maximise a window
+right after mapping it, before the window manager manages it, and KWin
+and Openbox drop the request, so the window came back unmaximised. Once
+the window exists, ren moves it to its saved position again and then
+asks to maximise it. The size and position before maximising are kept
+a moment (300 ms, once the window manager updated the maximised state)
+after every move or resize while the window isn't maximised; at first
+they were kept only when the window closed, so a window closed
+maximised had none. A window closed maximised on another screen keeps
+its normal size and position moved onto that screen, so it comes back
+there. Checked under Xvfb with Openbox (one screen: Xvfb's RandR
+monitors aren't seen by winit).
 
 **Off the screen:** Slint can't list the screens. Its
 `unstable-winit-030` feature gives the winit window (winit 0.30 is
@@ -128,6 +142,11 @@ link and image under the pointer) and applies the answer
   dismisses its menu for those;
 - a drop-down's options in a popup below the element (above it without
   room), a list that scrolls, with group headings and disabled options.
+  Servo 0.7 reports a `<select>`'s box in CSS pixels relative to the
+  document, not in device pixels relative to the view (a FIXME in its
+  script crate), so the popup first opened elsewhere on a scrolled page.
+  The box is scaled, and moved to the click that opened the drop-down
+  where it doesn't contain it. Context menus get the click's point.
 
 Controls of hidden tabs are dismissed, and a new one replaces the tab's
 older ones: Slint doesn't tell when a menu was closed without a choice.
@@ -190,9 +209,8 @@ comes back. The heap is trimmed a second later. `--measure-hidden`
 **Licence:** ksni is under the Unlicense, which isn't on the plan's
 list. It dedicates the code to the public domain, with a permissive
 licence (MIT-like, no conditions) as fallback, and the FSF lists it as
-compatible with the GPL. `deny.toml` gets an exception for this crate
-only, **proposed for this review** like `webpki-roots`' in S4. If it is
-refused, the tray goes (the `system-tray` feature and `ui/tray.slint`).
+compatible with the GPL. `deny.toml` has an exception for this crate
+only, approved in the M8 review like `webpki-roots`' in S4.
 
 ## Testing
 
@@ -223,25 +241,34 @@ refused, the tray goes (the `system-tray` feature and `ui/tray.slint`).
   and drop-down with the stand-in helper (answers and clipboard read
   back), hiding and showing the window, closing without a tray host.
 
-## To measure and check on the desktop
+## On the desktop
 
-By the user, with the default features:
+By the user, at d4e1d5d (KDE on X11), release build with the default
+features. `just measure-hidden` with a dump and two pages in tabs:
 
-1. `just measure-hidden DUMP_DIR [URL...]`: RSS with the first article
-   (and pages) shown, hidden in the tray, shown again. Expected: the
-   Blitz view's 16 MiB (`0010`) and the helper's memory given back while
-   hidden.
-2. By hand on Plasma: the tray icon, its tooltip and menu, closing to it
-   with `window.close-to-tray = true`, and Show/Hide.
-3. By hand in tabs: a page's context menu (right click on a link, an
-   image, a text field, a selection) and a drop-down (a `<select>`, one
-   with `<optgroup>`s), now with Servo.
-4. Startup with a restored article: the HTML view is made at start when
-   the last item is shown again, which costs what opening an article
-   costs (`0010`: 16 MiB for the view); `just measure` with
-   `DATABASE=` doesn't show it (no state for other databases). If it
-   matters, the article could be shown after the first frame, or only
-   selected.
+| run | at the start | article and pages shown | hidden | shown again |
+|---|---|---|---|---|
+| 1 | 49.1 | 346.2 (85.6 + 260.6) | 61.6 | 349.4 (86.0 + 263.4) |
+| 2 | 50.3 | 352.7 (86.4 + 266.3) | 62.4 | 350.3 (86.6 + 263.7) |
+
+RSS in MiB, total (UI + Servo's helper). Hidden in the tray, ren gives
+back 285–290 MiB: the helper ends with the tabs, and the window drops
+the article's view and frames. It stays 12 MiB above the start (what
+the window keeps of the article, the reader and Slint's caches, not
+broken down), and comes back to the same size when shown again.
+
+By hand:
+
+- Closing to the tray on Plasma works; the licence of ksni is approved.
+- A drop-down on a real page (pecl.php.net) works, but opened in the
+  wrong place: the box Servo reports (above), fixed in 42f3394. No page
+  with `<optgroup>`s was at hand.
+- The window's size, position and maximised state weren't restored:
+  closed maximised, it came back unmaximised; moved to another screen,
+  it came back on the primary one (the maximised state, and the missing
+  normal size, above), fixed in e399b7b. To check again on KWin.
+- Startup with a restored article costs what opening an article costs
+  (`0010`: 16 MiB for the view); not measured on its own.
 
 ## Open
 

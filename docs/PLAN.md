@@ -752,14 +752,15 @@ From here on every milestone ships with tests for what it adds.
   page); Servo's drop-downs and context menus are shown by the window.
   The article: select all, smooth scrolling by keyboard, a light
   backdrop for images in dark mode, enclosures and thumbnails. A tray
-  icon (Slint's `SystemTrayIcon`, ksni; its Unlicense is an exception
-  proposed for the review) with the unread count and a menu;
-  `window.close-to-tray` hides the window there, only where the desktop
-  shows tray icons, and drops the article's view and the tabs while
-  hidden. In the container only, under Xvfb (tabs with a stand-in for
-  the helper); the memory with the window hidden (`just
-  measure-hidden`), the tray on Plasma and the page menus with Servo
-  are for the desktop.
+  icon (Slint's `SystemTrayIcon`, ksni; its Unlicense is an approved
+  exception) with the unread count and a menu; `window.close-to-tray`
+  hides the window there, only where the desktop shows tray icons, and
+  drops the article's view and the tabs while hidden: on the desktop
+  with an article and two pages, 350 MiB shown, 62 hidden (`just
+  measure-hidden`). The desktop found the maximised state lost under
+  KWin (winit asks before the window manager manages the window) and
+  drop-downs placed by the box Servo reports, which is relative to the
+  document; both fixed.
 - **M8b — Settings dialog and account setup.** A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
