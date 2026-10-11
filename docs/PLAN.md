@@ -695,7 +695,13 @@ From here on every milestone ships with tests for what it adds.
   Settings for the pane arrangement and the item status colours. The
   account page: Login Flow v2 with a "waiting for the browser" state, the
   manual app password fallback, and log out (revoking the app password).
-  First run opens the account page. Also Help → About ren: version, the
+  First run opens the account page. Edits to the file by hand apply when
+  it's saved, as in Zed: a thread sleeps on inotify for the config
+  directory (editors save by renaming a new file over the old one) and
+  wakes the UI to reload. That replaces the reload on window activation,
+  which never happens while the search field has the focus (its
+  `LineEdit` doesn't forward `focus-gained`, see 0009); the sync still
+  reads the file when it starts. Also Help → About ren: version, the
   GPL notice, a link to the source, credits (Slint, Blitz, Servo, the
   icons) and a "Third-party licenses" view showing the notices from M11
   (rendered like an article), embedded in the binary.
