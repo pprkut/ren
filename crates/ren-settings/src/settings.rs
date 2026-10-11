@@ -317,6 +317,11 @@ impl Settings {
         minutes(self.number(schema::KEEP_READ) * 24 * 60)
     }
 
+    /// Whether the feeds' icons are downloaded from their sites.
+    pub fn feed_icons(&self) -> bool {
+        self.bool(schema::FEED_ICONS)
+    }
+
     /// Whether articles load images from their servers without being asked
     /// to.
     pub fn load_images(&self) -> bool {
@@ -633,6 +638,7 @@ pub(crate) mod tests {
             [sync]
             interval-minutes = 0
             keep-read-days = 2
+            feed-icons = false
 
             [articles]
             load-images = false
@@ -656,6 +662,7 @@ pub(crate) mod tests {
             settings.keep_read(),
             Some(Duration::from_secs(2 * 24 * 60 * 60))
         );
+        assert!(!settings.feed_icons());
         assert!(!settings.load_images());
         assert!(!settings.keep_site_data());
         assert_eq!(
@@ -677,6 +684,7 @@ pub(crate) mod tests {
             defaults.keep_read(),
             Some(Duration::from_secs(30 * 24 * 60 * 60))
         );
+        assert!(defaults.feed_icons());
         assert!(defaults.load_images());
         assert!(defaults.keep_site_data());
         assert_eq!(defaults.filter_lists().len(), 5);

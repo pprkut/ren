@@ -36,6 +36,12 @@ pub fn image_cache(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/images"))
 }
 
+/// `$XDG_CACHE_HOME/ren/favicons`: the feeds' icons, downloaded again
+/// when they are old.
+pub fn favicons(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/favicons"))
+}
+
 /// `$XDG_CACHE_HOME/ren/filters`: the filter lists for content blocking
 /// in tabs, downloaded again when they are old.
 pub fn filter_lists(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
@@ -85,6 +91,7 @@ mod tests {
         assert_eq!(database(&vars), Some("/xdg/data/ren/ren.db".into()));
         assert_eq!(image_cache(&vars), Some("/xdg/cache/ren/images".into()));
         assert_eq!(filter_lists(&vars), Some("/xdg/cache/ren/filters".into()));
+        assert_eq!(favicons(&vars), Some("/xdg/cache/ren/favicons".into()));
         assert_eq!(site_data(&vars), Some("/xdg/data/ren/servo".into()));
     }
 
