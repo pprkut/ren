@@ -19,11 +19,14 @@ pub enum Navigation {
 }
 
 /// Web pages, and what pages make themselves (`about:blank` and `srcdoc`
-/// frames, `data:` and `blob:` URLs); no local files (`file:`) or other
-/// applications' schemes.
+/// frames, `blob:` URLs); no local files (`file:`) or other
+/// applications' schemes. Not `data:` either: browsers don't let pages
+/// navigate to `data:` URLs, which are used to show phishing pages
+/// under an address that names no site. Frames still load them (Servo
+/// loads an iframe's `src` without asking), and so do images and styles.
 pub fn navigation(scheme: &str) -> Navigation {
     match scheme.to_ascii_lowercase().as_str() {
-        "http" | "https" | "about" | "data" | "blob" => Navigation::Allow,
+        "http" | "https" | "about" | "blob" => Navigation::Allow,
         "mailto" => Navigation::External,
         _ => Navigation::Deny,
     }
@@ -197,7 +200,7 @@ mod tests {
         assert_eq!(navigation("https"), Navigation::Allow);
         assert_eq!(navigation("HTTP"), Navigation::Allow);
         assert_eq!(navigation("about"), Navigation::Allow);
-        assert_eq!(navigation("data"), Navigation::Allow);
+        assert_eq!(navigation("data"), Navigation::Deny);
         assert_eq!(navigation("mailto"), Navigation::External);
         assert_eq!(navigation("file"), Navigation::Deny);
         assert_eq!(navigation("javascript"), Navigation::Deny);
