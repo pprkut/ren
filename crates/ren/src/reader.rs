@@ -316,6 +316,16 @@ impl Reader {
         self.changed(id, changed)
     }
 
+    /// Marks a read item unread, an unread one read.
+    pub fn toggle_read(&mut self, id: u64) -> Result<Changes> {
+        let read = self
+            .store
+            .item_summaries(&[id])?
+            .first()
+            .is_some_and(|item| item.status == Status::Read);
+        self.set_read(id, !read)
+    }
+
     /// Stars an unstarred item, or unstars a starred one. In the list of
     /// starred items, an unstarred item stays until the list is selected
     /// again, so that the rows don't move under the pointer.
@@ -592,6 +602,16 @@ mod tests {
                 .unwrap(),
             [3]
         );
+    }
+
+    #[test]
+    fn read_toggle() {
+        let mut reader = reader();
+        assert_eq!(reader.toggle_read(3).unwrap().rows, [3]);
+        assert_eq!(reader.unread(), 5);
+        assert_eq!(reader.toggle_read(3).unwrap().rows, [3]);
+        assert_eq!(reader.unread(), 6);
+        assert_eq!(reader.toggle_read(99).unwrap(), Changes::default());
     }
 
     #[test]

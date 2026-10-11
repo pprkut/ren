@@ -437,600 +437,629 @@ export component MainWindow inherits Window {
         }
     }
 
-    VerticalLayout {
-        if root.show-toolbar: ToolBar {
-            ToolButton {
-                icon: Icons.add-feed;
-                text: "Add Feed";
-                clicked => {
-                    root.action("add-feed");
-                }
-            }
+    // Single keys for reading: the feed tree, the item list and the
+    // article pass on the keys they don't take (the search field and pages
+    // take all of them). j/k: next/previous article, s: star, m: read or
+    // unread, o: open the link.
+    FocusScope {
+        // Only hears what the others pass on; never takes the focus.
+        enabled: false;
 
-            ToolButton {
-                icon: Icons.fetch-feed;
-                text: "Fetch Feed";
-                clicked => {
-                    root.action("fetch-feed");
-                }
+        key-pressed(event) => {
+            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                return reject;
             }
-
-            ToolButton {
-                icon: Icons.fetch-all;
-                text: "Fetch All Feeds";
-                clicked => {
-                    root.action("fetch-all");
-                }
+            if event.text == "j" {
+                root.action("next-article");
+            } else if event.text == "k" {
+                root.action("previous-article");
+            } else if event.text == "s" {
+                root.action("toggle-star");
+            } else if event.text == "m" {
+                root.action("toggle-read");
+            } else if event.text == "o" {
+                root.action("open-tab");
+            } else {
+                return reject;
             }
-
-            ToolButton {
-                icon: Icons.cancel;
-                text: "Cancel Feed Fetches";
-                enabled: root.syncing;
-                clicked => {
-                    root.action("cancel-sync");
-                }
-            }
-
-            ToolButton {
-                icon: Icons.mark-read;
-                text: "Mark Feed as Read";
-                clicked => {
-                    root.action("mark-feed-read");
-                }
-            }
+            accept
         }
 
-    HorizontalLayout {
-        tree := FeedTree {
-            width: root.tree-width;
-            rows: root.feeds;
-            current: root.current-feed;
-            tabs-available: root.tabs-available;
-            select(row) => {
-                root.feed-clicked(row);
-            }
-            toggle(row) => {
-                root.feed-toggled(row);
-            }
-            navigate(key) => {
-                root.feed-key(key);
-            }
-            menu(row, action) => {
-                root.feed-menu(row, action);
-            }
-            focus-gained(reason) => {
-                root.check-activation(reason);
-            }
-        }
-
-        Splitter {
-            width: 5px;
-            size <=> root.tree-width;
-            min-size: 150px;
-            max-size: 600px;
-        }
-
-        // The item list and the article, arranged by hand so that both
-        // arrangements share the same element instances (and with them
-        // selection, focus and scroll positions).
-        content := Rectangle {
-            horizontal-stretch: 1;
-
-            property <bool> beside: root.arrangement == Arrangement.beside;
-            property <length> bar: 5px;
-            property <length> search-height: 34px;
-            property <length> tabs-height: root.tabs.length > 0 ? 30px : 0px;
-
-            search-box := Rectangle {
-                x: 0px;
-                y: 0px;
-                width: item-list.width;
-                height: content.search-height;
-
-                search := LineEdit {
-                    x: 4px;
-                    y: 3px;
-                    width: parent.width - 8px;
-                    height: parent.height - 6px;
-                    placeholder-text: "Search articles…";
-                    edited(text) => {
-                        root.search-edited(text);
+        VerticalLayout {
+            if root.show-toolbar: ToolBar {
+                ToolButton {
+                    icon: Icons.add-feed;
+                    text: "Add Feed";
+                    clicked => {
+                        root.action("add-feed");
                     }
-                    key-pressed(event) => {
-                        // Down moves on to the list.
-                        if event.text == Key.DownArrow || event.text == Key.Return {
-                            item-list.focus();
-                            return accept;
-                        }
-                        reject
+                }
+
+                ToolButton {
+                    icon: Icons.fetch-feed;
+                    text: "Fetch Feed";
+                    clicked => {
+                        root.action("fetch-feed");
+                    }
+                }
+
+                ToolButton {
+                    icon: Icons.fetch-all;
+                    text: "Fetch All Feeds";
+                    clicked => {
+                        root.action("fetch-all");
+                    }
+                }
+
+                ToolButton {
+                    icon: Icons.cancel;
+                    text: "Cancel Feed Fetches";
+                    enabled: root.syncing;
+                    clicked => {
+                        root.action("cancel-sync");
+                    }
+                }
+
+                ToolButton {
+                    icon: Icons.mark-read;
+                    text: "Mark Feed as Read";
+                    clicked => {
+                        root.action("mark-feed-read");
                     }
                 }
             }
 
-            item-list := ItemTable {
-                x: 0px;
-                y: content.search-height;
-                width: content.beside ? root.list-width : content.width;
-                height: (content.beside ? content.height : root.list-height) - content.search-height;
-                compact: content.beside;
-                tabs-available: root.tabs-available;
-                rows: root.items;
-                current: root.current-item;
-                sort-column: root.sort-column;
-                sort-ascending: root.sort-ascending;
-                select(row) => {
-                    root.item-clicked(row);
-                }
-                navigate(key, page) => {
-                    root.item-key(key, page);
-                }
-                sort(column) => {
-                    root.sort-clicked(column);
-                }
-                menu(row, action) => {
-                    root.item-menu(row, action);
-                }
-                focus-gained(reason) => {
-                    root.check-activation(reason);
-                }
-            }
-
-            Splitter {
-                visible: content.beside;
-                vertical: true;
-                x: root.list-width;
-                width: content.bar;
-                height: content.height;
-                size <=> root.list-width;
-                min-size: 250px;
-                max-size: content.width - 250px;
-            }
-
-            Splitter {
-                visible: !content.beside;
-                vertical: false;
-                y: root.list-height;
-                width: content.width;
-                height: content.bar;
-                size <=> root.list-height;
-                min-size: 100px;
-                max-size: content.height - 100px;
-            }
-
-            TabBar {
-                visible: root.tabs.length > 0;
-                x: article.x;
-                y: article.y - content.tabs-height;
-                width: article.width;
-                height: content.tabs-height;
-                tabs: root.tabs;
-                current: root.current-tab;
-                select(index) => {
-                    root.tab-selected(index);
-                }
-                close(index) => {
-                    root.tab-closed(index);
-                }
-            }
-
-            article := ScrollView {
-                visible: !root.html-view && root.current-tab < 0;
-                x: content.beside ? root.list-width + content.bar : 0px;
-                y: (content.beside ? 0px : root.list-height + content.bar) + content.tabs-height;
-                width: content.width - self.x;
-                height: content.height - self.y;
-                content-width: self.visible-width;
-                content-height: article-layout.preferred-height;
-
-                article-layout := VerticalLayout {
-                    width: article.visible-width;
-                    padding: 16px;
-                    spacing: 8px;
-                    alignment: start;
-
-                    Text {
-                        text: root.article-title;
-                        wrap: word-wrap;
-                        font-size: 1.5rem;
-                        font-weight: 700;
-                        color: Palette.foreground;
+            HorizontalLayout {
+                tree := FeedTree {
+                    width: root.tree-width;
+                    rows: root.feeds;
+                    current: root.current-feed;
+                    tabs-available: root.tabs-available;
+                    select(row) => {
+                        root.feed-clicked(row);
                     }
-
-                    Text {
-                        text: root.article-meta;
-                        wrap: word-wrap;
-                        color: Palette.foreground;
-                        opacity: 0.7;
+                    toggle(row) => {
+                        root.feed-toggled(row);
                     }
-
-                    Text {
-                        text: root.article-body;
-                        wrap: word-wrap;
-                        color: Palette.foreground;
+                    navigate(key) => {
+                        root.feed-key(key);
+                    }
+                    menu(row, action) => {
+                        root.feed-menu(row, action);
+                    }
+                    focus-gained(reason) => {
+                        root.check-activation(reason);
                     }
                 }
-            }
 
-            html-pane := Rectangle {
-                visible: root.html-view && root.current-tab < 0;
-                x: article.x;
-                y: article.y;
-                width: article.width;
-                height: article.height;
-                background: Palette.background;
-                clip: true;
+                Splitter {
+                    width: 5px;
+                    size <=> root.tree-width;
+                    min-size: 150px;
+                    max-size: 600px;
+                }
 
-                // Offers to load the images that weren't loaded.
-                images-bar := Rectangle {
-                    visible: root.article-images-blocked;
-                    // Not centred, as children without a position are.
-                    y: 0;
-                    width: parent.width;
-                    height: self.visible ? images-bar-layout.preferred-height : 0px;
-                    background: Theme.hover;
+                // The item list and the article, arranged by hand so that both
+                // arrangements share the same element instances (and with them
+                // selection, focus and scroll positions).
+                content := Rectangle {
+                    horizontal-stretch: 1;
 
-                    images-bar-layout := HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: 12px;
-                        padding-top: 4px;
-                        padding-bottom: 4px;
-                        spacing: 12px;
+                    property <bool> beside: root.arrangement == Arrangement.beside;
+                    property <length> bar: 5px;
+                    property <length> search-height: 34px;
+                    property <length> tabs-height: root.tabs.length > 0 ? 30px : 0px;
 
-                        Text {
-                            text: "Images from other servers were not loaded.";
-                            horizontal-stretch: 1;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            color: Palette.foreground;
-                        }
+                    search-box := Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: item-list.width;
+                        height: content.search-height;
 
-                        Button {
-                            text: "Load Images";
-                            horizontal-stretch: 0;
-                            clicked => {
-                                root.action("load-images");
+                        search := LineEdit {
+                            x: 4px;
+                            y: 3px;
+                            width: parent.width - 8px;
+                            height: parent.height - 6px;
+                            placeholder-text: "Search articles…";
+                            edited(text) => {
+                                root.search-edited(text);
                             }
-                        }
-                    }
-                }
-
-                html-area := Rectangle {
-                    y: images-bar.height;
-                    width: parent.width;
-                    height: parent.height - images-bar.height;
-
-                    changed width => {
-                        root.article-resized();
-                    }
-                    changed height => {
-                        root.article-resized();
-                    }
-
-                    Image {
-                        width: parent.width;
-                        height: parent.height;
-                        source: root.article-image;
-                        image-fit: fill;
-                    }
-
-                    html-focus := FocusScope {
-                        focus-gained(reason) => {
-                            root.check-activation(reason);
-                        }
-
-                        // Scrolling by keyboard; deltas are positive towards the
-                        // top, as for the mouse wheel.
-                        property <length> line: 40px;
-                        property <length> page: html-area.height * 0.9;
-
-                        key-pressed(event) => {
-                            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
-                                if root.article-key(event.text, html-pane.mods(event.modifiers)) {
+                            key-pressed(event) => {
+                                // Down moves on to the list.
+                                if event.text == Key.DownArrow || event.text == Key.Return {
+                                    item-list.focus();
                                     return accept;
                                 }
-                                return reject;
-                            }
-                            if event.text == Key.UpArrow {
-                                root.article-scroll(0, self.line, 0);
-                            } else if event.text == Key.DownArrow {
-                                root.article-scroll(0, -self.line, 0);
-                            } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
-                                root.article-scroll(0, self.page, 0);
-                            } else if event.text == Key.PageDown || event.text == " " {
-                                root.article-scroll(0, -self.page, 0);
-                            } else if event.text == Key.Home {
-                                root.article-scroll(0, 1000000px, 0);
-                            } else if event.text == Key.End {
-                                root.article-scroll(0, -1000000px, 0);
-                            } else {
-                                return reject;
-                            }
-                            accept
-                        }
-                    }
-
-                    // The link under the pointer when the menu opened.
-                    property <string> menu-link;
-
-                    article-menu := ContextMenuArea {
-                        Menu {
-                            if html-area.menu-link != "" && root.tabs-available: MenuItem {
-                                title: "Open Link in Tab";
-                                activated => {
-                                    root.article-link-action(html-area.menu-link, "open");
-                                }
-                            }
-                            if html-area.menu-link != "": MenuItem {
-                                title: "Open Link in Browser";
-                                activated => {
-                                    root.article-link-action(html-area.menu-link, "browser");
-                                }
-                            }
-                            if html-area.menu-link != "": MenuItem {
-                                title: "Copy Link Address";
-                                activated => {
-                                    root.article-link-action(html-area.menu-link, "copy");
-                                }
-                            }
-                            if html-area.menu-link != "": MenuSeparator { }
-                            MenuItem {
-                                title: "Copy";
-                                activated => {
-                                    root.article-copy();
-                                }
-                            }
-                        }
-
-                        TouchArea {
-                            mouse-cursor: root.article-cursor == 1 ? MouseCursor.pointer : root.article-cursor == 2 ? MouseCursor.text : MouseCursor.default;
-                            pointer-event(event) => {
-                                if event.kind == PointerEventKind.down {
-                                    html-focus.focus();
-                                }
-                                // This TouchArea takes the right click before the
-                                // ContextMenuArea sees it; open the menu here, and
-                                // keep the click from Blitz so the selection stays.
-                                if event.button == PointerEventButton.right {
-                                    if event.kind == PointerEventKind.down {
-                                        html-area.menu-link = root.article-link-at(self.mouse-x, self.mouse-y);
-                                        article-menu.show({ x: self.mouse-x, y: self.mouse-y });
-                                    }
-                                    return;
-                                }
-                                if event.kind != PointerEventKind.cancel {
-                                    root.article-pointer(
-                                        event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
-                                        event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
-                                        self.mouse-x,
-                                        self.mouse-y,
-                                        html-pane.mods(event.modifiers));
-                                }
-                            }
-                            scroll-event(event) => {
-                                root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
-                                accept
+                                reject
                             }
                         }
                     }
 
-                    // The scroll position, over the right edge of the article;
-                    // the thumb can be dragged.
-                    scroll-track := Rectangle {
-                        visible: root.article-scroll-max > 0;
-                        x: parent.width - self.width;
-                        width: 14px;
-                        height: parent.height;
-
-                        property <length> content: html-area.height + root.article-scroll-max;
-                        property <length> thumb-height: max(24px, self.height * html-area.height / self.content);
-                        property <length> travel: self.height - self.thumb-height;
-                        property <bool> active: track-area.has-hover || track-area.pressed;
-
-                        thumb := Rectangle {
-                            x: parent.width - self.width - 3px;
-                            y: parent.travel * root.article-scroll-y / max(1px, root.article-scroll-max);
-                            width: parent.active ? 8px : 4px;
-                            height: parent.thumb-height;
-                            border-radius: self.width / 2;
-                            background: Palette.foreground;
-                            opacity: parent.active ? 0.45 : 0.25;
-
-                            animate width, opacity { duration: 100ms; }
+                    item-list := ItemTable {
+                        x: 0px;
+                        y: content.search-height;
+                        width: content.beside ? root.list-width : content.width;
+                        height: (content.beside ? content.height : root.list-height) - content.search-height;
+                        compact: content.beside;
+                        tabs-available: root.tabs-available;
+                        rows: root.items;
+                        current: root.current-item;
+                        sort-column: root.sort-column;
+                        sort-ascending: root.sort-ascending;
+                        select(row) => {
+                            root.item-clicked(row);
                         }
-
-                        track-area := TouchArea {
-                            // Where the thumb was grabbed, from its top.
-                            property <length> grab;
-
-                            function scroll-to-pointer() {
-                                root.article-scroll-to(
-                                    (self.mouse-y - self.grab) / max(1px, scroll-track.travel) * root.article-scroll-max);
-                            }
-
-                            pointer-event(event) => {
-                                if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
-                                    if self.mouse-y >= thumb.y && self.mouse-y <= thumb.y + thumb.height {
-                                        self.grab = self.mouse-y - thumb.y;
-                                    } else {
-                                        // Centred on the pointer.
-                                        self.grab = thumb.height / 2;
-                                        self.scroll-to-pointer();
-                                    }
-                                }
-                            }
-                            moved => {
-                                if self.pressed {
-                                    self.scroll-to-pointer();
-                                }
-                            }
-                            scroll-event(event) => {
-                                root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
-                                accept
-                            }
+                        navigate(key, page) => {
+                            root.item-key(key, page);
                         }
-                    }
-
-                }
-
-                pure function mods(m: KeyboardModifiers) -> int {
-                    return (m.control ? 1 : 0) + (m.shift ? 2 : 0) + (m.alt ? 4 : 0) + (m.meta ? 8 : 0);
-                }
-            }
-
-            page-pane := Rectangle {
-                visible: root.current-tab >= 0;
-                x: article.x;
-                y: article.y;
-                width: article.width;
-                height: article.height;
-                clip: true;
-
-                changed visible => {
-                    if self.visible {
-                        page-focus.focus();
-                    }
-                }
-
-                // Back, forward, reload, the address, and the system
-                // browser.
-                page-bar := Rectangle {
-                    y: 0;
-                    width: parent.width;
-                    height: page-bar-layout.preferred-height;
-                    background: Palette.alternate-background;
-
-                    page-bar-layout := HorizontalLayout {
-                        padding: 2px;
-                        spacing: 2px;
-
-                        ToolButton {
-                            icon: Icons.back;
-                            enabled: root.page-can-go-back;
-                            clicked => {
-                                root.page-navigate("back");
-                            }
+                        sort(column) => {
+                            root.sort-clicked(column);
                         }
-
-                        ToolButton {
-                            icon: Icons.forward;
-                            enabled: root.page-can-go-forward;
-                            clicked => {
-                                root.page-navigate("forward");
-                            }
+                        menu(row, action) => {
+                            root.item-menu(row, action);
                         }
-
-                        ToolButton {
-                            icon: Icons.reload;
-                            clicked => {
-                                root.page-navigate("reload");
-                            }
-                        }
-
-                        Text {
-                            horizontal-stretch: 1;
-                            text: root.page-url;
-                            overflow: elide;
-                            vertical-alignment: center;
-                            color: Palette.foreground;
-                            opacity: 0.8;
-                        }
-
-                        if root.page-can-block: ToolButton {
-                            text: root.page-blocking ? "Allow Ads Here" : "Block Ads Here";
-                            clicked => {
-                                root.action("toggle-site-blocking");
-                            }
-                        }
-
-                        ToolButton {
-                            icon: Icons.browser;
-                            text: "Open in Browser";
-                            clicked => {
-                                root.action("page-browser");
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        y: parent.height - 1px;
-                        height: 1px;
-                        background: Theme.separator;
-                    }
-                }
-
-                page-area := Rectangle {
-                    y: page-bar.height;
-                    width: parent.width;
-                    height: parent.height - page-bar.height;
-                    // The frame covers it all; filling the background below
-                    // it too would cost a pass over every pixel per frame.
-                    background: root.page-image.width > 0 ? transparent : Palette.background;
-
-                    changed width => {
-                        root.page-resized();
-                    }
-                    changed height => {
-                        root.page-resized();
-                    }
-
-                    // Only while a page is shown: the renderer keeps the last
-                    // image of an element it no longer draws.
-                    if root.current-tab >= 0: Image {
-                        width: parent.width;
-                        height: parent.height;
-                        source: root.page-image;
-                        image-fit: fill;
-                    }
-
-                    page-focus := FocusScope {
                         focus-gained(reason) => {
                             root.check-activation(reason);
                         }
+                    }
 
-                        // All keys go to the page; with modifiers they also
-                        // stay available as the window's shortcuts.
-                        key-pressed(event) => {
-                            root.page-key(event.text, html-pane.mods(event.modifiers), true);
-                            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
-                                return reject;
-                            }
-                            accept
+                    Splitter {
+                        visible: content.beside;
+                        vertical: true;
+                        x: root.list-width;
+                        width: content.bar;
+                        height: content.height;
+                        size <=> root.list-width;
+                        min-size: 250px;
+                        max-size: content.width - 250px;
+                    }
+
+                    Splitter {
+                        visible: !content.beside;
+                        vertical: false;
+                        y: root.list-height;
+                        width: content.width;
+                        height: content.bar;
+                        size <=> root.list-height;
+                        min-size: 100px;
+                        max-size: content.height - 100px;
+                    }
+
+                    TabBar {
+                        visible: root.tabs.length > 0;
+                        x: article.x;
+                        y: article.y - content.tabs-height;
+                        width: article.width;
+                        height: content.tabs-height;
+                        tabs: root.tabs;
+                        current: root.current-tab;
+                        select(index) => {
+                            root.tab-selected(index);
                         }
-                        key-released(event) => {
-                            root.page-key(event.text, html-pane.mods(event.modifiers), false);
-                            accept
+                        close(index) => {
+                            root.tab-closed(index);
                         }
                     }
 
-                    TouchArea {
-                        mouse-cursor: root.page-cursor == 1 ? MouseCursor.pointer : root.page-cursor == 2 ? MouseCursor.text : MouseCursor.default;
-                        pointer-event(event) => {
-                            if event.kind == PointerEventKind.down {
-                                page-focus.focus();
+                    article := ScrollView {
+                        visible: !root.html-view && root.current-tab < 0;
+                        x: content.beside ? root.list-width + content.bar : 0px;
+                        y: (content.beside ? 0px : root.list-height + content.bar) + content.tabs-height;
+                        width: content.width - self.x;
+                        height: content.height - self.y;
+                        content-width: self.visible-width;
+                        content-height: article-layout.preferred-height;
+
+                        article-layout := VerticalLayout {
+                            width: article.visible-width;
+                            padding: 16px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: root.article-title;
+                                wrap: word-wrap;
+                                font-size: 1.5rem;
+                                font-weight: 700;
+                                color: Palette.foreground;
                             }
-                            if event.kind != PointerEventKind.cancel {
-                                root.page-pointer(
-                                    event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
-                                    event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : event.button == PointerEventButton.back ? 3 : event.button == PointerEventButton.forward ? 4 : 0,
-                                    self.mouse-x,
-                                    self.mouse-y,
-                                    html-pane.mods(event.modifiers));
+
+                            Text {
+                                text: root.article-meta;
+                                wrap: word-wrap;
+                                color: Palette.foreground;
+                                opacity: 0.7;
+                            }
+
+                            Text {
+                                text: root.article-body;
+                                wrap: word-wrap;
+                                color: Palette.foreground;
                             }
                         }
-                        scroll-event(event) => {
-                            root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
-                            accept
+                    }
+
+                    html-pane := Rectangle {
+                        visible: root.html-view && root.current-tab < 0;
+                        x: article.x;
+                        y: article.y;
+                        width: article.width;
+                        height: article.height;
+                        background: Palette.background;
+                        clip: true;
+
+                        // Offers to load the images that weren't loaded.
+                        images-bar := Rectangle {
+                            visible: root.article-images-blocked;
+                            // Not centred, as children without a position are.
+                            y: 0;
+                            width: parent.width;
+                            height: self.visible ? images-bar-layout.preferred-height : 0px;
+                            background: Theme.hover;
+
+                            images-bar-layout := HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                padding-top: 4px;
+                                padding-bottom: 4px;
+                                spacing: 12px;
+
+                                Text {
+                                    text: "Images from other servers were not loaded.";
+                                    horizontal-stretch: 1;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    color: Palette.foreground;
+                                }
+
+                                Button {
+                                    text: "Load Images";
+                                    horizontal-stretch: 0;
+                                    clicked => {
+                                        root.action("load-images");
+                                    }
+                                }
+                            }
+                        }
+
+                        html-area := Rectangle {
+                            y: images-bar.height;
+                            width: parent.width;
+                            height: parent.height - images-bar.height;
+
+                            changed width => {
+                                root.article-resized();
+                            }
+                            changed height => {
+                                root.article-resized();
+                            }
+
+                            Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: root.article-image;
+                                image-fit: fill;
+                            }
+
+                            html-focus := FocusScope {
+                                focus-gained(reason) => {
+                                    root.check-activation(reason);
+                                }
+
+                                // Scrolling by keyboard; deltas are positive towards the
+                                // top, as for the mouse wheel.
+                                property <length> line: 40px;
+                                property <length> page: html-area.height * 0.9;
+
+                                key-pressed(event) => {
+                                    if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                                        if root.article-key(event.text, html-pane.mods(event.modifiers)) {
+                                            return accept;
+                                        }
+                                        return reject;
+                                    }
+                                    if event.text == Key.UpArrow {
+                                        root.article-scroll(0, self.line, 0);
+                                    } else if event.text == Key.DownArrow {
+                                        root.article-scroll(0, -self.line, 0);
+                                    } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
+                                        root.article-scroll(0, self.page, 0);
+                                    } else if event.text == Key.PageDown || event.text == " " {
+                                        root.article-scroll(0, -self.page, 0);
+                                    } else if event.text == Key.Home {
+                                        root.article-scroll(0, 1000000px, 0);
+                                    } else if event.text == Key.End {
+                                        root.article-scroll(0, -1000000px, 0);
+                                    } else {
+                                        return reject;
+                                    }
+                                    accept
+                                }
+                            }
+
+                            // The link under the pointer when the menu opened.
+                            property <string> menu-link;
+
+                            article-menu := ContextMenuArea {
+                                Menu {
+                                    if html-area.menu-link != "" && root.tabs-available: MenuItem {
+                                        title: "Open Link in Tab";
+                                        activated => {
+                                            root.article-link-action(html-area.menu-link, "open");
+                                        }
+                                    }
+                                    if html-area.menu-link != "": MenuItem {
+                                        title: "Open Link in Browser";
+                                        activated => {
+                                            root.article-link-action(html-area.menu-link, "browser");
+                                        }
+                                    }
+                                    if html-area.menu-link != "": MenuItem {
+                                        title: "Copy Link Address";
+                                        activated => {
+                                            root.article-link-action(html-area.menu-link, "copy");
+                                        }
+                                    }
+                                    if html-area.menu-link != "": MenuSeparator { }
+                                    MenuItem {
+                                        title: "Copy";
+                                        activated => {
+                                            root.article-copy();
+                                        }
+                                    }
+                                }
+
+                                TouchArea {
+                                    mouse-cursor: root.article-cursor == 1 ? MouseCursor.pointer : root.article-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                                    pointer-event(event) => {
+                                        if event.kind == PointerEventKind.down {
+                                            html-focus.focus();
+                                        }
+                                        // This TouchArea takes the right click before the
+                                        // ContextMenuArea sees it; open the menu here, and
+                                        // keep the click from Blitz so the selection stays.
+                                        if event.button == PointerEventButton.right {
+                                            if event.kind == PointerEventKind.down {
+                                                html-area.menu-link = root.article-link-at(self.mouse-x, self.mouse-y);
+                                                article-menu.show({ x: self.mouse-x, y: self.mouse-y });
+                                            }
+                                            return;
+                                        }
+                                        if event.kind != PointerEventKind.cancel {
+                                            root.article-pointer(
+                                                event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                                event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : 0,
+                                                self.mouse-x,
+                                                self.mouse-y,
+                                                html-pane.mods(event.modifiers));
+                                        }
+                                    }
+                                    scroll-event(event) => {
+                                        root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
+                                        accept
+                                    }
+                                }
+                            }
+
+                            // The scroll position, over the right edge of the article;
+                            // the thumb can be dragged.
+                            scroll-track := Rectangle {
+                                visible: root.article-scroll-max > 0;
+                                x: parent.width - self.width;
+                                width: 14px;
+                                height: parent.height;
+
+                                property <length> content: html-area.height + root.article-scroll-max;
+                                property <length> thumb-height: max(24px, self.height * html-area.height / self.content);
+                                property <length> travel: self.height - self.thumb-height;
+                                property <bool> active: track-area.has-hover || track-area.pressed;
+
+                                thumb := Rectangle {
+                                    x: parent.width - self.width - 3px;
+                                    y: parent.travel * root.article-scroll-y / max(1px, root.article-scroll-max);
+                                    width: parent.active ? 8px : 4px;
+                                    height: parent.thumb-height;
+                                    border-radius: self.width / 2;
+                                    background: Palette.foreground;
+                                    opacity: parent.active ? 0.45 : 0.25;
+
+                                    animate width, opacity { duration: 100ms; }
+                                }
+
+                                track-area := TouchArea {
+                                    // Where the thumb was grabbed, from its top.
+                                    property <length> grab;
+
+                                    function scroll-to-pointer() {
+                                        root.article-scroll-to(
+                                            (self.mouse-y - self.grab) / max(1px, scroll-track.travel) * root.article-scroll-max);
+                                    }
+
+                                    pointer-event(event) => {
+                                        if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                                            if self.mouse-y >= thumb.y && self.mouse-y <= thumb.y + thumb.height {
+                                                self.grab = self.mouse-y - thumb.y;
+                                            } else {
+                                                // Centred on the pointer.
+                                                self.grab = thumb.height / 2;
+                                                self.scroll-to-pointer();
+                                            }
+                                        }
+                                    }
+                                    moved => {
+                                        if self.pressed {
+                                            self.scroll-to-pointer();
+                                        }
+                                    }
+                                    scroll-event(event) => {
+                                        root.article-scroll(event.delta-x, event.delta-y, html-pane.mods(event.modifiers));
+                                        accept
+                                    }
+                                }
+                            }
+
+                        }
+
+                        pure function mods(m: KeyboardModifiers) -> int {
+                            return (m.control ? 1 : 0) + (m.shift ? 2 : 0) + (m.alt ? 4 : 0) + (m.meta ? 8 : 0);
+                        }
+                    }
+
+                    page-pane := Rectangle {
+                        visible: root.current-tab >= 0;
+                        x: article.x;
+                        y: article.y;
+                        width: article.width;
+                        height: article.height;
+                        clip: true;
+
+                        changed visible => {
+                            if self.visible {
+                                page-focus.focus();
+                            }
+                        }
+
+                        // Back, forward, reload, the address, and the system
+                        // browser.
+                        page-bar := Rectangle {
+                            y: 0;
+                            width: parent.width;
+                            height: page-bar-layout.preferred-height;
+                            background: Palette.alternate-background;
+
+                            page-bar-layout := HorizontalLayout {
+                                padding: 2px;
+                                spacing: 2px;
+
+                                ToolButton {
+                                    icon: Icons.back;
+                                    enabled: root.page-can-go-back;
+                                    clicked => {
+                                        root.page-navigate("back");
+                                    }
+                                }
+
+                                ToolButton {
+                                    icon: Icons.forward;
+                                    enabled: root.page-can-go-forward;
+                                    clicked => {
+                                        root.page-navigate("forward");
+                                    }
+                                }
+
+                                ToolButton {
+                                    icon: Icons.reload;
+                                    clicked => {
+                                        root.page-navigate("reload");
+                                    }
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.page-url;
+                                    overflow: elide;
+                                    vertical-alignment: center;
+                                    color: Palette.foreground;
+                                    opacity: 0.8;
+                                }
+
+                                if root.page-can-block: ToolButton {
+                                    text: root.page-blocking ? "Allow Ads Here" : "Block Ads Here";
+                                    clicked => {
+                                        root.action("toggle-site-blocking");
+                                    }
+                                }
+
+                                ToolButton {
+                                    icon: Icons.browser;
+                                    text: "Open in Browser";
+                                    clicked => {
+                                        root.action("page-browser");
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                y: parent.height - 1px;
+                                height: 1px;
+                                background: Theme.separator;
+                            }
+                        }
+
+                        page-area := Rectangle {
+                            y: page-bar.height;
+                            width: parent.width;
+                            height: parent.height - page-bar.height;
+                            // The frame covers it all; filling the background below
+                            // it too would cost a pass over every pixel per frame.
+                            background: root.page-image.width > 0 ? transparent : Palette.background;
+
+                            changed width => {
+                                root.page-resized();
+                            }
+                            changed height => {
+                                root.page-resized();
+                            }
+
+                            // Only while a page is shown: the renderer keeps the last
+                            // image of an element it no longer draws.
+                            if root.current-tab >= 0: Image {
+                                width: parent.width;
+                                height: parent.height;
+                                source: root.page-image;
+                                image-fit: fill;
+                            }
+
+                            page-focus := FocusScope {
+                                focus-gained(reason) => {
+                                    root.check-activation(reason);
+                                }
+
+                                // All keys go to the page; with modifiers they also
+                                // stay available as the window's shortcuts.
+                                key-pressed(event) => {
+                                    root.page-key(event.text, html-pane.mods(event.modifiers), true);
+                                    if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                                        return reject;
+                                    }
+                                    accept
+                                }
+                                key-released(event) => {
+                                    root.page-key(event.text, html-pane.mods(event.modifiers), false);
+                                    accept
+                                }
+                            }
+
+                            TouchArea {
+                                mouse-cursor: root.page-cursor == 1 ? MouseCursor.pointer : root.page-cursor == 2 ? MouseCursor.text : MouseCursor.default;
+                                pointer-event(event) => {
+                                    if event.kind == PointerEventKind.down {
+                                        page-focus.focus();
+                                    }
+                                    if event.kind != PointerEventKind.cancel {
+                                        root.page-pointer(
+                                            event.kind == PointerEventKind.down ? 0 : event.kind == PointerEventKind.up ? 1 : 2,
+                                            event.button == PointerEventButton.middle ? 1 : event.button == PointerEventButton.right ? 2 : event.button == PointerEventButton.back ? 3 : event.button == PointerEventButton.forward ? 4 : 0,
+                                            self.mouse-x,
+                                            self.mouse-y,
+                                            html-pane.mods(event.modifiers));
+                                    }
+                                }
+                                scroll-event(event) => {
+                                    root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
+                                    accept
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-    }
 
-        StatusBar {
-            text: root.status-text;
-            right-text: root.unread-text;
+            StatusBar {
+                text: root.status-text;
+                right-text: root.unread-text;
+            }
         }
     }
 }
