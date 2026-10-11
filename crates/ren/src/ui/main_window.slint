@@ -168,11 +168,26 @@ export component MainWindow inherits Window {
     callback item-key(key: string, page: int);
     callback sort-clicked(column: int);
 
+    // Puts text on the clipboard, Slint's (the platform's): through a
+    // hidden text input, as Slint has no other way to it.
+    public function copy-text(text: string) {
+        clipboard.text = text;
+        clipboard.select-all();
+        clipboard.copy();
+        clipboard.text = "";
+    }
+
     title: "ren";
     forward-focus: tree;
     preferred-width: 1280px;
     preferred-height: 800px;
     background: Palette.background;
+
+    clipboard := TextInput {
+        visible: false;
+        width: 0px;
+        height: 0px;
+    }
 
     MenuBar {
         Menu {
