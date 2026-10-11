@@ -240,7 +240,9 @@ hr {{ border: none; border-top: 1px solid {border}; }}
 /// `bgcolor`, `<font color>`) are replaced by the stylesheet's: they are
 /// chosen for a light background, so dark text on the dark background, or
 /// light boxes around the light text, would be unreadable. `!important` in
-/// the stylesheet beats the authors' inline styles.
+/// the stylesheet beats the authors' inline styles. Images get a light
+/// backdrop: transparent ones with dark lines (diagrams, logos) are drawn
+/// for a light page; opaque ones cover it.
 fn dark_overrides(style: &Style) -> String {
     let subtle = style.background.mix(style.foreground, 20).css();
     format!(
@@ -248,9 +250,11 @@ fn dark_overrides(style: &Style) -> String {
 .content a, .content a * {{ color: {link} !important; }}
 .content pre, .content :not(pre) > code {{ background-color: {subtle} !important; }}
 .content mark {{ background-color: {mark} !important; }}
+.content img {{ background-color: {backdrop} !important; border-radius: 2px; }}
 ",
         link = style.link.css(),
         mark = style.background.mix(style.link, 90).css(),
+        backdrop = style.foreground.mix(style.background, 25).css(),
     )
 }
 
@@ -349,6 +353,7 @@ mod tests {
         let html = doc.html_document(&dark);
         assert!(html.contains(".content * { color: inherit !important;"));
         assert!(html.contains(".content a, .content a * { color: #0000ff !important; }"));
+        assert!(html.contains(".content img { background-color: #e6e6e6 !important;"));
     }
 
     #[test]
