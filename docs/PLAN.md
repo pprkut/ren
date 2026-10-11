@@ -846,6 +846,19 @@ Not planned into a milestone; picked up when articles or users need them.
   updated when the main frame navigates; consent banners and empty ad
   frames stay without it. Try once M7b's network blocking is measured.
 
+- **Text in SVG images is missing** in the article view: the shapes are
+  drawn, the labels aren't (PlanetScale's "When to choose x86-64 vs
+  aarch64", 2026-09-25: `data:` and remote SVGs alike). Blitz renders
+  SVGs with usvg and its own `fontdb` (`FONT_DB` in `blitz-dom`'s
+  `util.rs`: `load_system_fonts()` only), whose generic families are
+  fontdb's defaults (`monospace` = Courier New, `sans-serif` = Arial,
+  `serif` = Times New Roman). Without those fonts (as on the desktop)
+  a `font-family` list that ends in a generic family matches nothing,
+  and usvg leaves the text out ("No match for … font-family"). A fix
+  belongs in Blitz: set the generic families from the system's
+  (fontconfig, or Parley's font collection, which knows them already).
+  Report upstream first; until then nothing in ren can reach
+  `FONT_DB`.
 - **`srcset` and `<picture>`** in the article view, to fetch the smaller
   image a page offers (0.7 % and 0.2 % of the articles in S3; 0010).
 - **AVIF** in the article view (13 articles in S3): the `image` crate's
