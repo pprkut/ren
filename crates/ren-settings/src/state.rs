@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The UI state: pane sizes, column widths, sort order, collapsed folders,
-//! the last selection. Only ren writes this file, as a whole; it isn't
-//! mixed into the settings file. Every value is optional, so the UI keeps
-//! its own defaults for what isn't there.
+//! the last selection, the window's size. Only ren writes this file, as a
+//! whole; it isn't mixed into the settings file. Every value is optional,
+//! so the UI keeps its own defaults for what isn't there.
 
 use std::fs;
 use std::io;
@@ -26,6 +26,26 @@ pub struct State {
     pub beside: Layout,
     /// The layout with the item list above the article.
     pub above: Layout,
+    pub window: Window,
+}
+
+/// The main window's size and position in logical pixels, so that a
+/// change of scale factor keeps its size. The size is the one it has when
+/// it isn't maximised. Wayland doesn't tell applications where their
+/// windows are; there the position is left out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct Window {
+    pub width: Option<f32>,
+    pub height: Option<f32>,
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    #[serde(skip_serializing_if = "is_false")]
+    pub maximized: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 /// Sizes in logical pixels for one arrangement of the panes.
@@ -83,8 +103,8 @@ pub enum List {
 }
 
 const HEADER: &str = "\
-# The window's state, written by ren when it changes. Settings are in
-# settings.toml.
+# The window's state, written by ren when its window closes. Settings are
+# in settings.toml.
 
 ";
 
@@ -149,6 +169,13 @@ mod tests {
                 tree_width: Some(200.0),
                 ..Layout::default()
             },
+            window: Window {
+                width: Some(1200.0),
+                height: Some(760.5),
+                x: Some(-20.0),
+                y: None,
+                maximized: true,
+            },
         }
     }
 
@@ -160,8 +187,8 @@ mod tests {
         assert_eq!(
             text,
             "\
-# The window's state, written by ren when it changes. Settings are in
-# settings.toml.
+# The window's state, written by ren when its window closes. Settings are
+# in settings.toml.
 
 collapsed-folders = [3, 7]
 
@@ -187,6 +214,12 @@ date = 140.0
 tree-width = 200.0
 
 [above.columns]
+
+[window]
+width = 1200.0
+height = 760.5
+x = -20.0
+maximized = true
 "
         );
     }
@@ -196,6 +229,20 @@ tree-width = 200.0
         assert_eq!(State::parse(""), Ok(State::default()));
         let text = State::default().to_text();
         assert_eq!(State::parse(&text), Ok(State::default()));
+    }
+
+    #[test]
+    fn not_maximized() {
+        let state = State {
+            window: Window {
+                width: Some(800.0),
+                ..Window::default()
+            },
+            ..State::default()
+        };
+        let text = state.to_text();
+        assert!(text.ends_with("[window]\nwidth = 800.0\n"), "{text}");
+        assert_eq!(State::parse(&text), Ok(state));
     }
 
     #[test]

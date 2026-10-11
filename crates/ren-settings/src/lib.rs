@@ -34,4 +34,4 @@ pub use secret::{
     app_password, run_password_command,
 };
 pub use settings::{Account, Loaded, Position, Problem, Problems, Settings, Severity};
-pub use state::{Columns, Layout, List, Selection, Sort, SortColumn, State};
+pub use state::{Columns, Layout, List, Selection, Sort, SortColumn, State, Window};
