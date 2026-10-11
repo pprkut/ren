@@ -829,7 +829,8 @@ enum Step {
     ClosedAgain,
 }
 
-fn log_memory(when: &str, pages: &Pages) {
+/// Logs the RSS of the UI process and, if it runs, of the helper.
+pub(super) fn log_memory(when: &str, pages: &Pages) {
     super::log_rss(when);
     if let Some(pid) = pages.helper_pid() {
         let kib = |field| crate::procstat::proc_status_kib_of(pid, field).unwrap_or(0);

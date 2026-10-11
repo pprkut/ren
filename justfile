@@ -60,6 +60,10 @@ measure-articles dump *articles:
 measure-tabs dump *urls:
     scripts/measure-tabs.sh {{dump}} {{urls}}
 
+# Measure memory with the window hidden in the tray, with the articles of a --dump-items directory and the given pages in tabs (needs a display)
+measure-hidden dump *urls:
+    scripts/measure-hidden.sh {{dump}} {{urls}}
+
 # Survey the HTML and CSS used by the articles in a --dump-items directory
 survey-articles dump:
     scripts/survey-articles.py {{dump}}
