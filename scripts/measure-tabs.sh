@@ -6,10 +6,11 @@
 # and with three tabs, after closing them all, with one tab again and after
 # closing it; frames while
 # scrolling and the time from a painted frame to the UI. Servo runs in its
-# helper process (ren-servo), with glibc's mmap threshold fixed at 1 MiB as
-# in ren and with glibc's dynamic one. Needs a graphical session and network
-# access; don't touch the window while it runs. Set REN_TAB_STATS=1 for
-# per-second statistics of the frame path in the logs.
+# helper process (ren-servo), with content blocking (the filter lists of
+# the settings, downloaded first if they are old) and without. Needs a
+# graphical session and network access; don't touch the window while it
+# runs. The logs have per-second statistics of the frame path and of the
+# requests blocked (REN_TAB_STATS).
 #
 # Usage: scripts/measure-tabs.sh DUMP_DIR [URL...]
 #   DUMP_DIR: a `ren --dump-items` directory; the pages are the links of
@@ -51,10 +52,13 @@ cargo build --release --locked
 (cd crates/ren-servo && cargo build --release --locked)
 cp target/release/ren target/release/ren-servo "$OUT_DIR/"
 
+log "== filter lists"
+"$OUT_DIR/ren" --update-filters >&2 || log "not all filter lists could be downloaded"
+
 # name|environment
 variants=(
-    "fixed mmap threshold|"
-    "dynamic mmap threshold in the helper|REN_SERVO_DYNAMIC_MMAP_THRESHOLD=1"
+    "blocking|"
+    "without blocking|REN_SERVO_NO_BLOCKING=1"
 )
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
@@ -81,6 +85,14 @@ helper_shmem() {
         return
     }
     mib "$(sed -n 's/.*shmem \([0-9]*\);.*/\1/p' <<<"$line")"
+}
+
+# Requests the helper blocked and checked in log $1, from its statistics.
+requests() {
+    sed -n 's/^ren: helper stats over .* checked=\([0-9]*\).*/\1/p' "$1" | awk '{ n += $1 } END { printf "%d", n }'
+}
+blocked() {
+    sed -n 's/^ren: helper stats over .* blocked=\([0-9]*\).*/\1/p' "$1" | awk '{ n += $1 } END { printf "%d", n }'
 }
 
 # "total (UI + helper)" RSS in MiB, or "-" if the step is missing.
@@ -117,8 +129,8 @@ summary=$OUT_DIR/summary.md
     fi
     echo "- binary size: ren $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB (without the tabs $(mib $(($(stat -c %s "$OUT_DIR/ren-without-tabs") / 1024))) MiB), ren-servo $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB"
     echo
-    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | frame to UI ms (mean / max) | Servo start / stop ms |"
-    echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | frame to UI ms (mean / max) | Servo start / stop ms | requests blocked / checked |"
+    echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 } >"$summary"
 
 for variant in "${variants[@]}"; do
@@ -126,7 +138,7 @@ for variant in "${variants[@]}"; do
     log "== $name"
     vlog=$OUT_DIR/${name//[^a-z]/-}.log
     # shellcheck disable=SC2086
-    env $environment "$OUT_DIR/ren" --dump "$DUMP" --items 5000 --measure-tabs "${urls[@]}" 2>"$vlog" || {
+    env REN_TAB_STATS=1 $environment "$OUT_DIR/ren" --dump "$DUMP" --items 5000 --measure-tabs "${urls[@]}" 2>"$vlog" || {
         log "failed, see $vlog"
         continue
     }
@@ -135,13 +147,14 @@ for variant in "${variants[@]}"; do
     frame_ms=$(sed -n 's/^ren: page frames: [0-9]*, to the UI in \([0-9.]*\) ms on average, \([0-9.]*\) ms at most/\1 \/ \2/p' "$vlog" | head -n 1)
     start_ms=$(sed -n 's/^ren: Servo started in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
     stop_ms=$(sed -n 's/^ren: Servo stopped in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s / %s |\n' \
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s / %s | %s / %s |\n' \
         "$name" "$(memory "$vlog" "before tabs")" "$(memory "$vlog" "with 1 tab")" \
         "$(memory "$vlog" "with 3 tabs")" "$(memory "$vlog" "after closing all tabs")" \
         "$(memory "$vlog" "with 1 tab again")" "$(memory "$vlog" "after closing again")" \
         "$(mib "$(kib "$vlog" rss anon "before tabs")")" \
         "$(mib "$(kib "$vlog" rss anon "after closing all tabs")")" \
-        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" >>"$summary"
+        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" \
+        "$(blocked "$vlog")" "$(requests "$vlog")" >>"$summary"
 done
 
 {
@@ -152,7 +165,8 @@ done
     echo "(also counted in the UI process). CPU: percent of one core during the 3 s of"
     echo "scrolling. Frame to UI: reading a painted frame back from the GPU into the shared"
     echo "buffer, plus copying it out in the UI. Servo start: until the first tab can be opened"
-    echo "(starting the process; Servo itself then starts in the helper)."
+    echo "(starting the process; Servo itself then starts in the helper). Requests: of all"
+    echo "the pages' requests the helper checked (none without blocking), those it blocked."
     echo
     echo "Logs: \`$OUT_DIR\`"
 } >>"$summary"
