@@ -362,19 +362,25 @@ engine and the public suffix list).
 - **Ars Technica scrolls slowly in both** (48 and 38 frames in 3 s, 58
   and 61 ms from a painted frame to the window), against 162 frames and
   11 ms in 0011 with the same article. The light pages and heise are as
-  fast as in 0011, so the frame path didn't change for the worse; the
-  time is probably in the helper's paint and readback of this page, i.e.
-  Servo and the GPU (the helper's CPU is only 32–40 %). The page itself has
-  probably changed since (its ads and embeds); to look at in the logs'
-  `helper stats` lines (paint against readback) and in M10.
+  fast as in 0011, so the frame path didn't change for the worse. The
+  helper's statistics (`REN_TAB_STATS`) show where the time goes: while
+  scrolling, Servo's paint takes 2–3 ms per frame (heise and the dump's
+  pages: 0.3–0.9), but the readback waits 45–74 ms on average for the GPU
+  to finish the frame, up to 147 ms (heise and the dump's pages: 4.7–6
+  ms), 85–96 % of each second. The helper's loop polls the fence
+  meanwhile and has nothing else to do. So this page is heavy for the
+  GPU (WebRender on Mesa's Iris driver), not for Servo's CPU side or
+  the frame path; content blocking doesn't change it, and two frames
+  under way (M10) wouldn't either, as the GPU is the limit. The page
+  has probably changed since 0011 (its media or effects); M10.
+
+**By hand** (the user): heise and Ars Technica look the same with
+blocking as without, as far as could be told.
 
 ## Open
 
-- **By hand** on the desktop: whether heise and Ars Technica work with
-  blocking (the consent banner, images, comments) and whether "Allow
-  Ads Here" brings back what doesn't; not reported yet.
 - **Ars Technica's slow frames** (see above), with and without
-  blocking: M10.
+  blocking: the GPU takes 45–74 ms per frame of this page. M10.
 - **Cosmetic filtering** (element hiding, uBlock's scriptlets): not
   done, see "Cosmetic filtering"; in the plan's backlog. Consent banners
   stay.

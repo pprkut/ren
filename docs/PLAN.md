@@ -771,10 +771,11 @@ From here on every milestone ships with tests for what it adds.
     every frame. Compare with the GPU renderers, and whether the software
     renderer can draw an opaque image without its per-pixel path.
   - **Ars Technica scrolls slowly** (0012): 38–48 frames in 3 s with
-    and without content blocking, 58 ms from a painted frame to the
-    window, against 162 frames and 11 ms in 0011; the other pages are as
-    fast as before. Find out whether it's Servo's paint or the GPU's
-    readback (the `helper stats` lines of `REN_TAB_STATS`).
+    and without content blocking, against 162 in 0011; the other pages
+    are as fast as before. The GPU takes 45–74 ms per frame (the
+    readback waits for it; Servo's paint is 2–3 ms). Find out what on
+    the page costs that (compare with servoshell 0.7 and WebRender's
+    profiler), and whether it's Servo's or Mesa's.
   - **Two frames under way** in the tabs (two slots in the shared
     buffer), so the GPU's work on the next frame overlaps the window's
     copy of the last; heise scrolled at about 25 frames per second with
