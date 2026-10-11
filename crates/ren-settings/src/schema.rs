@@ -256,6 +256,7 @@ pub const USER: &str = "account.user";
 pub const PASSWORD_COMMAND: &str = "account.password-command";
 pub const SYNC_INTERVAL: &str = "sync.interval-minutes";
 pub const KEEP_READ: &str = "sync.keep-read-days";
+pub const FEED_ICONS: &str = "sync.feed-icons";
 pub const LOAD_IMAGES: &str = "articles.load-images";
 pub const KEEP_SITE_DATA: &str = "pages.keep-site-data";
 pub const BLOCK_CONTENT: &str = "pages.block-content";
@@ -380,6 +381,15 @@ pub static SETTINGS: &[Setting] = &[
             default: 30,
             unit: "days",
         },
+    },
+    Setting {
+        key: FEED_ICONS,
+        title: "Feed icons",
+        description: "Download the icons of the feeds from their sites after a sync, again \
+                      when they are a month old. When off, no requests go to the sites; icons \
+                      downloaded before are still shown.",
+        category: Category::Sync,
+        kind: Kind::Switch { default: true },
     },
     Setting {
         key: LOAD_IMAGES,
