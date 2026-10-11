@@ -230,6 +230,8 @@ fn run() -> Result<(), String> {
     let waker: Waker = Arc::new(move || {
         let _ = sender.send(Message::Wake);
     });
+    // Without blocking for comparison (`just measure-tabs`).
+    let blocking = blocking.filter(|_| std::env::var_os("REN_SERVO_NO_BLOCKING").is_none());
     let mut browser = Browser::new(waker, context.clone(), size, dark, profile, blocking);
     let mut frames = Frames {
         context,
@@ -355,7 +357,8 @@ fn handle(
         }
         Command::Input(input) => browser.input(input),
         Command::Dark(dark) => browser.set_dark(dark),
-        Command::Blocking(blocking) => browser.set_blocking(blocking),
+        Command::Blocking(blocking) => browser
+            .set_blocking(blocking.filter(|_| std::env::var_os("REN_SERVO_NO_BLOCKING").is_none())),
         Command::FrameTaken => frames.taken = true,
     }
 }
