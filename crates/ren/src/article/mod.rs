@@ -10,6 +10,8 @@ pub mod cache;
 mod document;
 #[cfg_attr(not(feature = "html-view"), allow(dead_code))]
 pub mod fragment;
+#[cfg_attr(not(feature = "html-view"), allow(dead_code))]
+pub mod glide;
 #[cfg(feature = "html-view")]
 pub mod html;
 #[cfg(feature = "html-view")]

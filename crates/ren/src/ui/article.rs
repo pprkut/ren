@@ -16,6 +16,8 @@ use crate::article::Article;
 #[cfg(feature = "html-view")]
 use crate::article::cache::ImageCache;
 #[cfg(feature = "html-view")]
+use crate::article::glide::Glide;
+#[cfg(feature = "html-view")]
 use crate::article::html::{Button, Cursor, HtmlView, Mods, PointerKind};
 #[cfg(feature = "html-view")]
 use crate::article::{Rgb, Style};
@@ -63,6 +65,9 @@ struct HtmlPane {
     /// Gives freed memory back to the system a moment after the article
     /// changed.
     trim_timer: slint::Timer,
+    /// Scrolling by keyboard, eased over a few frames by `glide_timer`.
+    glide: Option<Glide>,
+    glide_timer: slint::Timer,
 }
 
 /// The time after an article switch until freed memory is given back to
@@ -71,8 +76,17 @@ struct HtmlPane {
 #[cfg(feature = "html-view")]
 const TRIM_DELAY: Duration = Duration::from_secs(1);
 
+/// The time between frames of a keyboard scroll.
+#[cfg(feature = "html-view")]
+const GLIDE_FRAME: Duration = Duration::from_millis(16);
+
 #[cfg(feature = "html-view")]
 impl HtmlPane {
+    fn stop_glide(&mut self) {
+        self.glide = None;
+        self.glide_timer.stop();
+    }
+
     /// glibc keeps freed memory in its heap. Blocks of a MiB or more have
     /// mappings of their own, returned when freed
     /// ([`crate::procstat::fix_mmap_threshold`]), but the article's many
@@ -149,6 +163,7 @@ impl ArticlePane {
                 .window
                 .upgrade()
                 .expect("the pane only lives as long as the window");
+            html.stop_glide();
             html.view.clear();
             html.buffers = [None, None];
             window.set_html_view(false);
@@ -245,6 +260,8 @@ impl ArticlePane {
             pending_timing: None,
             render_scheduled: false,
             trim_timer: slint::Timer::default(),
+            glide: None,
+            glide_timer: slint::Timer::default(),
         }
     }
 
@@ -269,6 +286,7 @@ impl ArticlePane {
         let Some(html) = &mut self.html else {
             return;
         };
+        html.stop_glide();
         // Images are scaled for the size and scale factor known when the
         // document is created.
         set_view_size(&window, &mut html.view);
@@ -390,6 +408,7 @@ impl ArticlePane {
         let Some(html) = &mut self.html else {
             return;
         };
+        html.stop_glide();
         html.view.wheel(dx, dy, decode_mods(mods));
         self.schedule_render();
     }
@@ -398,7 +417,47 @@ impl ArticlePane {
         let Some(html) = &mut self.html else {
             return;
         };
+        html.stop_glide();
         html.view.scroll_to(y);
+        self.schedule_render();
+    }
+
+    /// Scrolls by `dy` logical pixels (positive: towards the top) for a
+    /// key, smoothly: from where the last key was going.
+    fn key_scroll(&mut self, dy: f32) {
+        let weak = self.window.clone();
+        let Some(html) = &mut self.html else {
+            return;
+        };
+        let (offset, max, _) = html.view.vertical_scroll();
+        let base = html.glide.as_ref().map_or(offset, Glide::target);
+        let to = (base - dy).clamp(0.0, max);
+        html.glide = Some(Glide::new(offset, to, Instant::now()));
+        if !html.glide_timer.running() {
+            html.glide_timer
+                .start(slint::TimerMode::Repeated, GLIDE_FRAME, move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.invoke_article_glide();
+                    }
+                });
+        }
+        self.glide_step();
+    }
+
+    /// Moves a keyboard scroll on by a frame.
+    fn glide_step(&mut self) {
+        let Some(html) = &mut self.html else {
+            return;
+        };
+        let Some(glide) = html.glide else {
+            html.glide_timer.stop();
+            return;
+        };
+        let (offset, done) = glide.at(Instant::now());
+        html.view.scroll_to(offset);
+        if done {
+            html.stop_glide();
+        }
         self.schedule_render();
     }
 
@@ -476,6 +535,10 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     window.on_article_scroll(move |dx, dy, mods| w(&|p| p.scroll(dx, dy, mods)));
     let w = with.clone();
     window.on_article_scroll_to(move |y| w(&|p| p.scroll_to(y)));
+    let w = with.clone();
+    window.on_article_key_scroll(move |dy| w(&|p| p.key_scroll(dy)));
+    let w = with.clone();
+    window.on_article_glide(move || w(&|p| p.glide_step()));
     let weak = Rc::downgrade(pane);
     window.on_article_key(move |text, mods| {
         weak.upgrade()

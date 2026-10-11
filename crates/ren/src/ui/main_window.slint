@@ -58,6 +58,10 @@ export component MainWindow inherits Window {
     callback article-pointer(kind: int, button: int, x: length, y: length, mods: int);
     callback article-scroll(dx: length, dy: length, mods: int);
     callback article-scroll-to(y: length);
+    // Scrolling by keyboard, smoothly; positive towards the top.
+    callback article-key-scroll(dy: length);
+    // The next frame of a keyboard scroll (from a timer).
+    callback article-glide();
     callback article-key(text: string, mods: int) -> bool;
     callback article-resized();
     callback article-theme-changed();
@@ -837,17 +841,17 @@ export component MainWindow inherits Window {
                                         return reject;
                                     }
                                     if event.text == Key.UpArrow {
-                                        root.article-scroll(0, self.line, 0);
+                                        root.article-key-scroll(self.line);
                                     } else if event.text == Key.DownArrow {
-                                        root.article-scroll(0, -self.line, 0);
+                                        root.article-key-scroll(-self.line);
                                     } else if event.text == Key.PageUp || (event.text == " " && event.modifiers.shift) {
-                                        root.article-scroll(0, self.page, 0);
+                                        root.article-key-scroll(self.page);
                                     } else if event.text == Key.PageDown || event.text == " " {
-                                        root.article-scroll(0, -self.page, 0);
+                                        root.article-key-scroll(-self.page);
                                     } else if event.text == Key.Home {
-                                        root.article-scroll(0, 1000000px, 0);
+                                        root.article-key-scroll(1000000px);
                                     } else if event.text == Key.End {
-                                        root.article-scroll(0, -1000000px, 0);
+                                        root.article-key-scroll(-1000000px);
                                     } else {
                                         return reject;
                                     }
