@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0012 — Content blocking in the tabs (M7b)
 
-**Status:** done (2026-10-11), for review; the measurements on the
-desktop are still to come (see "To measure").
+**Status:** done (2026-10-11), for review; measured on the desktop on
+2026-10-11.
 
 ## Context
 
@@ -311,28 +311,70 @@ can't reach easylist.to):
   rest, and fails (exit status 1) when a list can't be fetched, keeping
   the others.
 
-## To measure on the desktop
+## Measurements on the desktop
 
-On the machine of 0011, with the profile of M7 (heise's consent
-accepted):
+By the user, at 3d61438, on the machine of 0011 (i7-1185G7, Iris Xe,
+Mesa, Linux 7.2.8, KDE on X11), release builds, with the profile of M7
+(heise's consent accepted): `just measure-tabs ~/ren-dump` (the links of
+the first three items), then the same with 0011's heise and Ars Technica
+articles as the only page (all three tabs the same page). The lists were
+downloaded first (5.9 MiB from easylist.to and uBlock's GitHub pages,
+0.4 s). RSS in MiB, total (UI + helper):
 
-```sh
-just measure-tabs ~/ren-dump              # the dump's pages
-just measure-tabs ~/ren-dump <heise URL>  # 0011's heise article
-just measure-tabs ~/ren-dump <Ars URL>    # 0011's Ars Technica article
-```
+| pages | variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | UI anon before / after | scrolling frames in 3 s | CPU % scrolling (window / helper) | frame to UI ms (mean / max) | Servo start / stop ms | requests blocked / checked |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| dump | blocking | 48.1 | 253.1 (62.0 + 191.1) | 295.7 (62.1 + 233.6) | 49.0 | 255.5 (62.4 + 193.1) | 49.1 | 7.2 / 7.3 | 130 | 21 / 16 | 5.54 / 18.10 | 0.9 / 1.4 | 12 / 98 |
+| dump | without | 48.5 | 246.9 (62.5 + 184.4) | 261.5 (62.6 + 198.9) | 49.5 | 246.8 (62.8 + 184.0) | 49.5 | 7.1 / 7.3 | 131 | 22 / 16 | 5.00 / 15.99 | 0.5 / 1.5 | 0 / 0 |
+| heise | blocking | 47.9 | 505.2 (62.0 + 443.2) | 946.0 (62.1 + 884.0) | 49.0 | 548.6 (62.4 + 486.2) | 49.0 | 7.1 / 7.3 | 134 | 22 / 36 | 5.84 / 19.75 | 1.0 / 0.9 | 133 / 747 |
+| heise | without | 48.9 | 565.4 (62.8 + 502.6) | 1063.1 (62.8 + 1000.3) | 49.7 | 705.0 (63.1 + 641.9) | 49.7 | 7.1 / 7.3 | 60 | 18 / 155 | 32.82 / 144.37 | 0.4 / 1.3 | 0 / 0 |
+| Ars Technica | blocking | 48.0 | 324.7 (62.1 + 262.6) | 500.9 (62.1 + 438.8) | 49.1 | 326.6 (62.5 + 264.1) | 49.2 | 7.1 / 7.3 | 48 | 16 / 32 | 58.30 / 156.11 | 1.3 / 0.8 | 38 / 370 |
+| Ars Technica | without | 48.4 | 421.0 (62.3 + 358.7) | 724.9 (62.4 + 662.5) | 49.3 | 424.7 (62.7 + 362.0) | 49.3 | 7.1 / 7.3 | 38 | 14 / 40 | 60.67 / 145.71 | 0.4 / 1.3 | 0 / 0 |
 
-Each runs `ren --update-filters` first (easylist.to and GitHub), then the
-steps of 0011 with blocking and without. Wanted: what blocking saves per
-tab on heise and Ars Technica (0011 without blocking: 470 and 160 MiB),
-the helper's cost on light pages (expected: about 11 MiB more), frames
-and CPU while scrolling, and how many requests were blocked. And by
-hand: whether heise and Ars Technica still work (the consent banner,
-images, comments), and whether "Allow Ads Here" brings them back if
-not.
+Binary sizes: ren 35.7 MiB (35.5 without the tabs; 35.5 and 35.4 in
+0011, the downloads and settings), ren-servo 105.0 MiB (103.8: the
+engine and the public suffix list).
+
+- **Heavy pages get smaller:** the helper with one Ars Technica tab is
+  96 MiB smaller (263 instead of 359, a quarter), with three 224 MiB
+  (439 instead of 663, a third). heise: 59 MiB less with one tab (443
+  instead of 503), 116 with three (884 instead of 1000), 156 with one
+  tab again (486 instead of 642). The blocked requests are fewer than
+  one might think (heise: 133 of 747, 18 %; Ars Technica: 38 of 370,
+  10 %; the counts miss the helper's last second), but they are the
+  ones that load more: ad scripts that fetch the ads, frames, trackers.
+- **heise scrolls smoothly now:** 134 frames in 3 s instead of 60, the
+  helper at 36 % of a core instead of 155 %, and 5.8 ms from a painted
+  frame to the window instead of 33 (at most 20 ms instead of 144). The
+  ads were what kept the helper busy; heise scrolls now like the light
+  pages (130).
+- **Light pages:** 6.7 MiB more in the helper with one tab and 9.1 with
+  one tab again, as expected from the container (11 MiB with the regular
+  expressions of 2,000 requests; these pages made fewer). With three
+  tabs the run with blocking was 35 MiB larger, which isn't the
+  engine's (it's there once); the dump's pages differ from run to run
+  (0011 measured 245 MiB for the same step without blocking, this run
+  199). 12 of 98 requests were blocked. Frames, CPU and the window are
+  the same with and without.
+- **Starting the helper** took 0.9–1.3 ms with blocking against 0.4–0.5
+  without (sending the lists' paths; the engine loads on the helper's
+  thread), stopping as before. The window is unchanged: 49 MiB after
+  closing, its anonymous memory back at 7.3 MiB.
+- **Ars Technica scrolls slowly in both** (48 and 38 frames in 3 s, 58
+  and 61 ms from a painted frame to the window), against 162 frames and
+  11 ms in 0011 with the same article. The light pages and heise are as
+  fast as in 0011, so the frame path didn't change for the worse; the
+  time is probably in the helper's paint and readback of this page, i.e.
+  Servo and the GPU (the helper's CPU is only 32–40 %). The page itself has
+  probably changed since (its ads and embeds); to look at in the logs'
+  `helper stats` lines (paint against readback) and in M10.
 
 ## Open
 
+- **By hand** on the desktop: whether heise and Ars Technica work with
+  blocking (the consent banner, images, comments) and whether "Allow
+  Ads Here" brings back what doesn't; not reported yet.
+- **Ars Technica's slow frames** (see above), with and without
+  blocking: M10.
 - **Cosmetic filtering** (element hiding, uBlock's scriptlets): not
   done, see "Cosmetic filtering"; in the plan's backlog. Consent banners
   stay.
