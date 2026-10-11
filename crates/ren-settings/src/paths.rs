@@ -36,6 +36,12 @@ pub fn image_cache(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/images"))
 }
 
+/// `$XDG_CACHE_HOME/ren/filters`: the filter lists for content blocking
+/// in tabs, downloaded again when they are old.
+pub fn filter_lists(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/filters"))
+}
+
 /// The directory in `variable`, else `fallback` in the home directory.
 /// Relative paths are invalid in the specification and ignored.
 fn base(var: &impl Fn(&str) -> Option<String>, variable: &str, fallback: &str) -> Option<PathBuf> {
@@ -78,6 +84,7 @@ mod tests {
         assert_eq!(state(&vars), Some("/xdg/state/ren/state.toml".into()));
         assert_eq!(database(&vars), Some("/xdg/data/ren/ren.db".into()));
         assert_eq!(image_cache(&vars), Some("/xdg/cache/ren/images".into()));
+        assert_eq!(filter_lists(&vars), Some("/xdg/cache/ren/filters".into()));
         assert_eq!(site_data(&vars), Some("/xdg/data/ren/servo".into()));
     }
 

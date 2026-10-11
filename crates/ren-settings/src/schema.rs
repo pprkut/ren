@@ -258,6 +258,69 @@ pub const SYNC_INTERVAL: &str = "sync.interval-minutes";
 pub const KEEP_READ: &str = "sync.keep-read-days";
 pub const LOAD_IMAGES: &str = "articles.load-images";
 pub const KEEP_SITE_DATA: &str = "pages.keep-site-data";
+pub const BLOCK_CONTENT: &str = "pages.block-content";
+pub const FILTER_LISTS: &str = "pages.filter-lists";
+pub const UNBLOCKED_SITES: &str = "pages.unblocked-sites";
+
+/// A filter list for content blocking that `pages.filter-lists` can name.
+#[derive(Debug)]
+pub struct FilterList {
+    /// What the settings file says.
+    pub name: &'static str,
+    pub title: &'static str,
+    pub url: &'static str,
+}
+
+/// The filter lists known by name; see
+/// `docs/decisions/0012-content-blocking.md`.
+pub static FILTER_LIST_CATALOGUE: &[FilterList] = &[
+    FilterList {
+        name: "easylist",
+        title: "EasyList",
+        url: "https://easylist.to/easylist/easylist.txt",
+    },
+    FilterList {
+        name: "easyprivacy",
+        title: "EasyPrivacy",
+        url: "https://easylist.to/easylist/easyprivacy.txt",
+    },
+    FilterList {
+        name: "ublock",
+        title: "uBlock filters",
+        url: "https://ublockorigin.github.io/uAssets/filters/filters.txt",
+    },
+    FilterList {
+        name: "ublock-privacy",
+        title: "uBlock filters – Privacy",
+        url: "https://ublockorigin.github.io/uAssets/filters/privacy.txt",
+    },
+    FilterList {
+        name: "ublock-unbreak",
+        title: "uBlock filters – Unbreak",
+        url: "https://ublockorigin.github.io/uAssets/filters/unbreak.txt",
+    },
+    FilterList {
+        name: "easylist-germany",
+        title: "EasyList Germany",
+        url: "https://easylist.to/easylistgermany/easylistgermany.txt",
+    },
+    FilterList {
+        name: "fanboy-annoyance",
+        title: "Fanboy's Annoyance List",
+        url: "https://easylist.to/easylist/fanboy-annoyance.txt",
+    },
+];
+
+/// The URL of a filter list setting: a name from the catalogue, or a URL.
+pub fn filter_list_url(list: &str) -> Option<&str> {
+    match FILTER_LIST_CATALOGUE
+        .iter()
+        .find(|known| known.name == list)
+    {
+        Some(known) => Some(known.url),
+        None => list.starts_with("https://").then_some(list),
+    }
+}
 
 /// All settings, in the order of the settings dialog.
 pub static SETTINGS: &[Setting] = &[
@@ -336,7 +399,69 @@ pub static SETTINGS: &[Setting] = &[
         category: Category::Pages,
         kind: Kind::Switch { default: true },
     },
+    Setting {
+        key: BLOCK_CONTENT,
+        title: "Block ads and trackers",
+        description: "Don't load what the filter lists name as ads or trackers in web pages. \
+                      The lists are downloaded when a page is opened and they are older than \
+                      four days.",
+        category: Category::Pages,
+        kind: Kind::Switch { default: true },
+    },
+    Setting {
+        key: FILTER_LISTS,
+        title: "Filter lists",
+        description: "The lists of ads and trackers: easylist, easyprivacy, ublock, \
+                      ublock-privacy, ublock-unbreak, easylist-germany, fanboy-annoyance, or \
+                      the https:// URL of another list in Adblock Plus or uBlock Origin syntax.",
+        category: Category::Pages,
+        kind: Kind::List {
+            default: &[
+                "easylist",
+                "easyprivacy",
+                "ublock",
+                "ublock-privacy",
+                "ublock-unbreak",
+            ],
+            check: Some(check_filter_list),
+        },
+    },
+    Setting {
+        key: UNBLOCKED_SITES,
+        title: "Sites without blocking",
+        description: "Sites on which nothing is blocked, e.g. because they don't work with \
+                      blocking: host names such as example.org, each with its subdomains.",
+        category: Category::Pages,
+        kind: Kind::List {
+            default: &[],
+            check: Some(check_site),
+        },
+    },
 ];
+
+fn check_filter_list(list: &str) -> Result<(), String> {
+    match filter_list_url(list) {
+        Some(_) => Ok(()),
+        None => Err(format!(
+            "must name a known list or be an https:// URL: {list}"
+        )),
+    }
+}
+
+/// A host name: letters, digits, hyphens and dots.
+pub fn check_site(site: &str) -> Result<(), String> {
+    let valid = site.split('.').all(|label| {
+        !label.is_empty()
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("must be a host name such as example.org: {site}"))
+    }
+}
 
 /// Basic auth sends the password with every request, so only HTTPS is
 /// accepted, except for a server on the local machine.

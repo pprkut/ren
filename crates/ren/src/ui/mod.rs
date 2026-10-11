@@ -545,9 +545,11 @@ impl App {
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
         #[cfg(feature = "servo")]
-        self.pages
-            .borrow_mut()
-            .set_keep_site_data(settings.keep_site_data());
+        {
+            let mut pages = self.pages.borrow_mut();
+            pages.set_keep_site_data(settings.keep_site_data());
+            pages.set_blocking(settings.filter_lists(), settings.unblocked_sites());
+        }
     }
 
     fn window_activated(&self) {

@@ -101,7 +101,7 @@ pub fn claim_database(store: &mut Store, account: &Account) -> ren_store::Result
 
 /// Lowers the priority of the calling thread. On Linux, `nice` changes
 /// only the calling thread, not the whole process.
-fn lower_priority() {
+pub(crate) fn lower_priority() {
     #[cfg(target_os = "linux")]
     {
         unsafe extern "C" {
