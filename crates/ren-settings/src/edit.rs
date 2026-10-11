@@ -178,6 +178,10 @@ switch = false
             blue: 255,
         });
         assert_eq!(set("", "b.colour", colour), "[b]\ncolour = \"#0102ff\"\n");
+        let list = Value::List(vec!["xa".into(), "x\"b".into()]);
+        assert_eq!(set("", "b.list", list), "[b]\nlist = [\"xa\", 'x\"b']\n");
+        let default = Value::List(vec!["xa".into(), "xb".into()]);
+        assert_eq!(set("[b]\nlist = []\n", "b.list", default), "");
     }
 
     #[test]

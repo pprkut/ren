@@ -68,6 +68,13 @@ pub enum Kind {
     },
     /// A colour as `#rrggbb`.
     Colour { default: Colour },
+    /// A list of strings, an array in the file. Empty strings are left
+    /// out.
+    List {
+        default: &'static [&'static str],
+        /// Checks each string that isn't empty.
+        check: Option<Check>,
+    },
 }
 
 /// Checks a text value; the error says what's wrong with it.
@@ -90,6 +97,7 @@ pub enum Value {
     /// The value of a text or a choice.
     Text(String),
     Colour(Colour),
+    List(Vec<String>),
 }
 
 /// An RGB colour.
@@ -143,6 +151,9 @@ impl Setting {
             Kind::Number { default, .. } => Some(Value::Number(*default)),
             Kind::Text { default, .. } => default.map(|text| Value::Text(text.to_owned())),
             Kind::Colour { default } => Some(Value::Colour(*default)),
+            Kind::List { default, .. } => Some(Value::List(
+                default.iter().map(|item| (*item).to_owned()).collect(),
+            )),
         }
     }
 
@@ -174,6 +185,13 @@ impl Setting {
                 Some(check) if !text.is_empty() => check(text),
                 _ => Ok(()),
             },
+            (Kind::List { check, .. }, Value::List(items)) => match check {
+                Some(check) => items
+                    .iter()
+                    .filter(|item| !item.is_empty())
+                    .try_for_each(|item| check(item)),
+                None => Ok(()),
+            },
             _ => Err(format!("must be {}", self.expected())),
         }
     }
@@ -185,6 +203,7 @@ impl Setting {
             Kind::Choice { .. } | Kind::Text { .. } => "a string",
             Kind::Number { .. } => "a whole number",
             Kind::Colour { .. } => "a colour as a string \"#rrggbb\"",
+            Kind::List { .. } => "a list of strings",
         }
     }
 
@@ -200,6 +219,13 @@ impl Setting {
             (Kind::Colour { .. }, toml_edit::Value::String(s)) => {
                 Value::Colour(Colour::parse(s.value()).ok_or_else(wrong_type)?)
             }
+            (Kind::List { .. }, toml_edit::Value::Array(array)) => Value::List(
+                array
+                    .iter()
+                    .map(|item| item.as_str().map(str::to_owned))
+                    .collect::<Option<_>>()
+                    .ok_or_else(wrong_type)?,
+            ),
             _ => return Err(wrong_type()),
         };
         self.check(&value)?;
@@ -215,6 +241,7 @@ impl Value {
             Value::Number(n) => (*n).into(),
             Value::Text(text) => text.as_str().into(),
             Value::Colour(colour) => colour.to_string().into(),
+            Value::List(items) => toml_edit::Value::Array(items.iter().collect()),
         }
     }
 }

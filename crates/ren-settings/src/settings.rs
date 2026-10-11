@@ -278,6 +278,14 @@ impl Settings {
         }
     }
 
+    /// A list, without empty strings. Panics if `key` isn't one.
+    pub fn list(&self, key: &str) -> Vec<String> {
+        match self.get(key) {
+            Some(Value::List(items)) => items.into_iter().filter(|item| !item.is_empty()).collect(),
+            other => panic!("{key} is not a list: {other:?}"),
+        }
+    }
+
     /// The account, if the server and user are set.
     pub fn account(&self) -> Result<Account, String> {
         match (self.text(schema::SERVER), self.text(schema::USER)) {
@@ -410,6 +418,22 @@ pub(crate) mod tests {
                 },
             },
         },
+        Setting {
+            key: "b.list",
+            title: "List",
+            description: "",
+            category: schema::Category::Sync,
+            kind: Kind::List {
+                default: &["xa", "xb"],
+                check: Some(|text| {
+                    if text.starts_with('x') {
+                        Ok(())
+                    } else {
+                        Err(format!("must start with x: {text}"))
+                    }
+                }),
+            },
+        },
     ];
 
     fn parse(text: &str) -> Result<Loaded, Problems> {
@@ -444,6 +468,7 @@ pub(crate) mod tests {
             }))
         );
         assert!(!settings.is_set("b.number"));
+        assert_eq!(settings.list("b.list"), ["xa", "xb"]);
     }
 
     #[test]
@@ -458,6 +483,7 @@ pub(crate) mod tests {
             number = 10  # the most
             text = "xyz"
             colour = "#FF8000"
+            list = ["xc", "", "xd"]
         "##;
         let loaded = parse(text).unwrap();
         assert_eq!(loaded.warnings, []);
@@ -467,6 +493,7 @@ pub(crate) mod tests {
         assert_eq!(settings.number("b.number"), 10);
         assert!(settings.is_set("b.number"));
         assert_eq!(settings.text("b.text").as_deref(), Some("xyz"));
+        assert_eq!(settings.list("b.list"), ["xc", "xd"]);
         assert_eq!(
             settings.get("b.colour"),
             Some(Value::Colour(Colour {
@@ -529,6 +556,18 @@ pub(crate) mod tests {
                 "2:10: b.number must be a whole number",
                 "3:8: b.text must be a string"
             ]
+        );
+        assert_eq!(
+            problems("[b]\nlist = [\"xa\", \"y\"]\n"),
+            ["2:8: b.list must start with x: y"]
+        );
+        assert_eq!(
+            problems("[b]\nlist = [\"xa\", 1]\nnumber = 2\n"),
+            ["2:8: b.list must be a list of strings"]
+        );
+        assert_eq!(
+            problems("[b]\nlist = \"xa\"\n"),
+            ["2:8: b.list must be a list of strings"]
         );
         assert_eq!(problems("a = 1"), ["1:5: a must be a table: [a]"]);
         assert_eq!(
