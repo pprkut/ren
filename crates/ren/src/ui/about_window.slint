@@ -1,17 +1,28 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { AboutSlint, Button, Palette } from "std-widgets.slint";
+import { AboutSlint, Button, ListView, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 
-// Help → About ren.
+// A block of the third-party notices: 0 heading, 1 paragraph, 2 a licence
+// text (preformatted).
+export struct NoticeBlock {
+    kind: int,
+    text: string,
+}
+
+// Help → About ren, and on a second page the third-party notices.
 export component AboutWindow inherits Window {
     in property <string> version;
     in property <string> source-url;
     in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
     callback open-source();
-    // Shows the third-party notices in the article view.
+    // The notices, while their page is shown; `show-licenses` fills them,
+    // `hide-licenses` drops them.
+    in property <[NoticeBlock]> notices;
+    in-out property <bool> licenses-shown;
     callback show-licenses();
+    callback hide-licenses();
     callback close-requested();
 
     changed forced-color-scheme => {
@@ -24,7 +35,75 @@ export component AboutWindow inherits Window {
     preferred-height: 480px;
     background: Palette.background;
 
-    VerticalLayout {
+    if root.licenses-shown: VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+
+        Text {
+            text: "Third-party licenses";
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+
+        ListView {
+            vertical-stretch: 1;
+
+            for block in root.notices: VerticalLayout {
+                padding-top: block.kind == 0 ? 12px : 4px;
+                padding-bottom: 4px;
+                padding-right: 12px;
+
+                if block.kind == 2: Rectangle {
+                    background: Palette.alternate-background;
+                    border-radius: 4px;
+                    height: pre-text.preferred-height + 16px;
+
+                    pre-text := Text {
+                        x: 8px;
+                        y: 8px;
+                        width: parent.width - 16px;
+                        text: block.text;
+                        wrap: word-wrap;
+                        font-family: "monospace";
+                        font-size: 0.85rem;
+                        color: Palette.foreground;
+                    }
+                }
+
+                if block.kind != 2: Text {
+                    text: block.text;
+                    wrap: word-wrap;
+                    font-weight: block.kind == 0 ? 700 : 400;
+                    font-size: block.kind == 0 ? 1.1rem : 1rem;
+                    color: Palette.foreground;
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+
+            Button {
+                text: "Back";
+                clicked => {
+                    root.licenses-shown = false;
+                    root.hide-licenses();
+                }
+            }
+
+            Button {
+                text: "Close";
+                primary: true;
+                clicked => {
+                    root.close-requested();
+                }
+            }
+        }
+    }
+
+    if !root.licenses-shown: VerticalLayout {
         padding: 24px;
         spacing: 10px;
 
@@ -98,6 +177,7 @@ export component AboutWindow inherits Window {
                 text: "Third-Party Licenses";
                 clicked => {
                     root.show-licenses();
+                    root.licenses-shown = true;
                 }
             }
 

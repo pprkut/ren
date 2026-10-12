@@ -182,12 +182,6 @@ impl Reader {
         self.current
     }
 
-    /// No item is shown any more (the article pane shows something else).
-    pub fn clear_current(&mut self) {
-        self.current = None;
-        self.current_feed = None;
-    }
-
     /// The row of the item shown, if the list has it.
     pub fn current_row(&self) -> Option<usize> {
         self.current.and_then(|id| self.list.row_of(id))
@@ -585,9 +579,6 @@ mod tests {
         assert_ne!(reader.row(1).unwrap().unwrap().status, Status::Read);
         assert_eq!(reader.unread(), 6);
         assert!(reader.show(6).unwrap().is_none());
-        reader.clear_current();
-        assert_eq!(reader.current(), None);
-        assert_eq!(reader.current_row(), None);
     }
 
     #[test]

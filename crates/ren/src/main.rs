@@ -11,6 +11,7 @@ mod hash;
 mod http;
 mod item_list;
 mod login;
+mod notices;
 mod procstat;
 mod reader;
 mod remote;
