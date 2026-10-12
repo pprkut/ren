@@ -64,6 +64,10 @@ measure-tabs dump *urls:
 measure-hidden dump *urls:
     scripts/measure-hidden.sh {{dump}} {{urls}}
 
+# Measure memory with the settings dialog and About ren open and after closing them (needs a display)
+measure-settings:
+    scripts/measure-settings.sh
+
 # Survey the HTML and CSS used by the articles in a --dump-items directory
 survey-articles dump:
     scripts/survey-articles.py {{dump}}
