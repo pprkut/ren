@@ -216,8 +216,8 @@ impl fmt::Display for PasswordError {
         match self {
             PasswordError::NotStored => write!(
                 f,
-                "no app password in the Secret Service: store one with ren --set-password, \
-                 or set password-command in [account]"
+                "no app password in the Secret Service: log in in Settings → Configure ren… → \
+                 Account (or with ren --set-password), or set password-command in [account]"
             ),
             PasswordError::Command(err) => write!(f, "password-command: {err}"),
             PasswordError::Store(err) => write!(
