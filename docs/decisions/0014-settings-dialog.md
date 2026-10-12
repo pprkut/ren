@@ -7,7 +7,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 **Status:** done (2026-10-12), for review; checked in the container
 under Xvfb against a mock Nextcloud, not yet on the desktop (see "On the
-desktop").
+desktop"). Changed after the first review (see "After the review").
 
 ## Context
 
@@ -33,12 +33,18 @@ Settings → Configure ren… opens a **window of its own**
   list, Articles, Web pages, Window), "Open Settings File" below them;
 - per setting a row generated from its descriptor: title, description,
   the key in the file (so the file and the dialog can be matched up), and
-  the control of its kind: a switch, a drop-down (choice), a text field
-  (number with its unit, text, colour with a swatch), or a list editor
-  (one item per line); "Reset to Default" when the file sets it;
+  the control of its kind: a switch, a drop-down (choice), pictures for
+  the arrangement, a text field (number with its unit, text), a colour
+  picker, or a list editor (one item per line); "Reset to Default" when
+  the file sets it;
 - while searching, the rows of all categories that match (every word in
   the title, description, key, category or an option's title), with the
-  category as a heading.
+  category as a heading; the category list shows the number of results
+  per category, and choosing one narrows the results to it;
+- a setting that requires a switch (`Setting::requires`: closing to the
+  tray needs the tray icon, the filter lists and the sites without
+  blocking need blocking) is greyed out and disabled while the switch is
+  off, and says which one it needs.
 
 **Live apply:** every change is written at once (one value, through
 `toml_edit`, M4) and applied: a switch or drop-down when it changes, a
@@ -145,12 +151,33 @@ Lucide icons and a note on the crates, to be replaced.
   colours).
 - **Server and user aren't rows:** the login sets them; they are still
   found by the search, and the file can be edited by hand.
-- **A colour is text with a swatch**, not a colour picker: Slint has
-  none, and `#rrggbb` is what the file holds.
+- **The colour picker is ren's own** (`setting_controls.slint`): Slint
+  has none. A square of saturation and value and a bar of hues drawn
+  with gradients, Breeze's colours to start from, and the colour as
+  `#rrggbb` to type, which is what the file holds.
 - **Logging out keeps the articles.** Logging in as another account
   then makes the sync refuse the database (M5), as before; see "Open".
 - **The settings dialog in demo mode** (`--items`, `--dump`) says that
   demo data has no settings, as "Allow Ads Here" does.
+
+## After the review
+
+The first review asked for five changes, all made:
+
+1. **Settings that depend on each other:** descriptors name the switch
+   they require; the dialog disables and greys out the setting while it
+   is off (and `Settings::effective` says the same).
+2. **Search and the category list:** the list shows the results per
+   category while searching (none: greyed out); a category narrows the
+   results without ending the search, choosing it again shows all, and
+   clearing the search shows the category chosen last.
+3. **Log Out** is on the right, beside who is logged in, like the other
+   rows' controls.
+4. **Colour pickers** instead of text fields: a button with the colour
+   in effect (the theme's while unset) opens the picker; Apply sets it,
+   "Theme's Colour" resets it.
+5. **The arrangement as pictures:** a small drawing of the window per
+   arrangement, the one in effect outlined in the accent colour.
 
 ## Testing
 
@@ -180,6 +207,14 @@ Lucide icons and a note on the crates, to be replaced.
   the list editor; the arrangement from the dialog and the View menu
   (the file follows, back to the default removes the key); About ren and
   the notices (plain text).
+
+After the review, by hand in the same setup: closing to the tray
+disabled with the tray icon off and enabled again at once; searching
+"icon" (counts 1 and 2), narrowing to Window and back, clearing; a
+colour picked from the square and a preset, one typed as hex, the list's
+colours changing in the main window; the arrangement chosen by its
+picture; both in light and dark mode. `settings_dialog.rs` tests the
+disabled rows, the counts and narrowing, and picked colours.
 
 ## Measurements
 
@@ -225,3 +260,6 @@ Not done yet; to check on the desktop (KDE):
   dialog, only as warnings in the status bar.
 - **Third-party notices** are a placeholder until M11.
 - Escape doesn't close the dialogs.
+- The theme's colours on the colour buttons are read when the dialog
+  refreshes, not when the desktop switches between light and dark mode
+  while it is open.
