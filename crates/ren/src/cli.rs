@@ -72,6 +72,9 @@ Window options:
   --measure-hidden   After 2 s, show the first article (and the --tab-url
                      pages), hide the window as in the tray and show it
                      again, print memory use at each step, and quit
+  --measure-settings After 2 s, open the settings dialog, show its web page
+                     settings, close it, open About ren and close it,
+                     print memory use at each step, and quit
   --measure-sync     After 2 s, sync twice (into a new database, a full
                      and an incremental sync), print time, CPU and memory
                      use, and quit
@@ -147,6 +150,7 @@ pub struct Options {
     pub autoscroll: bool,
     pub measure_sync: bool,
     pub measure_hidden: bool,
+    pub measure_settings: bool,
     pub tab_urls: Vec<String>,
     pub measure_tabs: bool,
 }
@@ -173,6 +177,7 @@ impl Default for Options {
             autoscroll: false,
             measure_sync: false,
             measure_hidden: false,
+            measure_settings: false,
             tab_urls: Vec::new(),
             measure_tabs: false,
         }
@@ -261,6 +266,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
             "--autoscroll" => options.autoscroll = true,
             "--measure-sync" => options.measure_sync = true,
             "--measure-hidden" => options.measure_hidden = true,
+            "--measure-settings" => options.measure_settings = true,
             "--tab-url" => options.tab_urls.push(value("--tab-url")?),
             "--measure-tabs" => options.measure_tabs = true,
             "-h" | "--help" => return Ok(Command::Help),
@@ -305,6 +311,7 @@ mod tests {
             autoscroll: true,
             measure_sync: true,
             measure_hidden: true,
+            measure_settings: true,
             tab_urls: vec!["https://a/".to_owned(), "https://b/".to_owned()],
             measure_tabs: true,
         };
@@ -333,6 +340,7 @@ mod tests {
                 "--autoscroll",
                 "--measure-sync",
                 "--measure-hidden",
+                "--measure-settings",
                 "--tab-url",
                 "https://a/",
                 "--tab-url",

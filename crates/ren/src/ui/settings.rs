@@ -137,8 +137,11 @@ impl App {
         });
     }
 
-    /// Drops the dialog once it is hidden: not from its own callback.
-    fn close_settings(&self) {
+    /// Hides the dialog, and drops it: not from its own callback.
+    pub(super) fn close_settings(&self) {
+        if let Some(dialog) = &*self.dialog.borrow() {
+            let _ = dialog.window.hide();
+        }
         let this = self.this.clone();
         slint::Timer::single_shot(Duration::ZERO, move || {
             if let Some(app) = this.upgrade() {
