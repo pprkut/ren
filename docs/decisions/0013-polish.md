@@ -266,7 +266,7 @@ By hand:
 - A drop-down on a real page (pecl.php.net) works, but opened in the
   wrong place: the box Servo reports (above), fixed in 42f3394, which the
   user confirmed. The context menu had the same problem (the point
-  Servo reports, above), fixed afterwards. No page with `<optgroup>`s
+  Servo reports, above), fixed in 4fc9b32, also confirmed. No page with `<optgroup>`s
   was at hand.
 - The window's size, position and maximised state weren't restored:
   closed maximised, it came back unmaximised; moved to another screen,
