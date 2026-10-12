@@ -21,6 +21,9 @@ pub struct Dialog {
     table: &'static [Setting],
     query: String,
     category: Category,
+    /// While searching: the category the results are narrowed to; `None`
+    /// shows the results of all categories.
+    scope: Option<Category>,
     /// Per key: the text typed, and what's wrong with it.
     invalid: HashMap<&'static str, (String, String)>,
 }
@@ -38,6 +41,10 @@ pub struct Row {
     pub input: String,
     /// The file sets it: it can be reset to its default.
     pub modified: bool,
+    /// The switch it requires is on (`Setting::requires`); otherwise the
+    /// row is disabled and says which one.
+    pub enabled: bool,
+    pub requires: Option<&'static str>,
     /// What's wrong with the text typed, which is kept until it is fixed.
     pub error: Option<String>,
 }
@@ -83,6 +90,7 @@ impl Dialog {
             table,
             query: String::new(),
             category: table.first().map_or(Category::Account, |s| s.category),
+            scope: None,
             invalid: HashMap::new(),
         }
     }
@@ -98,18 +106,52 @@ impl Dialog {
         categories
     }
 
-    pub fn category(&self) -> Category {
-        self.category
-    }
-
-    /// Shows a category; ends a search.
+    /// Shows a category, or while searching, narrows the results to it;
+    /// the category narrowed to already widens them to all again.
     pub fn select(&mut self, category: Category) {
+        if self.searching() {
+            self.scope = (self.scope != Some(category)).then_some(category);
+        }
         self.category = category;
-        self.query.clear();
     }
 
+    /// Searches all categories; a new search shows the results of all of
+    /// them.
     pub fn search(&mut self, query: &str) {
+        let was_searching = self.searching();
         query.clone_into(&mut self.query);
+        if !was_searching || !self.searching() {
+            self.scope = None;
+        }
+    }
+
+    /// The category highlighted in the list: the one shown, or while
+    /// searching, the one the results are narrowed to.
+    pub fn current(&self) -> Option<Category> {
+        if self.searching() {
+            self.scope
+        } else {
+            Some(self.category)
+        }
+    }
+
+    /// While searching, the number of results per category, in the order
+    /// of [`categories`](Self::categories); `None` otherwise.
+    pub fn counts(&self) -> Option<Vec<usize>> {
+        if !self.searching() {
+            return None;
+        }
+        Some(
+            self.categories()
+                .into_iter()
+                .map(|category| {
+                    self.table
+                        .iter()
+                        .filter(|s| s.category == category && s.matches(&self.query))
+                        .count()
+                })
+                .collect(),
+        )
     }
 
     /// Whether a search is shown instead of a category.
@@ -129,14 +171,16 @@ impl Dialog {
         for setting in self.table {
             let shown = if self.searching() {
                 setting.matches(&self.query)
+                    && self.scope.is_none_or(|scope| scope == setting.category)
             } else {
                 setting.category == self.category && !ACCOUNT_PAGE.contains(&setting.key)
             };
             if !shown {
                 continue;
             }
-            let heading = (self.searching() && last != Some(setting.category))
-                .then(|| setting.category.title());
+            let heading =
+                (self.searching() && self.scope.is_none() && last != Some(setting.category))
+                    .then(|| setting.category.title());
             last = Some(setting.category);
             rows.push(self.row(setting, settings, heading));
         }
@@ -183,6 +227,11 @@ impl Dialog {
             control,
             input,
             modified: settings.is_set(setting.key),
+            enabled: settings.effective(setting.key),
+            requires: setting
+                .requires
+                .and_then(|key| schema::find(self.table, key))
+                .map(|required| required.title),
             error,
         }
     }
@@ -252,7 +301,7 @@ mod tests {
                 Category::Window
             ]
         );
-        assert_eq!(dialog.category(), Category::Account);
+        assert_eq!(dialog.current(), Some(Category::Account));
         assert!(dialog.account_page());
     }
 
@@ -333,11 +382,54 @@ mod tests {
         // Searching finds the account's settings too.
         dialog.search("server");
         assert!(keys(&dialog.rows(&Settings::default())).contains(&schema::SERVER));
-        // Choosing a category ends the search.
+        dialog.search("icon");
+        assert_eq!(dialog.current(), None);
+        assert_eq!(dialog.counts(), Some(vec![0, 1, 0, 0, 0, 2]));
+        // A category narrows the results, without headings, and keeps the
+        // search.
+        dialog.select(Category::Window);
+        assert!(dialog.searching());
+        assert_eq!(dialog.current(), Some(Category::Window));
+        let rows = dialog.rows(&Settings::default());
+        assert_eq!(keys(&rows), [schema::TRAY_ICON, schema::CLOSE_TO_TRAY]);
+        assert!(rows.iter().all(|row| row.heading.is_none()));
+        // Typing on stays in it.
+        dialog.search("icon tray");
+        assert_eq!(dialog.current(), Some(Category::Window));
+        // Again: all categories.
+        dialog.select(Category::Window);
+        assert_eq!(dialog.current(), None);
+        assert_eq!(dialog.rows(&Settings::default()).len(), 2);
+        // The search ends: the category chosen last is shown.
         dialog.select(Category::Sync);
-        assert!(!dialog.searching());
         dialog.search("  ");
         assert!(!dialog.searching());
+        assert_eq!(dialog.current(), Some(Category::Sync));
+        assert_eq!(dialog.counts(), None);
+        // A new search starts with all categories.
+        dialog.search("i");
+        assert_eq!(dialog.current(), None);
+    }
+
+    #[test]
+    fn settings_that_need_a_switch() {
+        let mut dialog = Dialog::new();
+        dialog.select(Category::Window);
+        let rows = dialog.rows(&Settings::default());
+        assert!(rows.iter().all(|row| row.enabled));
+        assert_eq!(rows[1].requires, Some("Icon in the system tray"));
+        let rows = dialog.rows(&settings("[window]\ntray-icon = false\n"));
+        assert!(rows[0].enabled);
+        assert!(!rows[1].enabled);
+        dialog.select(Category::Pages);
+        let off = settings("[pages]\nblock-content = false\n");
+        let disabled: Vec<_> = dialog
+            .rows(&off)
+            .into_iter()
+            .filter(|row| !row.enabled)
+            .map(|row| row.setting.key)
+            .collect();
+        assert_eq!(disabled, [schema::FILTER_LISTS, schema::UNBLOCKED_SITES]);
     }
 
     #[test]
