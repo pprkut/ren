@@ -494,8 +494,7 @@ pub static SETTINGS: &[Setting] = &[
         key: ARRANGEMENT,
         title: "Arrangement",
         description: "Where the list of articles goes: beside the article, with two lines per \
-                      article, or above it, as a table (akregator's arrangement). Also in the \
-                      View menu.",
+                      article, or above it, as a table. Also in the View menu.",
         category: Category::List,
         requires: None,
         kind: Kind::Choice {
