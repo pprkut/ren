@@ -17,9 +17,9 @@ use crate::settings::{Loaded, Problem, Problems, Settings, Severity};
 /// The settings file and the last good settings read from it.
 ///
 /// [`SettingsFile::reload`] checks whether the file changed and reads it
-/// again; the app calls it when its window gains focus, so edits in
-/// another editor apply when the user comes back. A file that can't be
-/// used leaves the last good settings in effect.
+/// again; the app calls it when [`watch`](crate::watch) says the file was
+/// saved, so edits in another editor apply right away. A file that can't
+/// be used leaves the last good settings in effect.
 #[derive(Debug)]
 pub struct SettingsFile {
     path: PathBuf,
