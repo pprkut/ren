@@ -25,7 +25,18 @@ export struct SettingRow {
     colour: color,
     // The file sets it, so it can be reset.
     modified: bool,
+    // The switch it requires is on; else `requires` is that switch's
+    // title.
+    enabled: bool,
+    requires: string,
     error: string,
+}
+
+// A category of the list on the left; while searching, its number of
+// results (else -1).
+export struct CategoryEntry {
+    title: string,
+    count: int,
 }
 
 // A flat button with a label.
@@ -57,6 +68,7 @@ component FlatButton inherits Rectangle {
 
 component CategoryItem inherits Rectangle {
     in property <string> text;
+    in property <int> count: -1;
     in property <bool> selected;
     callback clicked();
 
@@ -70,13 +82,26 @@ component CategoryItem inherits Rectangle {
         }
     }
 
-    Text {
-        x: 10px;
-        width: parent.width - 20px;
-        text: root.text;
-        vertical-alignment: center;
-        overflow: elide;
-        color: Palette.foreground;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        // No results while searching.
+        opacity: root.count == 0 ? 0.45 : 1.0;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            vertical-alignment: center;
+            overflow: elide;
+            color: Palette.foreground;
+        }
+
+        if root.count >= 0: Text {
+            text: root.count;
+            vertical-alignment: center;
+            color: Palette.foreground;
+            opacity: 0.7;
+        }
     }
 }
 
@@ -89,6 +114,10 @@ component SettingRowView inherits VerticalLayout {
     callback chosen(index: int);
     callback accepted(text: string);
     callback reset();
+
+    // Controls can be changed: the file has no errors, and the switch the
+    // setting requires is on.
+    property <bool> active: root.editable && root.setting.enabled;
 
     spacing: 6px;
 
@@ -106,6 +135,7 @@ component SettingRowView inherits VerticalLayout {
             horizontal-stretch: 1;
             spacing: 2px;
             alignment: start;
+            opacity: root.setting.enabled ? 1.0 : 0.5;
 
             Text {
                 text: root.setting.title;
@@ -128,6 +158,13 @@ component SettingRowView inherits VerticalLayout {
                 opacity: 0.5;
             }
 
+            if !root.setting.enabled: Text {
+                text: "Only with “" + root.setting.requires + "” on.";
+                wrap: word-wrap;
+                font-italic: true;
+                color: Palette.foreground;
+            }
+
             if root.setting.error != "": Text {
                 text: root.setting.error;
                 wrap: word-wrap;
@@ -145,7 +182,7 @@ component SettingRowView inherits VerticalLayout {
                 alignment: end;
 
                 if root.setting.kind == 0: Switch {
-                    enabled: root.editable;
+                    enabled: root.active;
                     checked: root.setting.on;
                     toggled => {
                         root.toggled(self.checked);
@@ -161,7 +198,7 @@ component SettingRowView inherits VerticalLayout {
 
                 if root.setting.kind == 1: ComboBox {
                     horizontal-stretch: 1;
-                    enabled: root.editable;
+                    enabled: root.active;
                     model: root.setting.options;
                     current-index: root.setting.choice;
                     selected => {
@@ -185,7 +222,7 @@ component SettingRowView inherits VerticalLayout {
 
                 if root.setting.kind >= 2 && root.setting.kind <= 4: LineEdit {
                     horizontal-stretch: 1;
-                    enabled: root.editable;
+                    enabled: root.active;
                     text: root.setting.input;
                     placeholder-text: root.setting.placeholder;
                     accepted(text) => {
@@ -214,7 +251,7 @@ component SettingRowView inherits VerticalLayout {
 
             if root.setting.kind == 5: TextEdit {
                 height: 110px;
-                enabled: root.editable;
+                enabled: root.active;
                 text: root.setting.input;
                 wrap: no-wrap;
                 changed has-focus => {
@@ -241,7 +278,7 @@ component SettingRowView inherits VerticalLayout {
 
                 FlatButton {
                     text: "Reset to Default";
-                    enabled: root.editable;
+                    enabled: root.active;
                     clicked => {
                         root.reset();
                     }
@@ -287,16 +324,19 @@ component AccountPage inherits VerticalLayout {
     if root.state == 2: VerticalLayout {
         spacing: 10px;
 
-        Text {
-            text: root.summary;
-            wrap: word-wrap;
-            color: Palette.foreground;
-        }
-
         HorizontalLayout {
-            alignment: start;
+            spacing: 16px;
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.summary;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                color: Palette.foreground;
+            }
 
             Button {
+                horizontal-stretch: 0;
                 text: "Log Out";
                 enabled: root.editable;
                 clicked => {
@@ -437,7 +477,7 @@ component AccountPage inherits VerticalLayout {
 }
 
 export component SettingsWindow inherits Window {
-    in property <[string]> categories;
+    in property <[CategoryEntry]> categories;
     // -1 while searching.
     in property <int> current-category;
     in property <[SettingRow]> rows;
@@ -508,10 +548,10 @@ export component SettingsWindow inherits Window {
                 }
 
                 for category[index] in root.categories: CategoryItem {
-                    text: category;
+                    text: category.title;
+                    count: category.count;
                     selected: index == root.current-category;
                     clicked => {
-                        search.text = "";
                         root.category-selected(index);
                     }
                 }

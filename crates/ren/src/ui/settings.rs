@@ -11,7 +11,7 @@ use std::time::Duration;
 use ren_settings::Value;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use super::{App, SettingRow, SettingsWindow};
+use super::{App, CategoryEntry, SettingRow, SettingsWindow};
 use crate::settings_dialog::{Control, Dialog, Edit, Row};
 
 /// The time after the settings file was saved until it is read: editors
@@ -60,12 +60,6 @@ impl App {
             });
         }
         let model = Dialog::new();
-        let categories: Vec<SharedString> = model
-            .categories()
-            .iter()
-            .map(|category| category.title().into())
-            .collect();
-        window.set_categories(ModelRc::new(VecModel::from(categories)));
         let rows = Rc::new(VecModel::default());
         window.set_rows(ModelRc::from(rows.clone()));
         self.connect_settings(&window);
@@ -227,16 +221,24 @@ impl App {
             dialog.keys = keys;
         }
         let window = &dialog.window;
-        let current = if dialog.model.searching() {
-            -1
-        } else {
-            dialog
-                .model
-                .categories()
-                .iter()
-                .position(|category| *category == dialog.model.category())
-                .map_or(-1, |i| i as i32)
-        };
+        let categories = dialog.model.categories();
+        let counts = dialog.model.counts();
+        let entries: Vec<CategoryEntry> = categories
+            .iter()
+            .enumerate()
+            .map(|(i, category)| CategoryEntry {
+                title: category.title().into(),
+                count: counts
+                    .as_ref()
+                    .map_or(-1, |counts| i32::try_from(counts[i]).unwrap_or(i32::MAX)),
+            })
+            .collect();
+        window.set_categories(ModelRc::new(VecModel::from(entries)));
+        let current = dialog
+            .model
+            .current()
+            .and_then(|current| categories.iter().position(|c| *c == current))
+            .map_or(-1, |i| i as i32);
         window.set_current_category(current);
         window.set_no_match(dialog.model.searching() && rows.is_empty());
         window.set_editable(problem.is_none());
@@ -295,6 +297,8 @@ fn setting_row(row: &Row) -> SettingRow {
         description: setting.description.into(),
         input: row.input.as_str().into(),
         modified: row.modified,
+        enabled: row.enabled,
+        requires: row.requires.unwrap_or_default().into(),
         error: row.error.clone().unwrap_or_default().into(),
         ..SettingRow::default()
     };
