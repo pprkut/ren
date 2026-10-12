@@ -9,10 +9,11 @@ import { StatusBar, ToolBar, ToolButton } from "toolbar.slint";
 import { TabBar, TabRow } from "tab_bar.slint";
 import { PageMenu, PageOption, SelectPopup } from "page_controls.slint";
 import { Tray } from "tray.slint";
+import { SettingsWindow, SettingRow } from "settings_window.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 
-export { FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, TabRow, Tray }
+export { FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Tray }
 
 // Where the item list goes relative to the article.
 export enum Arrangement {
@@ -170,8 +171,6 @@ export component MainWindow inherits Window {
     in property <bool> syncing;
     // The sync thread has news for the UI thread (from a wake-up).
     callback sync-event();
-    // The window became the active one.
-    callback window-activated();
     in property <string> unread-text;
     in-out property <bool> show-toolbar: true;
     // Overrides the desktop's colour scheme unless `unknown`.
@@ -200,14 +199,6 @@ export component MainWindow inherits Window {
     pure function reload-key(event: KeyEvent) -> bool {
         let m = event.modifiers;
         (event.text == Key.F5 && !m.control && !m.alt && !m.meta) || (m.control && !m.shift && !m.alt && !m.meta && event.text == "r")
-    }
-
-    // Called by the focus scopes: the one with the focus hears when the
-    // window is activated.
-    function check-activation(reason: FocusReason) {
-        if reason == FocusReason.window-activation {
-            root.window-activated();
-        }
     }
 
     changed forced-color-scheme => {
@@ -609,9 +600,6 @@ export component MainWindow inherits Window {
                     menu(row, action) => {
                         root.feed-menu(row, action);
                     }
-                    focus-gained(reason) => {
-                        root.check-activation(reason);
-                    }
                 }
 
                 Splitter {
@@ -680,9 +668,6 @@ export component MainWindow inherits Window {
                         }
                         menu(row, action) => {
                             root.item-menu(row, action);
-                        }
-                        focus-gained(reason) => {
-                            root.check-activation(reason);
                         }
                     }
 
@@ -825,10 +810,6 @@ export component MainWindow inherits Window {
                             }
 
                             html-focus := FocusScope {
-                                focus-gained(reason) => {
-                                    root.check-activation(reason);
-                                }
-
                                 // Scrolling by keyboard; deltas are positive towards the
                                 // top, as for the mouse wheel.
                                 property <length> line: 40px;
@@ -1213,10 +1194,6 @@ export component MainWindow inherits Window {
                             }
 
                             page-focus := FocusScope {
-                                focus-gained(reason) => {
-                                    root.check-activation(reason);
-                                }
-
                                 // Keys go to the page, except the window's own
                                 // shortcuts (`window-key`), which go only to the
                                 // window.

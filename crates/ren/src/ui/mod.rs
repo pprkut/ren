@@ -28,6 +28,7 @@ mod geometry;
 mod icons;
 #[cfg(feature = "servo")]
 mod pages;
+mod settings;
 
 slint::include_modules!();
 
@@ -129,6 +130,8 @@ fn feed_row(row: &Row, full_page: bool, icon: slint::Image) -> FeedRow {
 }
 
 struct App {
+    /// The app itself, for callbacks of other windows.
+    this: std::rc::Weak<App>,
     window: slint::Weak<MainWindow>,
     reader: Rc<RefCell<Reader>>,
     /// The rows the feed tree shows, to update only those that changed.
@@ -172,6 +175,16 @@ struct App {
     tray_allowed: bool,
     /// Keeps the window's size and position a moment after it moved.
     geometry_timer: slint::Timer,
+    /// The settings dialog, while it is open.
+    dialog: RefCell<Option<settings::SettingsDialog>>,
+    /// Why the settings file can't be used or changed: its errors.
+    settings_problem: RefCell<Option<String>>,
+    /// Watches the settings file, so that it is read when it was saved.
+    settings_watch: RefCell<Option<ren_settings::Watch>>,
+    /// Reads the settings file a moment after it was saved.
+    reload_timer: slint::Timer,
+    /// `--color-scheme`: dark (or light) instead of the desktop's.
+    forced_dark: Option<bool>,
 }
 
 #[derive(Default)]
@@ -680,6 +693,8 @@ impl App {
                     Err(err) => self.status(format!("Removing the site data failed: {err}")),
                 }
             }
+            "configure" => self.open_settings(),
+            "settings-saved" => self.settings_saved(),
             "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
@@ -750,8 +765,13 @@ impl App {
             self.status(format!("Not opening this kind of link: {url}"));
             return;
         }
+        self.xdg_open(url.as_ref());
+    }
+
+    /// Opens a URL or file with the desktop's default application.
+    fn xdg_open(&self, target: &std::ffi::OsStr) {
         match std::process::Command::new("xdg-open")
-            .arg(url)
+            .arg(target)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .spawn()
@@ -916,17 +936,41 @@ impl App {
     /// Reads the settings file again if it changed. Returns the settings
     /// in effect: the last good ones if the file has errors.
     fn reload_settings(&self) -> Option<Settings> {
-        let mut file = self.settings.borrow_mut();
-        let file = file.as_mut()?;
-        let reload = file.reload();
-        if let Some(message) = settings_message(file.path(), &reload) {
-            self.status(message);
-        } else if reload != Reload::Unchanged {
-            self.status("Settings reloaded");
+        let (reload, settings) = {
+            let mut file = self.settings.borrow_mut();
+            let file = file.as_mut()?;
+            let reload = file.reload();
+            if let Some(message) = settings_message(file.path(), &reload) {
+                self.status(message);
+            } else if reload != Reload::Unchanged {
+                self.status("Settings reloaded");
+            }
+            self.note_settings_problem(file.path(), &reload);
+            (reload, file.settings().clone())
+        };
+        if reload != Reload::Unchanged {
+            self.apply_settings(&settings);
+            self.refresh_settings_dialog();
         }
-        let settings = file.settings().clone();
-        self.apply_settings(&settings);
         Some(settings)
+    }
+
+    /// Keeps the errors of a settings file that was read, for the
+    /// settings dialog; a usable file has none.
+    fn note_settings_problem(&self, path: &std::path::Path, reload: &Reload) {
+        let mut problem = self.settings_problem.borrow_mut();
+        match reload {
+            Reload::Unchanged => {}
+            Reload::Loaded(_) => *problem = None,
+            Reload::Failed(problems) => {
+                let located: Vec<String> = problems
+                    .0
+                    .iter()
+                    .map(|problem| crate::account::located(path, problem))
+                    .collect();
+                *problem = Some(settings::file_problem(&located.join("\n")));
+            }
+        }
     }
 
     /// Applies the settings the window uses itself; the sync reads its own
@@ -944,10 +988,6 @@ impl App {
             pages.set_keep_site_data(settings.keep_site_data());
             pages.set_blocking(settings.filter_lists(), settings.unblocked_sites());
         }
-    }
-
-    fn window_activated(&self) {
-        self.reload_settings();
     }
 
     /// Starts the automatic syncs at `interval`, or stops them. A new
@@ -1664,7 +1704,8 @@ fn run_window(
         || options.autoscroll
         || options.cycle_articles.is_some();
     let auto_sync = database.is_some() && !measuring;
-    let app = Rc::new(App {
+    let app = Rc::new_cyclic(|this| App {
+        this: this.clone(),
         window: window.as_weak(),
         reader,
         tree_rows: RefCell::new(Vec::new()),
@@ -1690,6 +1731,11 @@ fn run_window(
         hidden: Cell::new(false),
         tray_allowed: !measuring,
         geometry_timer: slint::Timer::default(),
+        dialog: RefCell::new(None),
+        settings_problem: RefCell::new(None),
+        settings_watch: RefCell::new(None),
+        reload_timer: slint::Timer::default(),
+        forced_dark: dark,
     });
     app.restore();
     match &settings {
@@ -1699,6 +1745,23 @@ fn run_window(
     if let Some((file, reload)) = settings {
         if let Some(message) = settings_message(file.path(), &reload) {
             app.status_until_next(message);
+        }
+        app.note_settings_problem(file.path(), &reload);
+        let weak = window.as_weak();
+        let saved = move || {
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    window.invoke_action("settings-saved".into());
+                }
+            });
+        };
+        match ren_settings::watch(file.path(), saved) {
+            Ok(watch) => *app.settings_watch.borrow_mut() = Some(watch),
+            Err(err) => eprintln!(
+                "ren: {}: changes won't apply until the next start: {err}",
+                file.path().display()
+            ),
         }
         *app.settings.borrow_mut() = Some(file);
     }
@@ -1792,12 +1855,6 @@ fn run_window(
             Some(app) => app.close_requested(),
             None => slint::CloseRequestResponse::HideWindow,
         });
-    let weak = Rc::downgrade(&app);
-    window.on_window_activated(move || {
-        if let Some(app) = weak.upgrade() {
-            app.window_activated();
-        }
-    });
     window.set_tabs_available(cfg!(feature = "servo"));
     let weak = Rc::downgrade(&app);
     window.on_search_edited(move |text| {
@@ -1853,6 +1910,7 @@ fn run_window(
     // Until quit: the window may be hidden in the tray.
     let result = slint::run_event_loop_until_quit();
     window.hide()?;
+    app.dialog.borrow_mut().take();
     *app.tray.borrow_mut() = None;
     if let Err(err) = app.saved.borrow_mut().save() {
         eprintln!("ren: saving the window's state: {err}");
