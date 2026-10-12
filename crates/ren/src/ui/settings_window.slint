@@ -1,0 +1,397 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Button, ComboBox, LineEdit, Palette, ScrollView, Switch, TextEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// A setting as the dialog shows it, made from its descriptor.
+export struct SettingRow {
+    key: string,
+    // The category's title above the first row of each category, while
+    // searching.
+    heading: string,
+    title: string,
+    description: string,
+    // 0 switch, 1 choice, 2 number, 3 text, 4 colour, 5 list.
+    kind: int,
+    on: bool,
+    options: [string],
+    choice: int,
+    // The text of a number, text, colour or list (one item per line).
+    input: string,
+    unit: string,
+    placeholder: string,
+    has-colour: bool,
+    colour: color,
+    // The file sets it, so it can be reset.
+    modified: bool,
+    error: string,
+}
+
+// A flat button with a label.
+component FlatButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    border-radius: Theme.selection-radius;
+    background: !root.enabled ? transparent : touch.pressed ? Theme.selection(true) : touch.has-hover ? Theme.hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+    min-width: label.preferred-width + 16px;
+    min-height: label.preferred-height + 8px;
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    label := Text {
+        text: root.text;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        color: Palette.foreground;
+    }
+}
+
+component CategoryItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+
+    height: Theme.row-height + 4px;
+    border-radius: Theme.selection-radius;
+    background: root.selected ? Theme.selection(true) : touch.has-hover ? Theme.hover : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    Text {
+        x: 10px;
+        width: parent.width - 20px;
+        text: root.text;
+        vertical-alignment: center;
+        overflow: elide;
+        color: Palette.foreground;
+    }
+}
+
+// One setting: title, description and key on the left, the control and a
+// reset button on the right.
+component SettingRowView inherits VerticalLayout {
+    in property <SettingRow> setting;
+    in property <bool> editable;
+    callback toggled(on: bool);
+    callback chosen(index: int);
+    callback accepted(text: string);
+    callback reset();
+
+    spacing: 6px;
+
+    if root.setting.heading != "": Text {
+        text: root.setting.heading;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+
+    HorizontalLayout {
+        spacing: 16px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: start;
+
+            Text {
+                text: root.setting.title;
+                font-weight: 600;
+                wrap: word-wrap;
+                color: Palette.foreground;
+            }
+
+            Text {
+                text: root.setting.description;
+                wrap: word-wrap;
+                color: Palette.foreground;
+                opacity: 0.75;
+            }
+
+            Text {
+                text: root.setting.key;
+                font-size: 0.85rem;
+                color: Palette.foreground;
+                opacity: 0.5;
+            }
+
+            if root.setting.error != "": Text {
+                text: root.setting.error;
+                wrap: word-wrap;
+                color: Theme.status-new;
+            }
+        }
+
+        VerticalLayout {
+            width: 280px;
+            alignment: start;
+            spacing: 4px;
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: end;
+
+                if root.setting.kind == 0: Switch {
+                    enabled: root.editable;
+                    checked: root.setting.on;
+                    toggled => {
+                        root.toggled(self.checked);
+                    }
+                    // The bindings to the row are gone once the user
+                    // changed the control; the row's values are set again
+                    // when they change.
+                    property <bool> on: root.setting.on;
+                    changed on => {
+                        self.checked = self.on;
+                    }
+                }
+
+                if root.setting.kind == 1: ComboBox {
+                    horizontal-stretch: 1;
+                    enabled: root.editable;
+                    model: root.setting.options;
+                    current-index: root.setting.choice;
+                    selected => {
+                        root.chosen(self.current-index);
+                    }
+                    property <int> choice: root.setting.choice;
+                    changed choice => {
+                        self.current-index = self.choice;
+                    }
+                }
+
+                if root.setting.kind == 4 && root.setting.has-colour: Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    border-width: 1px;
+                    border-color: Theme.separator;
+                    background: root.setting.colour;
+                }
+
+                if root.setting.kind >= 2 && root.setting.kind <= 4: LineEdit {
+                    horizontal-stretch: 1;
+                    enabled: root.editable;
+                    text: root.setting.input;
+                    placeholder-text: root.setting.placeholder;
+                    accepted(text) => {
+                        root.accepted(text);
+                    }
+                    // Applied when the focus leaves it, too.
+                    changed has-focus => {
+                        if !self.has-focus && self.text != root.setting.input {
+                            root.accepted(self.text);
+                        }
+                    }
+                    property <string> input: root.setting.input;
+                    changed input => {
+                        self.text = self.input;
+                    }
+                }
+
+                if root.setting.kind == 2: Text {
+                    width: 56px;
+                    text: root.setting.unit;
+                    vertical-alignment: center;
+                    color: Palette.foreground;
+                    opacity: 0.75;
+                }
+            }
+
+            if root.setting.kind == 5: TextEdit {
+                height: 110px;
+                enabled: root.editable;
+                text: root.setting.input;
+                wrap: no-wrap;
+                changed has-focus => {
+                    if !self.has-focus && self.text != root.setting.input {
+                        root.accepted(self.text);
+                    }
+                }
+                property <string> input: root.setting.input;
+                changed input => {
+                    self.text = self.input;
+                }
+            }
+
+            if root.setting.kind == 5: Text {
+                text: "One per line; applied when you leave the field.";
+                font-size: 0.85rem;
+                horizontal-alignment: right;
+                color: Palette.foreground;
+                opacity: 0.6;
+            }
+
+            if root.setting.modified: HorizontalLayout {
+                alignment: end;
+
+                FlatButton {
+                    text: "Reset to Default";
+                    enabled: root.editable;
+                    clicked => {
+                        root.reset();
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.separator;
+    }
+}
+
+export component SettingsWindow inherits Window {
+    in property <[string]> categories;
+    // -1 while searching.
+    in property <int> current-category;
+    in property <[SettingRow]> rows;
+    // Nothing matches the search.
+    in property <bool> no-match;
+    // Why the file can't be changed now (it has errors), or "".
+    in property <string> problem;
+    in property <bool> editable: true;
+    in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+
+    callback search-edited(text: string);
+    callback category-selected(index: int);
+    callback toggled(key: string, on: bool);
+    callback chosen(key: string, index: int);
+    callback input-accepted(key: string, text: string);
+    callback reset(key: string);
+    callback open-file();
+
+    // Shows a category's settings from the start.
+    public function scroll-to-top() {
+        content.content-y = 0;
+    }
+
+    changed forced-color-scheme => {
+        Palette.color-scheme = root.forced-color-scheme;
+    }
+
+    title: "Settings – ren";
+    preferred-width: 920px;
+    preferred-height: 660px;
+    min-width: 640px;
+    min-height: 400px;
+    background: Palette.background;
+
+    HorizontalLayout {
+        Rectangle {
+            width: 220px;
+            background: Palette.alternate-background;
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 4px;
+
+                search := LineEdit {
+                    placeholder-text: "Search settings…";
+                    edited(text) => {
+                        root.search-edited(text);
+                    }
+                }
+
+                Rectangle {
+                    height: 6px;
+                }
+
+                for category[index] in root.categories: CategoryItem {
+                    text: category;
+                    selected: index == root.current-category;
+                    clicked => {
+                        search.text = "";
+                        root.category-selected(index);
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                Button {
+                    text: "Open Settings File";
+                    clicked => {
+                        root.open-file();
+                    }
+                }
+            }
+
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.separator;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+
+            if root.problem != "": Rectangle {
+                background: Theme.status-new.with-alpha(0.15);
+
+                VerticalLayout {
+                    padding: 10px;
+
+                    Text {
+                        text: root.problem;
+                        wrap: word-wrap;
+                        color: Palette.foreground;
+                    }
+                }
+            }
+
+            content := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: rows-layout.preferred-height;
+
+                rows-layout := VerticalLayout {
+                    width: content.visible-width;
+                    padding: 20px;
+                    spacing: 14px;
+                    alignment: start;
+
+                    if root.no-match: Text {
+                        text: "No settings match the search.";
+                        color: Palette.foreground;
+                        opacity: 0.75;
+                    }
+
+                    for row in root.rows: SettingRowView {
+                        setting: row;
+                        editable: root.editable;
+                        toggled(on) => {
+                            root.toggled(row.key, on);
+                        }
+                        chosen(index) => {
+                            root.chosen(row.key, index);
+                        }
+                        accepted(text) => {
+                            root.input-accepted(row.key, text);
+                        }
+                        reset => {
+                            root.reset(row.key);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
