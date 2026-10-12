@@ -17,6 +17,9 @@ pub enum Error {
     Network(ureq::Error),
     /// The response wasn't the JSON we expected.
     Decode(serde_json::Error),
+    /// The login flow named an address that would send secrets in plain
+    /// text to another host: not `https://`, nor on the server.
+    Insecure(String),
 }
 
 impl Error {
@@ -49,6 +52,10 @@ impl fmt::Display for Error {
             }
             Error::Network(err) => write!(f, "{err}"),
             Error::Decode(err) => write!(f, "unexpected response: {err}"),
+            Error::Insecure(url) => write!(
+                f,
+                "the server sent an address that isn't https:// or on the server: {url}"
+            ),
         }
     }
 }
@@ -58,7 +65,7 @@ impl std::error::Error for Error {
         match self {
             Error::Network(err) => Some(err),
             Error::Decode(err) => Some(err),
-            Error::Unauthorized | Error::Status { .. } => None,
+            Error::Unauthorized | Error::Status { .. } | Error::Insecure(_) => None,
         }
     }
 }

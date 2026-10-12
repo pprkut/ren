@@ -77,6 +77,33 @@ pub fn api_base(server: &str) -> String {
     )
 }
 
+/// An HTTP agent with the TLS setup and the timeouts of `config`. Server
+/// certificates are checked against the system's trust store.
+pub(crate) fn agent(config: &Config) -> Agent {
+    let tls = TlsConfig::builder()
+        .provider(TlsProvider::Rustls)
+        .root_certs(RootCerts::PlatformVerifier)
+        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .build();
+    Agent::config_builder()
+        .tls_config(tls)
+        .user_agent(&config.user_agent)
+        .timeout_connect(Some(config.connect_timeout))
+        .timeout_recv_response(Some(config.response_timeout))
+        .timeout_recv_body(Some(config.body_timeout))
+        // Unsuccessful responses are handled here, to keep the
+        // server's message.
+        .http_status_as_error(false)
+        .build()
+        .new_agent()
+}
+
+/// The `Authorization` header for HTTP basic auth.
+pub(crate) fn basic_auth(credentials: &Credentials) -> String {
+    let token = STANDARD.encode(format!("{}:{}", credentials.user, credentials.password));
+    format!("Basic {token}")
+}
+
 /// The error body of the News app.
 #[derive(Deserialize)]
 struct ErrorBody {
@@ -99,27 +126,11 @@ impl Client {
     /// `server` is the Nextcloud URL, e.g. `https://cloud.example.org`.
     /// Server certificates are checked against the system's trust store.
     pub fn new(server: &str, credentials: &Credentials, config: &Config) -> Self {
-        let tls = TlsConfig::builder()
-            .provider(TlsProvider::Rustls)
-            .root_certs(RootCerts::PlatformVerifier)
-            .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .build();
-        let agent = Agent::config_builder()
-            .tls_config(tls)
-            .user_agent(&config.user_agent)
-            .timeout_connect(Some(config.connect_timeout))
-            .timeout_recv_response(Some(config.response_timeout))
-            .timeout_recv_body(Some(config.body_timeout))
-            // Unsuccessful responses are handled here, to keep the
-            // server's message.
-            .http_status_as_error(false)
-            .build()
-            .new_agent();
-        let token = STANDARD.encode(format!("{}:{}", credentials.user, credentials.password));
+        let agent = agent(config);
         Self {
             agent,
             base: api_base(server),
-            authorization: format!("Basic {token}"),
+            authorization: basic_auth(credentials),
             body_limit: config.body_limit,
             server_time: AtomicI64::new(NO_TIME),
         }
@@ -278,7 +289,7 @@ fn response_date(response: &Response<Body>) -> Option<i64> {
 }
 
 /// Turns an unsuccessful response into an error.
-fn check(response: Response<Body>) -> Result<Response<Body>, Error> {
+pub(crate) fn check(response: Response<Body>) -> Result<Response<Body>, Error> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
