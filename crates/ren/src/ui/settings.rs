@@ -8,7 +8,7 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use ren_settings::{Settings, Value};
+use ren_settings::Value;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use super::{App, SettingRow, SettingsWindow};
@@ -69,6 +69,7 @@ impl App {
         let rows = Rc::new(VecModel::default());
         window.set_rows(ModelRc::from(rows.clone()));
         self.connect_settings(&window);
+        self.connect_account(&window);
         *self.dialog.borrow_mut() = Some(SettingsDialog {
             window,
             model,
@@ -147,7 +148,7 @@ impl App {
     }
 
     /// Changes the dialog's state and shows the rows that result.
-    fn with_dialog(&self, f: impl FnOnce(&mut Dialog)) {
+    pub(super) fn with_dialog(&self, f: impl FnOnce(&mut Dialog)) {
         if let Some(dialog) = &mut *self.dialog.borrow_mut() {
             f(&mut dialog.model);
         }
@@ -203,11 +204,7 @@ impl App {
 
     /// Shows the settings in effect in the dialog, if it is open.
     pub(super) fn refresh_settings_dialog(&self) {
-        let settings = self
-            .settings
-            .borrow()
-            .as_ref()
-            .map_or_else(Settings::default, |file| file.settings().clone());
+        let settings = self.current_settings();
         let problem = self.settings_problem.borrow().clone();
         let mut dialog = self.dialog.borrow_mut();
         let Some(dialog) = &mut *dialog else {
@@ -241,6 +238,8 @@ impl App {
         window.set_no_match(dialog.model.searching() && rows.is_empty());
         window.set_editable(problem.is_none());
         window.set_problem(problem.unwrap_or_default().into());
+        window.set_account_page(dialog.model.account_page());
+        self.show_account(window, &settings);
     }
 
     /// Opens the settings file in the desktop's editor for it; a missing

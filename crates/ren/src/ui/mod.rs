@@ -23,6 +23,7 @@ use crate::reader::{Changes, Reader};
 use crate::sync_thread::{self, Event, Running};
 use crate::window_state::{self, Saved};
 
+mod account;
 mod article;
 mod geometry;
 mod icons;
@@ -58,6 +59,11 @@ const HIDDEN_TRIM_DELAY: Duration = Duration::from_secs(1);
 /// Time between the start and the first automatic sync, so that it
 /// doesn't compete with the first frames.
 const FIRST_SYNC_DELAY: Duration = Duration::from_secs(3);
+
+/// Time between the start and opening the account page on the first
+/// run: after the main window is mapped, so that the dialog comes in
+/// front of it (Slint can't make it a transient window of the main one).
+const FIRST_RUN_DELAY: Duration = Duration::from_millis(500);
 
 /// How often the lists are read again while a full sync stores items, so
 /// that they fill up during the first sync.
@@ -188,6 +194,14 @@ struct App {
     reload_timer: slint::Timer,
     /// `--color-scheme`: dark (or light) instead of the desktop's.
     forced_dark: Option<bool>,
+    /// A login or logout of the account page, while it runs.
+    login: RefCell<Option<crate::login::Running>>,
+    account_ui: RefCell<account::AccountUi>,
+    /// Why the last sync had no app password, or had it refused: the
+    /// account page asks to log in again.
+    password_problem: RefCell<Option<String>>,
+    /// A sync finished since the start.
+    synced_once: Cell<bool>,
 }
 
 #[derive(Default)]
@@ -712,6 +726,7 @@ impl App {
             }
             "configure" => self.open_settings(),
             "settings-saved" => self.settings_saved(),
+            "login-event" => self.login_events(),
             "about" => self.status("ren: a native Nextcloud News reader"),
             _ => self.not_implemented(name),
         }
@@ -1077,9 +1092,9 @@ impl App {
         let account = match settings.account() {
             Ok(account) => account,
             Err(_) if !asked => return,
-            Err(err) => {
-                let first = err.lines().next().unwrap_or_default();
-                self.status_until_next(format!("No account: {first} (settings.toml)"));
+            Err(_) => {
+                self.status("Log in to your Nextcloud first");
+                self.open_account_page();
                 return;
             }
         };
@@ -1168,6 +1183,7 @@ impl App {
                             sync.password = None;
                         }
                     }
+                    self.check_password(&result);
                     self.set_syncing(false);
                     // The next automatic sync is an interval after this one.
                     if self.sync_timer.running() {
@@ -1188,6 +1204,32 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    /// After a sync: whether it had an app password that the server took.
+    /// If not, the account page asks to log in, and opens by itself after
+    /// the first sync since the start (the password may be in a keyring
+    /// that isn't there, as without a Secret Service).
+    fn check_password(&self, result: &Result<ren_sync::Report, sync_thread::Failure>) {
+        let problem = match result {
+            Err(sync_thread::Failure::Password(err)) => {
+                Some(format!("The sync found no app password: {err}"))
+            }
+            Err(err) if err.unauthorized() => Some(
+                "The server refused the app password; it may have been revoked. Log in again."
+                    .to_owned(),
+            ),
+            Err(_) => return,
+            Ok(_) => None,
+        };
+        let first = !self.synced_once.replace(true);
+        let open = problem.is_some() && first;
+        *self.password_problem.borrow_mut() = problem;
+        if open {
+            self.open_account_page();
+        } else {
+            self.refresh_settings_dialog();
         }
     }
 
@@ -1785,6 +1827,10 @@ fn run_window(
         settings_watch: RefCell::new(None),
         reload_timer: slint::Timer::default(),
         forced_dark: dark,
+        login: RefCell::new(None),
+        account_ui: RefCell::default(),
+        password_problem: RefCell::new(None),
+        synced_once: Cell::new(false),
     });
     app.restore();
     match &settings {
@@ -1817,7 +1863,16 @@ fn run_window(
     if let Some(problem) = state_problem {
         eprintln!("ren: the window's state: {problem}");
     }
-    if app.database.is_some() && app.reader.borrow().tree_rows().len() <= 2 {
+    // The first run: logging in comes first.
+    let no_account = app.current_settings().account().is_err();
+    if app.auto_sync && no_account {
+        let weak = Rc::downgrade(&app);
+        slint::Timer::single_shot(FIRST_RUN_DELAY, move || {
+            if let Some(app) = weak.upgrade() {
+                app.open_account_page();
+            }
+        });
+    } else if app.database.is_some() && app.reader.borrow().tree_rows().len() <= 2 {
         app.status_until_next(
             "No feeds yet: Feed → Fetch All Feeds (Ctrl+L) syncs with the server",
         );
@@ -1960,6 +2015,7 @@ fn run_window(
     let result = slint::run_event_loop_until_quit();
     window.hide()?;
     app.dialog.borrow_mut().take();
+    app.login.borrow_mut().take();
     *app.tray.borrow_mut() = None;
     if let Err(err) = app.saved.borrow_mut().save() {
         eprintln!("ren: saving the window's state: {err}");

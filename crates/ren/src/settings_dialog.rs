@@ -117,6 +117,11 @@ impl Dialog {
         !self.query.trim().is_empty()
     }
 
+    /// Whether the account page is shown: its category, not searching.
+    pub fn account_page(&self) -> bool {
+        !self.searching() && self.category == Category::Account
+    }
+
     /// The rows for the search, or else the category shown.
     pub fn rows(&self, settings: &Settings) -> Vec<Row> {
         let mut rows = Vec::new();
@@ -248,6 +253,7 @@ mod tests {
             ]
         );
         assert_eq!(dialog.category(), Category::Account);
+        assert!(dialog.account_page());
     }
 
     #[test]
@@ -259,6 +265,7 @@ mod tests {
             [schema::PASSWORD_COMMAND]
         );
         dialog.select(Category::Sync);
+        assert!(!dialog.account_page());
         let rows = dialog.rows(&settings("[sync]\ninterval-minutes = 5\n"));
         assert_eq!(
             keys(&rows),
@@ -315,6 +322,7 @@ mod tests {
         dialog.select(Category::Window);
         dialog.search("icon");
         assert!(dialog.searching());
+        assert!(!dialog.account_page());
         let rows = dialog.rows(&Settings::default());
         assert_eq!(
             keys(&rows),

@@ -256,6 +256,186 @@ component SettingRowView inherits VerticalLayout {
     }
 }
 
+// The account page, made by hand: logged in, logging in (in the browser,
+// or with an app password), or waiting for the browser.
+component AccountPage inherits VerticalLayout {
+    // 0 logged out, 1 waiting for the browser, 2 logged in, 3 busy.
+    in property <int> state;
+    in property <string> server;
+    in property <string> user;
+    // Who is logged in where, and where the app password comes from.
+    in property <string> summary;
+    in property <string> message;
+    in property <bool> message-error;
+    in property <string> login-url;
+    in property <bool> editable;
+    callback log-in-browser(server: string);
+    callback log-in-password(server: string, user: string, password: string);
+    callback open-login-url();
+    callback cancel-login();
+    callback log-out();
+
+    spacing: 10px;
+
+    Text {
+        text: "Nextcloud account";
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+
+    if root.state == 2: VerticalLayout {
+        spacing: 10px;
+
+        Text {
+            text: root.summary;
+            wrap: word-wrap;
+            color: Palette.foreground;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Button {
+                text: "Log Out";
+                enabled: root.editable;
+                clicked => {
+                    root.log-out();
+                }
+            }
+        }
+
+        Text {
+            text: "Logging out revokes ren's app password on the server and removes it from this computer. The articles stored here stay.";
+            wrap: word-wrap;
+            color: Palette.foreground;
+            opacity: 0.75;
+        }
+    }
+
+    if root.state == 1: VerticalLayout {
+        spacing: 10px;
+
+        Text {
+            text: "Waiting for the browser… Log in to your Nextcloud in the page that opened, and grant ren access.";
+            wrap: word-wrap;
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: root.login-url;
+            wrap: word-wrap;
+            font-size: 0.85rem;
+            color: Palette.foreground;
+            opacity: 0.6;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: 8px;
+
+            Button {
+                text: "Open the Page Again";
+                clicked => {
+                    root.open-login-url();
+                }
+            }
+
+            Button {
+                text: "Cancel";
+                clicked => {
+                    root.cancel-login();
+                }
+            }
+        }
+    }
+
+    if root.state == 0 || root.state == 3: VerticalLayout {
+        spacing: 8px;
+
+        Text {
+            text: "Log in to your Nextcloud with the News app. Your browser opens its login page, where you can also use two-factor authentication or single sign-on; ren gets an app password of its own, which your Nextcloud lists under Security.";
+            wrap: word-wrap;
+            color: Palette.foreground;
+            opacity: 0.75;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            server-field := LineEdit {
+                horizontal-stretch: 1;
+                enabled: root.state == 0 && root.editable;
+                text: root.server;
+                placeholder-text: "Server, e.g. cloud.example.org";
+                accepted => {
+                    root.log-in-browser(self.text);
+                }
+            }
+
+            Button {
+                text: "Log In in the Browser";
+                primary: true;
+                enabled: root.state == 0 && root.editable;
+                clicked => {
+                    root.log-in-browser(server-field.text);
+                }
+            }
+        }
+
+        Rectangle {
+            height: 6px;
+        }
+
+        Text {
+            text: "Or with an app password you created in your Nextcloud (Personal settings → Security → Devices & sessions):";
+            wrap: word-wrap;
+            color: Palette.foreground;
+            opacity: 0.75;
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            user-field := LineEdit {
+                horizontal-stretch: 1;
+                enabled: root.state == 0 && root.editable;
+                text: root.user;
+                placeholder-text: "Login name";
+            }
+
+            password-field := LineEdit {
+                horizontal-stretch: 1;
+                enabled: root.state == 0 && root.editable;
+                input-type: password;
+                placeholder-text: "App password";
+                accepted => {
+                    root.log-in-password(server-field.text, user-field.text, self.text);
+                }
+            }
+
+            Button {
+                text: "Log In";
+                enabled: root.state == 0 && root.editable;
+                clicked => {
+                    root.log-in-password(server-field.text, user-field.text, password-field.text);
+                }
+            }
+        }
+    }
+
+    if root.message != "": Text {
+        text: root.message;
+        wrap: word-wrap;
+        color: root.message-error ? Theme.status-new : Palette.foreground;
+    }
+
+    Rectangle {
+        height: 1px;
+        background: Theme.separator;
+    }
+}
+
 export component SettingsWindow inherits Window {
     in property <[string]> categories;
     // -1 while searching.
@@ -267,6 +447,21 @@ export component SettingsWindow inherits Window {
     in property <string> problem;
     in property <bool> editable: true;
     in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+
+    // The account page, above the account's other settings.
+    in property <bool> account-page;
+    in property <int> account-state;
+    in property <string> account-server;
+    in property <string> account-user;
+    in property <string> account-summary;
+    in property <string> account-message;
+    in property <bool> account-message-error;
+    in property <string> login-url;
+    callback log-in-browser(server: string);
+    callback log-in-password(server: string, user: string, password: string);
+    callback open-login-url();
+    callback cancel-login();
+    callback log-out();
 
     callback search-edited(text: string);
     callback category-selected(index: int);
@@ -367,6 +562,32 @@ export component SettingsWindow inherits Window {
                     padding: 20px;
                     spacing: 14px;
                     alignment: start;
+
+                    if root.account-page: AccountPage {
+                        state: root.account-state;
+                        server: root.account-server;
+                        user: root.account-user;
+                        summary: root.account-summary;
+                        message: root.account-message;
+                        message-error: root.account-message-error;
+                        login-url: root.login-url;
+                        editable: root.editable;
+                        log-in-browser(server) => {
+                            root.log-in-browser(server);
+                        }
+                        log-in-password(server, user, password) => {
+                            root.log-in-password(server, user, password);
+                        }
+                        open-login-url => {
+                            root.open-login-url();
+                        }
+                        cancel-login => {
+                            root.cancel-login();
+                        }
+                        log-out => {
+                            root.log-out();
+                        }
+                    }
 
                     if root.no-match: Text {
                         text: "No settings match the search.";

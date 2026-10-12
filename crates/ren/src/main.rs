@@ -10,6 +10,7 @@ mod feed_tree;
 mod hash;
 mod http;
 mod item_list;
+mod login;
 mod procstat;
 mod reader;
 mod remote;
