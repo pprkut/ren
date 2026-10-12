@@ -6,8 +6,9 @@
 
 use ren_settings::schema::{self, Category};
 use ren_settings::{Settings, Value};
+use slint::ComponentHandle;
 
-use super::{App, SettingsWindow};
+use super::{App, ConfirmWindow, SettingsWindow};
 use crate::login::{self, Event, Request};
 
 /// What the account page shows besides the settings.
@@ -68,7 +69,7 @@ impl App {
         let this = self.this.clone();
         window.on_log_out(move || {
             if let Some(app) = this.upgrade() {
-                app.log_out();
+                app.confirm_log_out();
             }
         });
     }
@@ -80,6 +81,88 @@ impl App {
             return;
         }
         self.run_login(request, "Logging in…");
+    }
+
+    /// Asks in a window of its own before logging out: revoking the app
+    /// password can't be undone.
+    fn confirm_log_out(&self) {
+        if let Some(confirm) = &*self.confirm.borrow() {
+            let _ = confirm.show();
+            return;
+        }
+        let Some(account) = self.current_settings().account().ok() else {
+            return;
+        };
+        let confirm = match ConfirmWindow::new() {
+            Ok(confirm) => confirm,
+            Err(err) => {
+                self.account_message(&format!("Logging out failed: {err}"), true);
+                return;
+            }
+        };
+        if let Some(dark) = self.forced_dark {
+            confirm.set_forced_color_scheme(if dark {
+                slint::language::ColorScheme::Dark
+            } else {
+                slint::language::ColorScheme::Light
+            });
+        }
+        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
+        let (text, label) = if login::revokes(&account, env_password.as_deref()) {
+            (
+                "ren's app password will be revoked on the server and removed from this \
+                 computer. This can't be undone; ren needs a new login afterwards. The \
+                 articles stored here stay.",
+                "Revoke and Log Out",
+            )
+        } else {
+            (
+                "ren forgets the account here. The app password comes from outside ren, so \
+                 it isn't revoked on the server. The articles stored here stay.",
+                "Log Out",
+            )
+        };
+        confirm.set_window_title("Log Out – ren".into());
+        confirm.set_heading(format!("Log out {} on {}?", account.user, account.server).into());
+        confirm.set_text(text.into());
+        confirm.set_confirm_label(label.into());
+        let this = self.this.clone();
+        confirm.on_confirmed(move || {
+            if let Some(app) = this.upgrade() {
+                app.close_confirm();
+                app.log_out();
+            }
+        });
+        let this = self.this.clone();
+        confirm.on_cancelled(move || {
+            if let Some(app) = this.upgrade() {
+                app.close_confirm();
+            }
+        });
+        let this = self.this.clone();
+        confirm.window().on_close_requested(move || {
+            if let Some(app) = this.upgrade() {
+                app.close_confirm();
+            }
+            slint::CloseRequestResponse::HideWindow
+        });
+        if let Err(err) = confirm.show() {
+            eprintln!("ren: showing the question before logging out: {err}");
+        }
+        *self.confirm.borrow_mut() = Some(confirm);
+    }
+
+    /// Hides the question, and drops it: not from its own callback.
+    fn close_confirm(&self) {
+        if let Some(confirm) = &*self.confirm.borrow() {
+            let _ = confirm.hide();
+        }
+        let this = self.this.clone();
+        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            if let Some(app) = this.upgrade() {
+                app.confirm.borrow_mut().take();
+            }
+        });
     }
 
     fn log_out(&self) {

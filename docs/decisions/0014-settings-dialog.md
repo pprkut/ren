@@ -110,7 +110,10 @@ The Account category starts with a page made by hand:
   /ocs/v2.php/core/apppassword` with `OCS-APIRequest: true`; one that's
   revoked already counts as done), removes it from the Secret Service
   and unsets `account.user`. The server stays filled in, and so do the
-  articles stored. A password from `REN_APP_PASSWORD` or the
+  articles stored. It asks first, in a window of its own that the window
+  manager decorates (`ConfirmWindow`, made on demand like About ren):
+  "Revoke and Log Out" or Cancel (also Escape), as revoking can't be
+  undone. A password from `REN_APP_PASSWORD` or the
   password command isn't revoked: ren didn't create it, and it may be
   in use elsewhere. Nextcloud revokes only the app password a request
   logged in with, and answers 403 ("no app password in use") to one that

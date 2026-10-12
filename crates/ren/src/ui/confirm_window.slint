@@ -1,0 +1,77 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Button, Palette } from "std-widgets.slint";
+
+// A question before something that can't be undone, in a window of its
+// own: the window manager decorates it, so it can be moved. Escape and
+// closing the window cancel.
+export component ConfirmWindow inherits Window {
+    in property <string> window-title;
+    in property <string> heading;
+    in property <string> text;
+    in property <string> confirm-label;
+    in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+    callback confirmed();
+    callback cancelled();
+
+    changed forced-color-scheme => {
+        Palette.color-scheme = root.forced-color-scheme;
+    }
+
+    title: root.window-title;
+    preferred-width: 440px;
+    // Wrapped text counts as one line in the preferred height.
+    preferred-height: 190px;
+    background: Palette.background;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.cancelled();
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+            Text {
+                text: root.heading;
+                font-size: 1.15rem;
+                font-weight: 700;
+                color: Palette.foreground;
+            }
+
+            Text {
+                vertical-stretch: 1;
+                text: root.text;
+                wrap: word-wrap;
+                color: Palette.foreground;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+
+                Button {
+                    text: "Cancel";
+                    clicked => {
+                        root.cancelled();
+                    }
+                }
+
+                Button {
+                    text: root.confirm-label;
+                    primary: true;
+                    clicked => {
+                        root.confirmed();
+                    }
+                }
+            }
+        }
+    }
+}

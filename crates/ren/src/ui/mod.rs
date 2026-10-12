@@ -205,6 +205,8 @@ struct App {
     synced_once: Cell<bool>,
     /// Help → About ren, while it is open.
     about: RefCell<Option<AboutWindow>>,
+    /// The question before logging out, while it is open.
+    confirm: RefCell<Option<ConfirmWindow>>,
 }
 
 #[derive(Default)]
@@ -1892,6 +1894,7 @@ fn run_window(
         password_problem: RefCell::new(None),
         synced_once: Cell::new(false),
         about: RefCell::new(None),
+        confirm: RefCell::new(None),
     });
     app.restore();
     match &settings {
