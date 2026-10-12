@@ -317,6 +317,26 @@ impl Settings {
         minutes(self.number(schema::KEEP_READ) * 24 * 60)
     }
 
+    /// A colour; `None` if it isn't set and has no default. Panics if
+    /// `key` isn't a colour.
+    pub fn colour(&self, key: &str) -> Option<schema::Colour> {
+        match self.get(key) {
+            Some(Value::Colour(colour)) => Some(colour),
+            None => None,
+            other => panic!("{key} is not a colour: {other:?}"),
+        }
+    }
+
+    /// Whether the list of articles goes above the article, not beside it.
+    pub fn list_above(&self) -> bool {
+        self.text(schema::ARRANGEMENT).as_deref() == Some("above")
+    }
+
+    /// The most disk space for the images of articles, in bytes.
+    pub fn image_cache_bytes(&self) -> u64 {
+        u64::try_from(self.number(schema::IMAGE_CACHE)).unwrap_or(0) * 1024 * 1024
+    }
+
     /// Whether ren shows an icon in the system tray.
     pub fn tray_icon(&self) -> bool {
         self.bool(schema::TRAY_ICON)
@@ -444,11 +464,11 @@ pub(crate) mod tests {
             description: "",
             category: schema::Category::Account,
             kind: Kind::Colour {
-                default: Colour {
+                default: Some(Colour {
                     red: 0,
                     green: 0,
                     blue: 0,
-                },
+                }),
             },
         },
         Setting {
@@ -703,6 +723,25 @@ pub(crate) mod tests {
         assert!(!tray("[window]\nclose-to-tray = true\ntray-icon = false\n").close_to_tray());
         assert!(defaults.load_images());
         assert!(defaults.keep_site_data());
+        assert!(!defaults.list_above());
+        assert_eq!(defaults.colour(schema::NEW_COLOUR), None);
+        assert_eq!(defaults.image_cache_bytes(), 100 * 1024 * 1024);
+        let list = Settings::parse(
+            "[list]\narrangement = \"above\"\nunread-colour = \"#00ff00\"\n\
+             [articles]\nimage-cache-mib = 20\n",
+        )
+        .unwrap()
+        .settings;
+        assert!(list.list_above());
+        assert_eq!(
+            list.colour(schema::UNREAD_COLOUR),
+            Some(schema::Colour {
+                red: 0,
+                green: 0xff,
+                blue: 0
+            })
+        );
+        assert_eq!(list.image_cache_bytes(), 20 * 1024 * 1024);
         assert_eq!(defaults.filter_lists().len(), 5);
         assert_eq!(defaults.unblocked_sites(), Vec::<String>::new());
         assert_eq!(
