@@ -108,7 +108,7 @@ component CategoryItem inherits Rectangle {
     }
 }
 
-// One setting: title, description and key on the left, the control and a
+// One setting: title and description on the left, the control and a
 // reset button on the right, flush with its edge; a list goes below them,
 // over the row's width.
 component SettingRowView inherits VerticalLayout {
@@ -154,13 +154,6 @@ component SettingRowView inherits VerticalLayout {
                 wrap: word-wrap;
                 color: Palette.foreground;
                 opacity: 0.75;
-            }
-
-            Text {
-                text: root.setting.key;
-                font-size: 0.85rem;
-                color: Palette.foreground;
-                opacity: 0.5;
             }
 
             if !root.setting.enabled: Text {
