@@ -731,6 +731,7 @@ impl App {
             "settings-saved" => self.settings_saved(),
             "login-event" => self.login_events(),
             "about" => self.open_about(),
+            "about-close" => self.close_about(),
             _ => self.not_implemented(name),
         }
     }
@@ -1572,6 +1573,53 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
     timer
 }
 
+/// Opens the settings dialog, shows its web page settings (the category
+/// with the most rows), closes it, opens and closes About ren, logging
+/// memory use at each step, then quits. After `CYCLE_DELAY`, steps
+/// `HIDDEN_STEP` apart; freed memory is given back before each step.
+fn start_settings_measurement(app: std::rc::Weak<App>) -> slint::Timer {
+    let timer = slint::Timer::default();
+    let started = Instant::now() + CYCLE_DELAY;
+    let mut step = 0;
+    timer.start(slint::TimerMode::Repeated, HIDDEN_STEP, move || {
+        let Some(app) = app.upgrade() else {
+            return;
+        };
+        if Instant::now() < started {
+            return;
+        }
+        crate::procstat::trim_heap();
+        match step {
+            0 => {
+                log_rss("at the start");
+                app.open_settings();
+            }
+            1 => {
+                log_rss("settings open");
+                app.with_dialog(|dialog| dialog.select(ren_settings::Category::Pages));
+            }
+            2 => {
+                log_rss("web pages shown");
+                app.close_settings();
+            }
+            3 => {
+                log_rss("settings closed");
+                app.open_about();
+            }
+            4 => {
+                log_rss("about open");
+                app.action("about-close");
+            }
+            5 => log_rss("about closed"),
+            _ => {
+                let _ = slint::quit_event_loop();
+            }
+        }
+        step += 1;
+    });
+    timer
+}
+
 /// Time before `--measure-sync` starts, and after the last sync.
 const MEASURE_SYNC_DELAY: Duration = Duration::from_secs(2);
 /// The syncs of `--measure-sync`: into a new database, the first one is
@@ -1793,6 +1841,7 @@ fn run_window(
     let measuring = options.measure
         || options.measure_sync
         || options.measure_hidden
+        || options.measure_settings
         || options.measure_tabs
         || options.autoscroll
         || options.cycle_articles.is_some();
@@ -1984,6 +2033,9 @@ fn run_window(
     let _measure_sync = options
         .measure_sync
         .then(|| start_sync_measurement(Rc::downgrade(&app)));
+    let _measure_settings = options
+        .measure_settings
+        .then(|| start_settings_measurement(Rc::downgrade(&app)));
     let _measure_hidden = options
         .measure_hidden
         .then(|| start_hidden_measurement(Rc::downgrade(&app), options.tab_urls.clone()));

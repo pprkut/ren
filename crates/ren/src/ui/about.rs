@@ -77,7 +77,7 @@ impl App {
     }
 
     /// Hides the About window, and drops it: not from its own callback.
-    fn close_about(&self) {
+    pub(super) fn close_about(&self) {
         if let Some(about) = &*self.about.borrow() {
             let _ = about.hide();
         }
