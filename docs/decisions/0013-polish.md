@@ -146,7 +146,10 @@ link and image under the pointer) and applies the answer
   document, not in device pixels relative to the view (a FIXME in its
   script crate), so the popup first opened elsewhere on a scrolled page.
   The box is scaled, and moved to the click that opened the drop-down
-  where it doesn't contain it. Context menus get the click's point.
+  where it doesn't contain it. For a context menu, Servo reports the
+  click's point in CSS pixels as if they were device pixels, so the menu
+  opened elsewhere at a scale factor other than 1; it opens where the
+  right click was.
 
 Controls of hidden tabs are dismissed, and a new one replaces the tab's
 older ones: Slint doesn't tell when a menu was closed without a choice.
@@ -261,19 +264,22 @@ By hand:
 
 - Closing to the tray on Plasma works; the licence of ksni is approved.
 - A drop-down on a real page (pecl.php.net) works, but opened in the
-  wrong place: the box Servo reports (above), fixed in 42f3394. No page
-  with `<optgroup>`s was at hand.
+  wrong place: the box Servo reports (above), fixed in 42f3394, which the
+  user confirmed. The context menu had the same problem (the point
+  Servo reports, above), fixed afterwards. No page with `<optgroup>`s
+  was at hand.
 - The window's size, position and maximised state weren't restored:
   closed maximised, it came back unmaximised; moved to another screen,
   it came back on the primary one (the maximised state, and the missing
-  normal size, above), fixed in e399b7b. To check again on KWin.
+  normal size, above), fixed in e399b7b. Confirmed on KWin, closed
+  maximised and hidden in the tray; not checked across screens yet.
 - Startup with a restored article costs what opening an article costs
   (`0010`: 16 MiB for the view); not measured on its own.
 
 ## Open
 
-- **The window's geometry on KWin** after the fix, and with two screens:
-  checked only under Openbox on one screen.
+- **The window's geometry across screens:** checked only under Openbox
+  on one screen and on KWin with the maximised state.
 - A drop-down opened by keyboard on a scrolled page still opens where
   Servo's box says (there is no click to place it by).
 - A context menu or drop-down closed without a choice isn't reported to
