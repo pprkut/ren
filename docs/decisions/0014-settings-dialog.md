@@ -7,7 +7,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 **Status:** done (2026-10-12), for review; checked in the container
 under Xvfb against a mock Nextcloud, not yet on the desktop (see "On the
-desktop"). Changed after the first review (see "After the review").
+desktop"). Changed after two reviews (see "After the review"); measured
+on the desktop.
 
 ## Context
 
@@ -33,10 +34,12 @@ Settings → Configure ren… opens a **window of its own**
   list, Articles, Web pages, Window), "Open Settings File" below them;
 - per setting a row generated from its descriptor: title, description,
   the key in the file (so the file and the dialog can be matched up), and
-  the control of its kind: a switch, a drop-down (choice), pictures for
-  the arrangement, a text field (number with its unit, text), a colour
-  picker, or a list editor (one item per line); "Reset to Default" when
-  the file sets it;
+  the control of its kind on the right, flush with its edge: a switch, a
+  drop-down (choice), pictures for the arrangement, a short field with
+  the number right-aligned and its unit after it, a text field, or a
+  colour picker; a list (one item per line) is edited below the
+  description, over the row's width; "Reset to Default" when the file
+  sets it;
 - while searching, the rows of all categories that match (every word in
   the title, description, key, category or an option's title), with the
   category as a heading; the category list shows the number of results
@@ -136,12 +139,16 @@ on the local machine).
 
 Help → About ren is a small window of its own: the version, the GPL
 notice, a link to the source, credits, Slint's "Made with Slint" badge
-(`AboutSlint`), and "Third-Party Licenses", which shows
-`THIRD-PARTY-NOTICES.html`, embedded in the binary, in the article view
-like an article (rendered by Blitz with `html-view`), with no item
-selected meanwhile. M11 generates that file with cargo-about; until
-then it is a page written by hand with the licences of the bundled
-Lucide icons and a note on the crates, to be replaced.
+(`AboutSlint`), and "Third-Party Licenses", which turns the window into
+a page of `THIRD-PARTY-NOTICES.html` (embedded in the binary), with
+Back to return. `notices.rs` turns the HTML into headings, paragraphs
+and licence texts, which keep their lines and are set in monospace; a
+`ListView` lays out only the blocks in view, and they exist only while
+the page is shown. Slint draws them, not Blitz: the page is the same
+with and without `html-view`, and costs no second HTML view. M11
+generates the file with cargo-about; until then it is a page written by
+hand with the licences of the bundled Lucide icons and a note on the
+crates, to be replaced.
 
 ## Choices
 
@@ -178,6 +185,18 @@ The first review asked for five changes, all made:
    "Theme's Colour" resets it.
 5. **The arrangement as pictures:** a small drawing of the window per
    arrangement, the one in effect outlined in the accent colour.
+
+The second review asked for four more:
+
+1. **One alignment for the controls:** everything in the control column
+   ends flush with its right edge; numbers are short fields with the
+   number right-aligned and the unit after it (the unit had a fixed,
+   left-aligned box), drop-downs and colour buttons have a fixed width,
+   text fields the column's.
+2. **The arrangement's description** doesn't name akregator.
+3. **Lists below the description,** over the row's width; their control
+   column only holds the reset button.
+4. **The licenses inside About ren** instead of the article view (above).
 
 ## Testing
 
@@ -228,23 +247,50 @@ engines (`FEATURES=renderer-software,servo`), three runs; RSS in MiB:
 | 2 | 29.8 | 33.2 | 33.2 | 30.8 | 31.9 | 30.8 |
 | 3 | 29.8 | 33.0 | 33.2 | 30.8 | 31.8 | 30.8 |
 
+After the second review, with the licenses page as a step of its own
+(the same setup):
+
+| run | at the start | settings open | web pages shown | settings closed | About open | licenses shown | About closed |
+|---|---|---|---|---|---|---|---|
+| 1 | 29.2 | 32.7 | 33.0 | 30.6 | 31.7 | 31.8 | 30.7 |
+| 2 | 30.0 | 33.5 | 33.8 | 31.3 | 32.4 | 32.6 | 31.5 |
+| 3 | 30.1 | 33.6 | 33.9 | 31.4 | 32.5 | 32.7 | 31.6 |
+
 The dialog costs 3.2–3.5 MiB while open (its window's buffer, the
-rows); 1.0 MiB stays after it closed (not broken down: probably glyphs
-and Slint's caches of the second window's fonts). About ren costs about
-1 MiB and gives it back. The watcher thread costs nothing measurable.
+rows); 1.0–1.4 MiB stays after it closed (not broken down: probably
+glyphs and Slint's caches of the second window's fonts). About ren
+costs about 1 MiB and gives it back; the licenses page 0.1–0.2 MiB with
+the short placeholder file (the generated one of M11 will be longer).
+The watcher thread costs nothing measurable.
+
+On the desktop (KDE on X11, release build with the default features, at
+e4e534f, before the second review), by the user:
+
+| run | at the start | settings open | web pages shown | settings closed | About open | About closed |
+|---|---|---|---|---|---|---|
+| 1 | 46.6 | 56.9 | 57.3 | 47.9 | 52.1 | 48.0 |
+| 2 | 47.4 | 57.4 | 57.7 | 48.3 | 52.5 | 48.4 |
+
+There the dialog costs 10.3–10.7 MiB while open, three times the
+container's, and About ren 4.1–4.5 MiB; 0.9–1.3 MiB stays after the
+dialog closed, as in the container, and About gives back all but
+0.1 MiB. The difference is likely the desktop's window size, scale
+factor and fonts (a larger window buffer for the software renderer, more
+glyphs); not broken down.
 
 ## On the desktop
 
 Not done yet; to check on the desktop (KDE):
 
-- `just measure-settings`: the table above with the default features.
+- `just measure-settings` again, for the licenses page (the table above
+  is from before it).
 - Log in through the browser with the real server: 2FA if enabled, the
   app password in KWallet (`just check-secret-service` says whether it's
   stored), the device "ren/0.1.0" in Nextcloud's security settings;
   restart (no question); log out (the device gone).
 - Edit `settings.toml` in an editor while ren runs: the change applies
   on save, an error shows in the status bar and the dialog.
-- Help → About ren → Third-Party Licenses, rendered by Blitz.
+- Help → About ren → Third-Party Licenses, and Back.
 
 ## Open
 

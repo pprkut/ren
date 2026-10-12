@@ -796,14 +796,18 @@ From here on every milestone ships with tests for what it adds.
   an app password by hand, Log Out revoking it; logins on a thread of
   their own; without a Secret Service the password lasts until ren
   quits and the page opens at the next start. It also opens on the first
-  run. About ren with "Third-Party Licenses" in the article view; the
-  notices file is a placeholder until M11. In the container: the dialog
+  run. About ren with "Third-Party Licenses"; the notices file is a
+  placeholder until M11. In the container: the dialog
   3.2–3.5 MiB while open, 1.0 MiB after closing it; About 1 MiB, given
   back. Not yet checked on the desktop (`just measure-settings`, a real
   login with KWallet). After the review: settings that need a switch
   are disabled while it's off (`Setting::requires`), the category list
   counts and narrows search results, colour pickers of ren's own, and
-  the arrangement chosen by pictures.
+  the arrangement chosen by pictures; after the second, the controls
+  flush right, lists below their description, and the licenses on a
+  page of About ren (drawn by Slint, `notices.rs`). On the desktop the
+  dialog costs 10.3–10.7 MiB while open, 0.9–1.3 after closing it;
+  About 4.1–4.5 MiB, given back.
 
 ### Phase 4 — Hardening
 
