@@ -331,8 +331,12 @@ fn setting_row(row: &Row, theme: &impl Fn(&str) -> slint::Color) -> SettingRow {
             item.kind = 0;
             item.on = *on;
         }
-        Control::Choice { options, index } => {
-            item.kind = 1;
+        Control::Choice { options, index } | Control::Pictures { options, index } => {
+            item.kind = if matches!(row.control, Control::Pictures { .. }) {
+                6
+            } else {
+                1
+            };
             let options: Vec<SharedString> = options.iter().map(|&o| o.into()).collect();
             item.options = ModelRc::new(VecModel::from(options));
             item.choice = i32::try_from(*index).unwrap_or(0);
