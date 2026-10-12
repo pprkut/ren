@@ -3,7 +3,7 @@
 
 import { Button, ComboBox, LineEdit, Palette, ScrollView, Switch, TextEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { ArrangementChoice, ColourButton } from "setting_controls.slint";
+import { ArrangementChoice, ColourButton, NumberField } from "setting_controls.slint";
 
 // A setting as the dialog shows it, made from its descriptor.
 export struct SettingRow {
@@ -234,11 +234,29 @@ component SettingRowView inherits VerticalLayout {
                     }
                 }
 
-                // A number is short, and right-aligned like the column; text
-                // takes the column's width.
-                if root.setting.kind == 2 || root.setting.kind == 3: LineEdit {
-                    width: root.setting.kind == 2 ? 100px : 280px;
-                    horizontal-alignment: root.setting.kind == 2 ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                // A number with its unit inside the field.
+                if root.setting.kind == 2: NumberField {
+                    enabled: root.active;
+                    text: root.setting.input;
+                    unit: root.setting.unit;
+                    accepted(text) => {
+                        root.accepted(text);
+                    }
+                    // Applied when the focus leaves it, too.
+                    changed has-focus => {
+                        if !self.has-focus && self.text != root.setting.input {
+                            root.accepted(self.text);
+                        }
+                    }
+                    property <string> input: root.setting.input;
+                    changed input => {
+                        self.text = self.input;
+                    }
+                }
+
+                // Text takes the column's width.
+                if root.setting.kind == 3: LineEdit {
+                    width: 280px;
                     enabled: root.active;
                     text: root.setting.input;
                     placeholder-text: root.setting.placeholder;
@@ -257,12 +275,6 @@ component SettingRowView inherits VerticalLayout {
                     }
                 }
 
-                if root.setting.kind == 2: Text {
-                    text: root.setting.unit;
-                    vertical-alignment: center;
-                    color: Palette.foreground;
-                    opacity: 0.75;
-                }
             }
 
             if root.setting.modified: HorizontalLayout {
