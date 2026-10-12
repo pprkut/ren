@@ -7,8 +7,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 **Status:** done (2026-10-12), for review; checked in the container
 under Xvfb against a mock Nextcloud, not yet on the desktop (see "On the
-desktop"). Changed after two reviews (see "After the review"); measured
-on the desktop.
+desktop"). Changed after three reviews (see "After the review");
+measured on the desktop.
 
 ## Context
 
@@ -32,12 +32,11 @@ Settings → Configure ren… opens a **window of its own**
 
 - a search field and the categories on the left (Account, Sync, Article
   list, Articles, Web pages, Window), "Open Settings File" below them;
-- per setting a row generated from its descriptor: title, description,
-  the key in the file (so the file and the dialog can be matched up), and
-  the control of its kind on the right, flush with its edge: a switch, a
-  drop-down (choice), pictures for the arrangement, a short field with
-  the number right-aligned and its unit after it, a text field, or a
-  colour picker; a list (one item per line) is edited below the
+- per setting a row generated from its descriptor: title and
+  description, and the control of its kind on the right, flush with its
+  edge: a switch, a drop-down (choice), pictures for the arrangement, a
+  number field with its unit inside, after the number (`NumberField`), a
+  text field, or a colour picker; a list (one item per line) is edited below the
   description, over the row's width; "Reset to Default" when the file
   sets it;
 - while searching, the rows of all categories that match (every word in
@@ -197,6 +196,16 @@ The second review asked for four more:
 3. **Lists below the description,** over the row's width; their control
    column only holds the reset button.
 4. **The licenses inside About ren** instead of the article view (above).
+
+The third review asked for two more:
+
+1. **The unit inside the number field,** after the number, as
+   akregator's and Zed's settings show it (like a spin box's suffix), so
+   the number fields line up whatever their unit. Slint's `LineEdit` has
+   no suffix, so `NumberField` draws a field like it from the palette.
+2. **No keys in the dialog:** the rows showed each setting's key in the
+   file under its description; Zed's dialog doesn't, and for most users
+   it is noise. The search still finds a setting by its key.
 
 ## Testing
 

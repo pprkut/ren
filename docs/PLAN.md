@@ -805,7 +805,8 @@ From here on every milestone ships with tests for what it adds.
   counts and narrows search results, colour pickers of ren's own, and
   the arrangement chosen by pictures; after the second, the controls
   flush right, lists below their description, and the licenses on a
-  page of About ren (drawn by Slint, `notices.rs`). On the desktop the
+  page of About ren (drawn by Slint, `notices.rs`); after the third,
+  units inside the number fields and no keys in the rows. On the desktop the
   dialog costs 10.3–10.7 MiB while open, 0.9–1.3 after closing it;
   About 4.1–4.5 MiB, given back.
 
