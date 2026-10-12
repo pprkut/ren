@@ -11,7 +11,9 @@ use std::time::Duration;
 use ren_settings::Value;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
-use super::{App, CategoryEntry, SettingRow, SettingsWindow};
+use ren_settings::schema;
+
+use super::{App, CategoryEntry, SettingRow, SettingsWindow, Theme};
 use crate::settings_dialog::{Control, Dialog, Edit, Row};
 
 /// The time after the settings file was saved until it is read: editors
@@ -119,6 +121,15 @@ impl App {
             app(&|app| app.settings_edit(&key, |dialog| dialog.input(&key, &text)));
         });
         let app = with.clone();
+        window.on_colour_picked(move |key, colour| {
+            let colour = ren_settings::Colour {
+                red: colour.red(),
+                green: colour.green(),
+                blue: colour.blue(),
+            };
+            app(&|app| app.settings_edit(&key, |dialog| dialog.pick_colour(&key, colour)));
+        });
+        let app = with.clone();
         window.on_reset(move |key| {
             app(&|app| app.settings_edit(&key, |dialog| dialog.reset(&key)));
         });
@@ -208,16 +219,27 @@ impl App {
             return;
         };
         let rows = dialog.model.rows(&settings);
+        // The theme's status colours, as the main window has them (light or
+        // dark).
+        let main = self.window();
+        let theme_colours = main.global::<Theme>();
+        let theme = |key: &str| match key {
+            schema::NEW_COLOUR => theme_colours.get_default_new(),
+            schema::UNREAD_COLOUR => theme_colours.get_default_unread(),
+            _ => slint::Color::default(),
+        };
         let keys: Vec<&'static str> = rows.iter().map(|row| row.setting.key).collect();
         if keys == dialog.keys {
             // In place, so that the fields keep the focus.
             for (i, row) in rows.iter().enumerate() {
-                dialog.rows.set_row_data(i, setting_row(row));
+                dialog.rows.set_row_data(i, setting_row(row, &theme));
             }
         } else {
-            dialog
-                .rows
-                .set_vec(rows.iter().map(setting_row).collect::<Vec<_>>());
+            dialog.rows.set_vec(
+                rows.iter()
+                    .map(|row| setting_row(row, &theme))
+                    .collect::<Vec<_>>(),
+            );
             dialog.keys = keys;
         }
         let window = &dialog.window;
@@ -288,7 +310,9 @@ pub(super) fn file_problem(problems: &str) -> String {
     )
 }
 
-fn setting_row(row: &Row) -> SettingRow {
+/// A row as the window shows it; `theme` gives the theme's colour of an
+/// unset colour setting.
+fn setting_row(row: &Row, theme: &impl Fn(&str) -> slint::Color) -> SettingRow {
     let setting = row.setting;
     let mut item = SettingRow {
         key: setting.key.into(),
@@ -323,11 +347,11 @@ fn setting_row(row: &Row) -> SettingRow {
         }
         Control::Colour(colour) => {
             item.kind = 4;
-            item.placeholder = "The theme's colour".into();
-            if let Some(colour) = colour {
-                item.has_colour = true;
-                item.colour = slint::Color::from_rgb_u8(colour.red, colour.green, colour.blue);
-            }
+            item.has_colour = colour.is_some();
+            item.colour = match colour {
+                Some(colour) => slint::Color::from_rgb_u8(colour.red, colour.green, colour.blue),
+                None => theme(setting.key),
+            };
         }
         Control::List => item.kind = 5,
     }

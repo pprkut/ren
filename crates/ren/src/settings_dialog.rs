@@ -268,6 +268,17 @@ impl Dialog {
         }
     }
 
+    /// A colour was picked.
+    pub fn pick_colour(&mut self, key: &str, colour: Colour) -> Edit {
+        match schema::find(self.table, key).map(|setting| &setting.kind) {
+            Some(Kind::Colour { .. }) => {
+                self.invalid.retain(|invalid, _| *invalid != key);
+                Edit::Set(Value::Colour(colour))
+            }
+            _ => Edit::Invalid,
+        }
+    }
+
     /// A row was reset; what was typed into it is forgotten.
     pub fn reset(&mut self, key: &str) -> Edit {
         self.invalid.retain(|invalid, _| *invalid != key);
@@ -462,6 +473,24 @@ mod tests {
         );
         assert_eq!(dialog.choose(schema::ARRANGEMENT, 2), Edit::Invalid);
         assert_eq!(dialog.choose(schema::FEED_ICONS, 0), Edit::Invalid);
+        let orange = Colour {
+            red: 0xff,
+            green: 0x80,
+            blue: 0,
+        };
+        assert_eq!(dialog.input(schema::NEW_COLOUR, "orange"), Edit::Invalid);
+        assert_eq!(
+            dialog.pick_colour(schema::NEW_COLOUR, orange),
+            Edit::Set(Value::Colour(orange))
+        );
+        // What was typed before is forgotten.
+        dialog.select(Category::List);
+        assert_eq!(dialog.rows(&Settings::default())[1].error, None);
+        dialog.select(Category::Sync);
+        assert_eq!(
+            dialog.pick_colour(schema::FEED_ICONS, orange),
+            Edit::Invalid
+        );
         // Empty text unsets.
         assert_eq!(dialog.input(schema::PASSWORD_COMMAND, " "), Edit::Reset);
         assert_eq!(dialog.input(schema::NEW_COLOUR, ""), Edit::Reset);

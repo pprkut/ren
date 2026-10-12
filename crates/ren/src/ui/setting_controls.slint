@@ -1,0 +1,271 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Controls of the settings dialog that Slint doesn't have: a colour
+// picker.
+
+import { Button, LineEdit, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// Hue, saturation and value of a colour, picked on a square of saturation
+// and value and a bar of hues; with a few colours to start from, the
+// colour as #rrggbb, and the theme's colour.
+component ColourPicker inherits VerticalLayout {
+    // The colour to start from, and as #rrggbb, for the field.
+    in property <color> initial;
+    in property <string> hex;
+    callback picked(colour: color);
+    callback typed(text: string);
+    callback theme-colour();
+    callback cancel();
+
+    // The colour being picked.
+    in-out property <float> hue;
+    in-out property <float> saturation;
+    in-out property <float> value;
+    property <color> picking: hsv(root.hue, root.saturation, root.value);
+
+    // Starts from `colour`.
+    public function start(colour: color) {
+        let hsv = colour.to-hsv();
+        root.hue = hsv.hue;
+        root.saturation = hsv.saturation;
+        root.value = hsv.value;
+    }
+
+    // A popup's contents are made each time it opens.
+    init => {
+        root.start(root.initial);
+    }
+
+    padding: 10px;
+    spacing: 8px;
+
+    // Saturation from left to right, value from bottom to top.
+    square := Rectangle {
+        height: 150px;
+        border-radius: 3px;
+        clip: true;
+        background: hsv(root.hue, 1, 1);
+
+        Rectangle {
+            background: @linear-gradient(90deg, #ffffff 0%, #ffffff00 100%);
+        }
+
+        Rectangle {
+            background: @linear-gradient(180deg, #00000000 0%, #000000 100%);
+        }
+
+        Rectangle {
+            x: root.saturation * parent.width - self.width / 2;
+            y: (1 - root.value) * parent.height - self.height / 2;
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            border-width: 2px;
+            border-color: root.value > 0.5 ? #000000 : #ffffff;
+        }
+
+        TouchArea {
+            function pick() {
+                root.saturation = max(0, min(1, self.mouse-x / parent.width));
+                root.value = 1 - max(0, min(1, self.mouse-y / parent.height));
+            }
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    self.pick();
+                }
+            }
+            moved => {
+                if self.pressed {
+                    self.pick();
+                }
+            }
+        }
+    }
+
+    hues := Rectangle {
+        height: 14px;
+        border-radius: 3px;
+        background: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, #00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%);
+
+        Rectangle {
+            x: root.hue / 360 * parent.width - self.width / 2;
+            width: 6px;
+            border-radius: 2px;
+            border-width: 2px;
+            border-color: #ffffff;
+        }
+
+        TouchArea {
+            function pick() {
+                root.hue = max(0, min(359.9, self.mouse-x / parent.width * 360));
+            }
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    self.pick();
+                }
+            }
+            moved => {
+                if self.pressed {
+                    self.pick();
+                }
+            }
+        }
+    }
+
+    // Breeze's colours, the theme's status colours among them.
+    HorizontalLayout {
+        spacing: 4px;
+
+        for preset in [#da4453, #f0505f, #f67400, #c9a200, #1e8449, #2ecc71, #3daee9, #1d99f3, #9b59b6, #7f8c8d]: Rectangle {
+            height: 18px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            background: preset;
+
+            TouchArea {
+                clicked => {
+                    root.start(preset);
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Rectangle {
+            width: 30px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            background: root.picking;
+        }
+
+        LineEdit {
+            horizontal-stretch: 1;
+            text: root.hex;
+            placeholder-text: "#rrggbb";
+            accepted(text) => {
+                root.typed(text);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 6px;
+
+        Button {
+            text: "Theme's Colour";
+            clicked => {
+                root.theme-colour();
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        Button {
+            text: "Cancel";
+            clicked => {
+                root.cancel();
+            }
+        }
+
+        Button {
+            text: "Apply";
+            primary: true;
+            clicked => {
+                root.picked(root.picking);
+            }
+        }
+    }
+}
+
+// The colour in effect, which opens the picker.
+export component ColourButton inherits Rectangle {
+    in property <color> colour;
+    // What the button says: the colour as #rrggbb, or that it's the
+    // theme's.
+    in property <string> label;
+    in property <string> hex;
+    in property <bool> enabled: true;
+    callback picked(colour: color);
+    callback typed(text: string);
+    callback theme-colour();
+
+    height: 30px;
+    width: 200px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.separator;
+    background: root.enabled && touch.has-hover ? Theme.hover : transparent;
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    HorizontalLayout {
+        padding: 4px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 36px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            background: root.colour;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.label;
+            vertical-alignment: center;
+            overflow: elide;
+            color: Palette.foreground;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            popup.show();
+        }
+    }
+
+    popup := PopupWindow {
+        x: root.width - self.width;
+        y: root.height + 4px;
+        width: 280px;
+        close-policy: close-on-click-outside;
+
+        Rectangle {
+            background: Palette.background;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 8px;
+            drop-shadow-color: #00000040;
+
+            ColourPicker {
+                initial: root.colour;
+                hex: root.hex;
+                picked(colour) => {
+                    popup.close();
+                    root.picked(colour);
+                }
+                typed(text) => {
+                    popup.close();
+                    root.typed(text);
+                }
+                theme-colour => {
+                    popup.close();
+                    root.theme-colour();
+                }
+                cancel => {
+                    popup.close();
+                }
+            }
+        }
+    }
+}

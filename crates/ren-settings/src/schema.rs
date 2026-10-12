@@ -515,8 +515,8 @@ pub static SETTINGS: &[Setting] = &[
     Setting {
         key: NEW_COLOUR,
         title: "Colour of new articles",
-        description: "The colour of articles that arrived with the latest sync, as #rrggbb. \
-                      Unset, it is a red that suits the light or dark colour scheme.",
+        description: "The colour of articles that arrived with the latest sync (#rrggbb in \
+                      the file). Unset, it is a red that suits the light or dark colour scheme.",
         category: Category::List,
         requires: None,
         kind: Kind::Colour { default: None },
@@ -524,8 +524,8 @@ pub static SETTINGS: &[Setting] = &[
     Setting {
         key: UNREAD_COLOUR,
         title: "Colour of unread articles",
-        description: "The colour of unread articles, as #rrggbb. Unset, it is a green that \
-                      suits the light or dark colour scheme.",
+        description: "The colour of unread articles (#rrggbb in the file). Unset, it is a \
+                      green that suits the light or dark colour scheme.",
         category: Category::List,
         requires: None,
         kind: Kind::Colour { default: None },

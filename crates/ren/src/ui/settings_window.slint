@@ -3,6 +3,7 @@
 
 import { Button, ComboBox, LineEdit, Palette, ScrollView, Switch, TextEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { ColourButton } from "setting_controls.slint";
 
 // A setting as the dialog shows it, made from its descriptor.
 export struct SettingRow {
@@ -21,6 +22,7 @@ export struct SettingRow {
     input: string,
     unit: string,
     placeholder: string,
+    // A colour: set in the file; else `colour` is the theme's.
     has-colour: bool,
     colour: color,
     // The file sets it, so it can be reset.
@@ -113,6 +115,7 @@ component SettingRowView inherits VerticalLayout {
     callback toggled(on: bool);
     callback chosen(index: int);
     callback accepted(text: string);
+    callback colour-picked(colour: color);
     callback reset();
 
     // Controls can be changed: the file has no errors, and the switch the
@@ -210,17 +213,23 @@ component SettingRowView inherits VerticalLayout {
                     }
                 }
 
-                if root.setting.kind == 4 && root.setting.has-colour: Rectangle {
-                    width: 24px;
-                    height: 24px;
-                    y: (parent.height - self.height) / 2;
-                    border-radius: 4px;
-                    border-width: 1px;
-                    border-color: Theme.separator;
-                    background: root.setting.colour;
+                if root.setting.kind == 4: ColourButton {
+                    enabled: root.active;
+                    colour: root.setting.colour;
+                    hex: root.setting.input;
+                    label: root.setting.has-colour ? root.setting.input : "The theme's colour";
+                    picked(colour) => {
+                        root.colour-picked(colour);
+                    }
+                    typed(text) => {
+                        root.accepted(text);
+                    }
+                    theme-colour => {
+                        root.reset();
+                    }
                 }
 
-                if root.setting.kind >= 2 && root.setting.kind <= 4: LineEdit {
+                if root.setting.kind == 2 || root.setting.kind == 3: LineEdit {
                     horizontal-stretch: 1;
                     enabled: root.active;
                     text: root.setting.input;
@@ -508,6 +517,7 @@ export component SettingsWindow inherits Window {
     callback toggled(key: string, on: bool);
     callback chosen(key: string, index: int);
     callback input-accepted(key: string, text: string);
+    callback colour-picked(key: string, colour: color);
     callback reset(key: string);
     callback open-file();
 
@@ -646,6 +656,9 @@ export component SettingsWindow inherits Window {
                         }
                         accepted(text) => {
                             root.input-accepted(row.key, text);
+                        }
+                        colour-picked(colour) => {
+                            root.colour-picked(row.key, colour);
                         }
                         reset => {
                             root.reset(row.key);
