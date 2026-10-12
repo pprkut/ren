@@ -761,7 +761,8 @@ From here on every milestone ships with tests for what it adds.
   KWin (winit asks before the window manager manages the window) and
   drop-downs placed by the box Servo reports, which is relative to the
   document; both fixed.
-- **M8b — Settings dialog and account setup.** A Zed-style settings
+- **M8b — Settings dialog and account setup.** *(done; see
+  `docs/decisions/0014-settings-dialog.md`)* A Zed-style settings
   dialog in ren's own style: search field, category list, rows of title,
   description and control generated from the setting descriptors, live
   apply, an "Open settings file" action, and reset to default per setting.
@@ -779,6 +780,27 @@ From here on every milestone ships with tests for what it adds.
   GPL notice, a link to the source, credits (Slint, Blitz, Servo, the
   icons) and a "Third-party licenses" view showing the notices from M11
   (rendered like an article), embedded in the binary.
+
+  *Result:* the dialog is a window of its own, made when it opens: a
+  search, the categories, rows generated from the descriptors
+  (`settings_dialog.rs`, tested) with a switch, drop-down, text field
+  or list editor and Reset to Default; every change written to the
+  file and applied at once, invalid input kept with its error, a file
+  with errors shown and left alone. New settings `list.arrangement`
+  (the View menu changes it), `list.new-colour` and
+  `list.unread-colour` (unset: the theme's), `articles.image-cache-mib`.
+  The file is watched with inotify (`ren_settings::watch`, a thread on
+  libc) and read 100 ms after it was saved; the reload on activation is
+  gone. The account page: Login Flow v2 (`nextcloud_news::LoginFlow`;
+  the login page and poll endpoint must be https or on the server),
+  an app password by hand, Log Out revoking it; logins on a thread of
+  their own; without a Secret Service the password lasts until ren
+  quits and the page opens at the next start. It also opens on the first
+  run. About ren with "Third-Party Licenses" in the article view; the
+  notices file is a placeholder until M11. In the container: the dialog
+  3.2–3.5 MiB while open, 1.0 MiB after closing it; About 1 MiB, given
+  back. Not yet checked on the desktop (`just measure-settings`, a real
+  login with KWallet).
 
 ### Phase 4 — Hardening
 
