@@ -25,6 +25,7 @@ pub struct Setting {
 pub enum Category {
     Account,
     Sync,
+    List,
     Articles,
     Pages,
     Window,
@@ -35,6 +36,7 @@ impl Category {
         match self {
             Category::Account => "Account",
             Category::Sync => "Sync",
+            Category::List => "Article list",
             Category::Articles => "Articles",
             Category::Pages => "Web pages",
             Category::Window => "Window",
@@ -68,8 +70,10 @@ pub enum Kind {
         /// Checks a value that isn't empty; the error says what's wrong.
         check: Option<Check>,
     },
-    /// A colour as `#rrggbb`.
-    Colour { default: Colour },
+    /// A colour as `#rrggbb`. Without a default, the setting is unset
+    /// until the user sets it, and the app uses a colour of its own (e.g.
+    /// one for light and one for dark mode).
+    Colour { default: Option<Colour> },
     /// A list of strings, an array in the file. Empty strings are left
     /// out.
     List {
@@ -152,7 +156,7 @@ impl Setting {
             Kind::Choice { default, .. } => Some(Value::Text((*default).to_owned())),
             Kind::Number { default, .. } => Some(Value::Number(*default)),
             Kind::Text { default, .. } => default.map(|text| Value::Text(text.to_owned())),
-            Kind::Colour { default } => Some(Value::Colour(*default)),
+            Kind::Colour { default } => default.map(Value::Colour),
             Kind::List { default, .. } => Some(Value::List(
                 default.iter().map(|item| (*item).to_owned()).collect(),
             )),
@@ -198,6 +202,71 @@ impl Setting {
         }
     }
 
+    /// Whether the setting matches a search of the settings dialog: each
+    /// word of `query` is in its title, description, key, category or the
+    /// title of one of its options, in any case.
+    pub fn matches(&self, query: &str) -> bool {
+        let mut haystack = format!(
+            "{} {} {} {}",
+            self.title,
+            self.description,
+            self.key,
+            self.category.title()
+        );
+        if let Kind::Choice { options, .. } = &self.kind {
+            for option in *options {
+                haystack.push(' ');
+                haystack.push_str(option.title);
+            }
+        }
+        let haystack = haystack.to_lowercase();
+        query
+            .to_lowercase()
+            .split_whitespace()
+            .all(|word| haystack.contains(word))
+    }
+
+    /// Reads what the user typed into the settings dialog: a number, a
+    /// colour (`#` optional), text, a choice's value, or a list with one
+    /// item per line. `None` for empty text or colour, which unsets the
+    /// setting. The value is checked.
+    pub fn parse_input(&self, input: &str) -> Result<Option<Value>, String> {
+        let trimmed = input.trim();
+        let value = match &self.kind {
+            Kind::Switch { .. } => match trimmed {
+                "true" => Value::Bool(true),
+                "false" => Value::Bool(false),
+                _ => return Err("must be on or off".to_owned()),
+            },
+            Kind::Number { .. } => Value::Number(
+                trimmed
+                    .parse()
+                    .map_err(|_| "must be a whole number".to_owned())?,
+            ),
+            Kind::Choice { .. } => Value::Text(trimmed.to_owned()),
+            Kind::Text { .. } if trimmed.is_empty() => return Ok(None),
+            Kind::Text { .. } => Value::Text(trimmed.to_owned()),
+            Kind::Colour { .. } if trimmed.is_empty() => return Ok(None),
+            Kind::Colour { .. } => {
+                let hex = trimmed.strip_prefix('#').unwrap_or(trimmed);
+                Value::Colour(
+                    Colour::parse(&format!("#{hex}"))
+                        .ok_or_else(|| "must be a colour as #rrggbb".to_owned())?,
+                )
+            }
+            Kind::List { .. } => Value::List(
+                input
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            ),
+        };
+        self.check(&value)?;
+        Ok(Some(value))
+    }
+
     /// What the file must contain, for error messages.
     fn expected(&self) -> &'static str {
         match self.kind {
@@ -236,6 +305,18 @@ impl Setting {
 }
 
 impl Value {
+    /// The value as the settings dialog shows it for editing, the reverse
+    /// of [`Setting::parse_input`]: a list has one item per line.
+    pub fn to_input(&self) -> String {
+        match self {
+            Value::Bool(b) => b.to_string(),
+            Value::Number(n) => n.to_string(),
+            Value::Text(text) => text.clone(),
+            Value::Colour(colour) => colour.to_string(),
+            Value::List(items) => items.join("\n"),
+        }
+    }
+
     /// The value as written to the file.
     pub(crate) fn to_toml(&self) -> toml_edit::Value {
         match self {
@@ -259,7 +340,11 @@ pub const PASSWORD_COMMAND: &str = "account.password-command";
 pub const SYNC_INTERVAL: &str = "sync.interval-minutes";
 pub const KEEP_READ: &str = "sync.keep-read-days";
 pub const FEED_ICONS: &str = "sync.feed-icons";
+pub const ARRANGEMENT: &str = "list.arrangement";
+pub const NEW_COLOUR: &str = "list.new-colour";
+pub const UNREAD_COLOUR: &str = "list.unread-colour";
 pub const LOAD_IMAGES: &str = "articles.load-images";
+pub const IMAGE_CACHE: &str = "articles.image-cache-mib";
 pub const KEEP_SITE_DATA: &str = "pages.keep-site-data";
 pub const BLOCK_CONTENT: &str = "pages.block-content";
 pub const FILTER_LISTS: &str = "pages.filter-lists";
@@ -396,6 +481,43 @@ pub static SETTINGS: &[Setting] = &[
         kind: Kind::Switch { default: true },
     },
     Setting {
+        key: ARRANGEMENT,
+        title: "Arrangement",
+        description: "Where the list of articles goes: beside the article, with two lines per \
+                      article, or above it, as a table (akregator's arrangement). Also in the \
+                      View menu.",
+        category: Category::List,
+        kind: Kind::Choice {
+            options: &[
+                Choice {
+                    value: "beside",
+                    title: "Beside the article",
+                },
+                Choice {
+                    value: "above",
+                    title: "Above the article",
+                },
+            ],
+            default: "beside",
+        },
+    },
+    Setting {
+        key: NEW_COLOUR,
+        title: "Colour of new articles",
+        description: "The colour of articles that arrived with the latest sync, as #rrggbb. \
+                      Unset, it is a red that suits the light or dark colour scheme.",
+        category: Category::List,
+        kind: Kind::Colour { default: None },
+    },
+    Setting {
+        key: UNREAD_COLOUR,
+        title: "Colour of unread articles",
+        description: "The colour of unread articles, as #rrggbb. Unset, it is a green that \
+                      suits the light or dark colour scheme.",
+        category: Category::List,
+        kind: Kind::Colour { default: None },
+    },
+    Setting {
         key: LOAD_IMAGES,
         title: "Load images",
         description: "Load the images of articles from their servers. When off, they are loaded \
@@ -403,6 +525,20 @@ pub static SETTINGS: &[Setting] = &[
                       articles you read; images loaded before are still shown.",
         category: Category::Articles,
         kind: Kind::Switch { default: true },
+    },
+    Setting {
+        key: IMAGE_CACHE,
+        title: "Image cache",
+        description: "Disk space for the images of articles, so that articles read again \
+                      show them without fetching them, also offline. The images used least \
+                      recently are removed first.",
+        category: Category::Articles,
+        kind: Kind::Number {
+            min: 10,
+            max: 100_000,
+            default: 100,
+            unit: "MiB",
+        },
     },
     Setting {
         key: KEEP_SITE_DATA,
@@ -512,6 +648,17 @@ pub fn check_server(server: &str) -> Result<(), String> {
     }
 }
 
+/// A server address as typed by the user, as the settings keep it:
+/// without spaces and trailing slashes, `https://` if it has no scheme.
+pub fn normalise_server(input: &str) -> String {
+    let server = input.trim().trim_end_matches('/');
+    if server.is_empty() || server.contains("://") {
+        server.to_owned()
+    } else {
+        format!("https://{server}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,6 +700,84 @@ mod tests {
         ] {
             assert_eq!(Colour::parse(invalid), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn search() {
+        let setting = |key| find(SETTINGS, key).unwrap();
+        assert!(setting(SYNC_INTERVAL).matches(""));
+        assert!(setting(SYNC_INTERVAL).matches("  "));
+        assert!(setting(SYNC_INTERVAL).matches("Interval"));
+        assert!(setting(SYNC_INTERVAL).matches("sync MINUTES"));
+        assert!(setting(SYNC_INTERVAL).matches("sync.interval"));
+        assert!(!setting(SYNC_INTERVAL).matches("sync images"));
+        // A category, an option.
+        assert!(setting(NEW_COLOUR).matches("article list"));
+        assert!(setting(ARRANGEMENT).matches("above"));
+        assert!(setting(LOAD_IMAGES).matches("ARTICLES"));
+    }
+
+    #[test]
+    fn input() {
+        let setting = |key| find(SETTINGS, key).unwrap();
+        let parse = |key, input| setting(key).parse_input(input);
+        assert_eq!(parse(SYNC_INTERVAL, " 20 "), Ok(Some(Value::Number(20))));
+        assert_eq!(
+            parse(SYNC_INTERVAL, "2000"),
+            Err("must be between 0 and 1440".to_owned())
+        );
+        assert_eq!(
+            parse(SYNC_INTERVAL, "ten"),
+            Err("must be a whole number".to_owned())
+        );
+        assert_eq!(parse(FEED_ICONS, "false"), Ok(Some(Value::Bool(false))));
+        assert_eq!(
+            parse(ARRANGEMENT, "above"),
+            Ok(Some(Value::Text("above".to_owned())))
+        );
+        assert!(parse(ARRANGEMENT, "below").is_err());
+        assert_eq!(parse(PASSWORD_COMMAND, "  "), Ok(None));
+        assert_eq!(
+            parse(PASSWORD_COMMAND, " pass show x "),
+            Ok(Some(Value::Text("pass show x".to_owned())))
+        );
+        assert!(parse(SERVER, "http://cloud.example.org").is_err());
+        let orange = Value::Colour(Colour {
+            red: 0xff,
+            green: 0x80,
+            blue: 0,
+        });
+        assert_eq!(parse(NEW_COLOUR, "#FF8000"), Ok(Some(orange.clone())));
+        assert_eq!(parse(NEW_COLOUR, "ff8000"), Ok(Some(orange.clone())));
+        assert_eq!(parse(NEW_COLOUR, ""), Ok(None));
+        assert!(parse(NEW_COLOUR, "orange").is_err());
+        assert_eq!(orange.to_input(), "#ff8000");
+        let list = Value::List(vec!["easylist".to_owned(), "ublock".to_owned()]);
+        assert_eq!(
+            parse(FILTER_LISTS, "easylist\n\n  ublock \n"),
+            Ok(Some(list.clone()))
+        );
+        assert_eq!(list.to_input(), "easylist\nublock");
+        assert_eq!(parse(FILTER_LISTS, ""), Ok(Some(Value::List(vec![]))));
+        assert!(parse(UNBLOCKED_SITES, "https://x.org").is_err());
+        assert_eq!(Value::Number(5).to_input(), "5");
+    }
+
+    #[test]
+    fn normalised_servers() {
+        assert_eq!(
+            normalise_server(" cloud.example.org/ "),
+            "https://cloud.example.org"
+        );
+        assert_eq!(
+            normalise_server("https://example.org/nextcloud//"),
+            "https://example.org/nextcloud"
+        );
+        assert_eq!(
+            normalise_server("http://localhost:8080"),
+            "http://localhost:8080"
+        );
+        assert_eq!(normalise_server("  "), "");
     }
 
     #[test]
