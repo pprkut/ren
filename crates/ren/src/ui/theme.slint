@@ -31,8 +31,10 @@ export global Theme {
     in property <color> new-colour;
     in property <bool> custom-unread;
     in property <color> unread-colour;
-    out property <brush> status-new: root.custom-new ? root.new-colour : root.dark ? #f0505f : #da4453;
-    out property <brush> status-unread: root.custom-unread ? root.unread-colour : root.dark ? #2ecc71 : #1e8449;
+    out property <color> default-new: root.dark ? #f0505f : #da4453;
+    out property <color> default-unread: root.dark ? #2ecc71 : #1e8449;
+    out property <brush> status-new: root.custom-new ? root.new-colour : root.default-new;
+    out property <brush> status-unread: root.custom-unread ? root.unread-colour : root.default-unread;
     out property <brush> starred: root.dark ? #f6c342 : #c9a200;
 
     // Tree
