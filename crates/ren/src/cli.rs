@@ -73,8 +73,9 @@ Window options:
                      pages), hide the window as in the tray and show it
                      again, print memory use at each step, and quit
   --measure-settings After 2 s, open the settings dialog, show its web page
-                     settings, close it, open About ren and close it,
-                     print memory use at each step, and quit
+                     settings, close it, open About ren, show its
+                     licenses and close it, print memory use at each
+                     step, and quit
   --measure-sync     After 2 s, sync twice (into a new database, a full
                      and an incremental sync), print time, CPU and memory
                      use, and quit

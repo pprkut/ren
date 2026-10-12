@@ -4,9 +4,10 @@
 #
 # Measures what the settings dialog and About ren cost (M8b): ren with a
 # new, empty home (no account, no database) opens the settings dialog,
-# shows its web page settings, closes it, then opens and closes About
-# ren; RSS at each step. Twice, release builds with the default features.
-# Needs a graphical session; don't touch the windows while it runs.
+# shows its web page settings, closes it, then opens About ren, shows its
+# third-party licenses and closes it; RSS at each step. Twice, release
+# builds with the default features. Needs a graphical session; don't
+# touch the windows while it runs.
 #
 # Usage: scripts/measure-settings.sh
 #
@@ -45,7 +46,7 @@ rss() {
         awk '{ printf "%.1f", $1 / 1024 }'
 }
 
-steps=("at the start" "settings open" "web pages shown" "settings closed" "about open" "about closed")
+steps=("at the start" "settings open" "web pages shown" "settings closed" "about open" "licenses shown" "about closed")
 summary=$OUT_DIR/summary.md
 {
     echo "## The settings dialog, $(date -u +'%Y-%m-%d %H:%M UTC')"
@@ -55,8 +56,8 @@ summary=$OUT_DIR/summary.md
     echo
     echo "RSS in MiB:"
     echo
-    echo "| run | at the start | settings open | web pages shown | settings closed | About open | About closed |"
-    echo "|---|---|---|---|---|---|---|"
+    echo "| run | at the start | settings open | web pages shown | settings closed | About open | licenses shown | About closed |"
+    echo "|---|---|---|---|---|---|---|---|"
 } >"$summary"
 for run in $(seq 1 "$RUNS"); do
     echo "== run $run" >&2

@@ -1574,7 +1574,8 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
 }
 
 /// Opens the settings dialog, shows its web page settings (the category
-/// with the most rows), closes it, opens and closes About ren, logging
+/// with the most rows), closes it, opens About ren, shows its licenses and
+/// closes it, logging
 /// memory use at each step, then quits. After `CYCLE_DELAY`, steps
 /// `HIDDEN_STEP` apart; freed memory is given back before each step.
 fn start_settings_measurement(app: std::rc::Weak<App>) -> slint::Timer {
@@ -1608,9 +1609,16 @@ fn start_settings_measurement(app: std::rc::Weak<App>) -> slint::Timer {
             }
             4 => {
                 log_rss("about open");
+                if let Some(about) = &*app.about.borrow() {
+                    about.invoke_show_licenses();
+                    about.set_licenses_shown(true);
+                }
+            }
+            5 => {
+                log_rss("licenses shown");
                 app.action("about-close");
             }
-            5 => log_rss("about closed"),
+            6 => log_rss("about closed"),
             _ => {
                 let _ = slint::quit_event_loop();
             }
