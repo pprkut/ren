@@ -4352,6 +4352,7 @@ name = "ren-settings"
 version = "0.1.0"
 dependencies = [
  "keyring-core",
+ "libc",
  "serde",
  "toml",
  "toml_edit",
