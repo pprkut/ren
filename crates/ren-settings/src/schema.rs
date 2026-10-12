@@ -18,6 +18,10 @@ pub struct Setting {
     pub description: &'static str,
     pub category: Category,
     pub kind: Kind,
+    /// A switch that must be on for this setting to have an effect, e.g.
+    /// closing to the tray needs the tray icon. The dialog disables the
+    /// setting while the switch is off.
+    pub requires: Option<&'static str>,
 }
 
 /// The groups of the settings dialog.
@@ -419,6 +423,7 @@ pub static SETTINGS: &[Setting] = &[
         title: "Server",
         description: "The address of your Nextcloud, e.g. https://cloud.example.org.",
         category: Category::Account,
+        requires: None,
         kind: Kind::Text {
             default: None,
             check: Some(check_server),
@@ -429,6 +434,7 @@ pub static SETTINGS: &[Setting] = &[
         title: "User",
         description: "Your login name on the Nextcloud.",
         category: Category::Account,
+        requires: None,
         kind: Kind::Text {
             default: None,
             check: None,
@@ -441,6 +447,7 @@ pub static SETTINGS: &[Setting] = &[
                       for systems without a Secret Service (GNOME Keyring, KWallet). Used \
                       instead of the Secret Service when set.",
         category: Category::Account,
+        requires: None,
         kind: Kind::Text {
             default: None,
             check: None,
@@ -451,6 +458,7 @@ pub static SETTINGS: &[Setting] = &[
         title: "Sync interval",
         description: "Minutes between automatic syncs. 0 syncs only when asked to.",
         category: Category::Sync,
+        requires: None,
         kind: Kind::Number {
             min: 0,
             max: 24 * 60,
@@ -464,6 +472,7 @@ pub static SETTINGS: &[Setting] = &[
         description: "Days to keep read items that aren't starred, counted from when they were \
                       read. 0 keeps them all.",
         category: Category::Sync,
+        requires: None,
         kind: Kind::Number {
             min: 0,
             max: 10 * 365,
@@ -478,6 +487,7 @@ pub static SETTINGS: &[Setting] = &[
                       when they are a month old. When off, no requests go to the sites; icons \
                       downloaded before are still shown.",
         category: Category::Sync,
+        requires: None,
         kind: Kind::Switch { default: true },
     },
     Setting {
@@ -487,6 +497,7 @@ pub static SETTINGS: &[Setting] = &[
                       article, or above it, as a table (akregator's arrangement). Also in the \
                       View menu.",
         category: Category::List,
+        requires: None,
         kind: Kind::Choice {
             options: &[
                 Choice {
@@ -507,6 +518,7 @@ pub static SETTINGS: &[Setting] = &[
         description: "The colour of articles that arrived with the latest sync, as #rrggbb. \
                       Unset, it is a red that suits the light or dark colour scheme.",
         category: Category::List,
+        requires: None,
         kind: Kind::Colour { default: None },
     },
     Setting {
@@ -515,6 +527,7 @@ pub static SETTINGS: &[Setting] = &[
         description: "The colour of unread articles, as #rrggbb. Unset, it is a green that \
                       suits the light or dark colour scheme.",
         category: Category::List,
+        requires: None,
         kind: Kind::Colour { default: None },
     },
     Setting {
@@ -524,6 +537,7 @@ pub static SETTINGS: &[Setting] = &[
                       only on request (Article → Load Images), so the servers don't learn which \
                       articles you read; images loaded before are still shown.",
         category: Category::Articles,
+        requires: None,
         kind: Kind::Switch { default: true },
     },
     Setting {
@@ -533,6 +547,7 @@ pub static SETTINGS: &[Setting] = &[
                       show them without fetching them, also offline. The images used least \
                       recently are removed first.",
         category: Category::Articles,
+        requires: None,
         kind: Kind::Number {
             min: 10,
             max: 100_000,
@@ -547,6 +562,7 @@ pub static SETTINGS: &[Setting] = &[
                       consent choices last. When off, they are forgotten when the last tab \
                       closes. Settings → Clear Web Site Data removes what was kept.",
         category: Category::Pages,
+        requires: None,
         kind: Kind::Switch { default: true },
     },
     Setting {
@@ -556,6 +572,7 @@ pub static SETTINGS: &[Setting] = &[
                       The lists are downloaded when a page is opened and they are older than \
                       four days.",
         category: Category::Pages,
+        requires: None,
         kind: Kind::Switch { default: true },
     },
     Setting {
@@ -565,6 +582,7 @@ pub static SETTINGS: &[Setting] = &[
                       ublock-privacy, ublock-unbreak, easylist-germany, fanboy-annoyance, or \
                       the https:// URL of another list in Adblock Plus or uBlock Origin syntax.",
         category: Category::Pages,
+        requires: Some(BLOCK_CONTENT),
         kind: Kind::List {
             default: &[
                 "easylist",
@@ -582,6 +600,7 @@ pub static SETTINGS: &[Setting] = &[
         description: "Sites on which nothing is blocked, e.g. because they don't work with \
                       blocking: host names such as example.org, each with its subdomains.",
         category: Category::Pages,
+        requires: Some(BLOCK_CONTENT),
         kind: Kind::List {
             default: &[],
             check: Some(check_site),
@@ -594,6 +613,7 @@ pub static SETTINGS: &[Setting] = &[
                       tray (Plasma; GNOME needs the AppIndicator extension), with a menu to show \
                       or hide the window, fetch the feeds and quit.",
         category: Category::Window,
+        requires: None,
         kind: Kind::Switch { default: true },
     },
     Setting {
@@ -603,6 +623,7 @@ pub static SETTINGS: &[Setting] = &[
                       the feeds are still fetched; the tray's menu quits. Only with the icon \
                       in the tray, and a desktop that shows it.",
         category: Category::Window,
+        requires: Some(TRAY_ICON),
         kind: Kind::Switch { default: false },
     },
 ];
@@ -673,6 +694,20 @@ mod tests {
                 "{} twice",
                 setting.key
             );
+        }
+    }
+
+    #[test]
+    fn requirements_are_switches() {
+        for setting in SETTINGS {
+            if let Some(key) = setting.requires {
+                let required = find(SETTINGS, key).unwrap();
+                assert!(
+                    matches!(required.kind, Kind::Switch { .. }),
+                    "{} requires {key}",
+                    setting.key
+                );
+            }
         }
     }
 
