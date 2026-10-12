@@ -368,7 +368,8 @@ pub enum Event {
         multiple: bool,
     },
     /// A context menu was asked for in the page shown, at `area`: the
-    /// window shows it and answers with [`Command::ContextMenu`]. `link`
+    /// window shows it and answers with [`Command::ContextMenu`]. `area`
+    /// is as Servo 0.7 reports it: the click's point in CSS pixels. `link`
     /// and `image` are the URLs of the link and image under the pointer.
     ContextMenu {
         tab: TabId,

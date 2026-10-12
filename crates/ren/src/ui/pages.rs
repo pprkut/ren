@@ -549,7 +549,8 @@ impl Pages {
             reload: menu.enabled(MenuAction::Reload),
         });
         self.menu = Some(menu);
-        window.invoke_show_page_menu(area.x as f32 / scale, area.y as f32 / scale);
+        let (x, y) = controls::menu_point(area, self.last_press, scale);
+        window.invoke_show_page_menu(x / scale, y / scale);
     }
 
     /// The reader chose an entry of the context menu.
