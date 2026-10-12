@@ -23,6 +23,7 @@ use crate::reader::{Changes, Reader};
 use crate::sync_thread::{self, Event, Running};
 use crate::window_state::{self, Saved};
 
+mod about;
 mod account;
 mod article;
 mod geometry;
@@ -202,6 +203,8 @@ struct App {
     password_problem: RefCell<Option<String>>,
     /// A sync finished since the start.
     synced_once: Cell<bool>,
+    /// Help → About ren, while it is open.
+    about: RefCell<Option<AboutWindow>>,
 }
 
 #[derive(Default)]
@@ -727,7 +730,7 @@ impl App {
             "configure" => self.open_settings(),
             "settings-saved" => self.settings_saved(),
             "login-event" => self.login_events(),
-            "about" => self.status("ren: a native Nextcloud News reader"),
+            "about" => self.open_about(),
             _ => self.not_implemented(name),
         }
     }
@@ -1831,6 +1834,7 @@ fn run_window(
         account_ui: RefCell::default(),
         password_problem: RefCell::new(None),
         synced_once: Cell::new(false),
+        about: RefCell::new(None),
     });
     app.restore();
     match &settings {
@@ -2016,6 +2020,7 @@ fn run_window(
     window.hide()?;
     app.dialog.borrow_mut().take();
     app.login.borrow_mut().take();
+    app.about.borrow_mut().take();
     *app.tray.borrow_mut() = None;
     if let Err(err) = app.saved.borrow_mut().save() {
         eprintln!("ren: saving the window's state: {err}");

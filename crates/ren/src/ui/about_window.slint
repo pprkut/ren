@@ -1,0 +1,113 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { AboutSlint, Button, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+// Help → About ren.
+export component AboutWindow inherits Window {
+    in property <string> version;
+    in property <string> source-url;
+    in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+    callback open-source();
+    // Shows the third-party notices in the article view.
+    callback show-licenses();
+    callback close-requested();
+
+    changed forced-color-scheme => {
+        Palette.color-scheme = root.forced-color-scheme;
+    }
+
+    title: "About ren";
+    preferred-width: 560px;
+    // Wrapped text counts as one line in the preferred height.
+    preferred-height: 480px;
+    background: Palette.background;
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 10px;
+
+        Text {
+            text: "ren";
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: "Version " + root.version + " · A native Nextcloud News reader";
+            color: Palette.foreground;
+            opacity: 0.8;
+        }
+
+        Text {
+            text: "Copyright 2026 Heinz Wiesinger";
+            color: Palette.foreground;
+        }
+
+        Text {
+            text: "ren is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.";
+            wrap: word-wrap;
+            font-size: 0.9rem;
+            color: Palette.foreground;
+            opacity: 0.8;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+
+            Text {
+                text: root.source-url;
+                color: Palette.accent-background;
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.open-source();
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.separator;
+        }
+
+        Text {
+            text: "Built with Slint (the window), Blitz (articles), Servo (web pages in tabs) and Brave's adblock-rust, for the Nextcloud News app. The bundled icons are Lucide's.";
+            wrap: word-wrap;
+            color: Palette.foreground;
+        }
+
+        AboutSlint {
+            height: 110px;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        HorizontalLayout {
+            vertical-stretch: 0;
+            alignment: end;
+            spacing: 8px;
+
+            Button {
+                text: "Third-Party Licenses";
+                clicked => {
+                    root.show-licenses();
+                }
+            }
+
+            Button {
+                text: "Close";
+                primary: true;
+                clicked => {
+                    root.close-requested();
+                }
+            }
+        }
+    }
+}
