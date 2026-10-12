@@ -3,7 +3,7 @@
 
 import { Button, ComboBox, LineEdit, Palette, ScrollView, Switch, TextEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { ColourButton } from "setting_controls.slint";
+import { ArrangementChoice, ColourButton } from "setting_controls.slint";
 
 // A setting as the dialog shows it, made from its descriptor.
 export struct SettingRow {
@@ -13,7 +13,8 @@ export struct SettingRow {
     heading: string,
     title: string,
     description: string,
-    // 0 switch, 1 choice, 2 number, 3 text, 4 colour, 5 list.
+    // 0 switch, 1 choice, 2 number, 3 text, 4 colour, 5 list, 6 the
+    // arrangement (a choice shown as pictures).
     kind: int,
     on: bool,
     options: [string],
@@ -226,6 +227,15 @@ component SettingRowView inherits VerticalLayout {
                     }
                     theme-colour => {
                         root.reset();
+                    }
+                }
+
+                if root.setting.kind == 6: ArrangementChoice {
+                    enabled: root.active;
+                    titles: root.setting.options;
+                    current: root.setting.choice;
+                    chosen(index) => {
+                        root.chosen(index);
                     }
                 }
 

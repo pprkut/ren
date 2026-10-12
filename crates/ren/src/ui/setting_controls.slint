@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Controls of the settings dialog that Slint doesn't have: a colour
-// picker.
+// picker, and pictures of the window's arrangements to choose from.
 
 import { Button, LineEdit, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
@@ -265,6 +265,120 @@ export component ColourButton inherits Rectangle {
                 cancel => {
                     popup.close();
                 }
+            }
+        }
+    }
+}
+
+// A small picture of the window in an arrangement: the feed tree, the
+// article list, the article.
+component ArrangementPicture inherits Rectangle {
+    in property <bool> above;
+
+    property <brush> pane: Palette.foreground.with-alpha(0.10);
+    property <brush> line: Palette.foreground.with-alpha(0.30);
+    property <length> gap: 3px;
+    property <length> tree: self.width * 0.22;
+
+    border-radius: 3px;
+    background: Palette.foreground.with-alpha(0.04);
+
+    // The tree.
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: root.tree;
+        height: root.height;
+        border-radius: 2px;
+        background: root.pane;
+
+        for i in 4: Rectangle {
+            x: 4px;
+            y: 5px + i * 7px;
+            width: parent.width - 8px - mod(i, 2) * 6px;
+            height: 3px;
+            background: root.line;
+        }
+    }
+
+    // The list.
+    list := Rectangle {
+        x: root.tree + root.gap;
+        y: 0;
+        width: root.above ? root.width - self.x : (root.width - self.x) * 0.38;
+        height: root.above ? root.height * 0.42 : root.height;
+        border-radius: 2px;
+        background: Theme.selection(false);
+
+        for i in (root.above ? 3 : 4): Rectangle {
+            x: 4px;
+            y: 5px + i * (root.above ? 6px : 9px);
+            width: parent.width - 8px - mod(i, 2) * 8px;
+            height: 3px;
+            background: root.line;
+        }
+    }
+
+    // The article.
+    Rectangle {
+        x: root.above ? list.x : list.x + list.width + root.gap;
+        y: root.above ? list.height + root.gap : 0;
+        width: root.width - self.x;
+        height: root.height - self.y;
+        border-radius: 2px;
+        background: root.pane;
+
+        for i in (root.above ? 3 : 6): Rectangle {
+            x: 5px;
+            y: 6px + i * 6px;
+            width: (parent.width - 10px) * (mod(i, 3) == 2 ? 0.6 : 1);
+            height: 2px;
+            background: root.line;
+        }
+    }
+}
+
+// The arrangements as pictures: 0 beside, 1 above.
+export component ArrangementChoice inherits HorizontalLayout {
+    in property <[string]> titles;
+    in property <int> current;
+    in property <bool> enabled: true;
+    callback chosen(index: int);
+
+    spacing: 10px;
+    alignment: end;
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    for title[index] in root.titles: Rectangle {
+        width: 128px;
+        height: layout.preferred-height;
+        border-radius: 6px;
+        border-width: index == root.current ? 2px : 1px;
+        border-color: index == root.current ? Palette.accent-background : Theme.separator;
+        background: touch.has-hover && root.enabled ? Theme.hover : transparent;
+
+        layout := VerticalLayout {
+            padding: 8px;
+            spacing: 6px;
+
+            ArrangementPicture {
+                height: 62px;
+                above: index == 1;
+            }
+
+            Text {
+                text: title;
+                wrap: word-wrap;
+                horizontal-alignment: center;
+                font-size: 0.9rem;
+                color: Palette.foreground;
+            }
+        }
+
+        touch := TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.chosen(index);
             }
         }
     }

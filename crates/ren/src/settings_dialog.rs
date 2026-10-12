@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use ren_settings::schema::{self, Category, Colour, Kind, Setting};
 use ren_settings::{Settings, Value};
 
+/// Choices shown as pictures (`Control::Pictures`).
+const PICTURES: &[&str] = &[schema::ARRANGEMENT];
+
 /// Settings the account page shows itself: the login sets them.
 const ACCOUNT_PAGE: &[&str] = &[schema::SERVER, schema::USER];
 
@@ -54,6 +57,11 @@ pub struct Row {
 pub enum Control {
     Switch(bool),
     Choice {
+        options: Vec<&'static str>,
+        index: usize,
+    },
+    /// A choice shown as pictures of its options: the arrangement.
+    Pictures {
         options: Vec<&'static str>,
         index: usize,
     },
@@ -196,13 +204,24 @@ impl Dialog {
         let value = settings.get(setting.key);
         let control = match (&setting.kind, &value) {
             (Kind::Switch { .. }, Some(Value::Bool(on))) => Control::Switch(*on),
-            (Kind::Choice { options, .. }, Some(Value::Text(text))) => Control::Choice {
-                options: options.iter().map(|option| option.title).collect(),
-                index: options
+            (Kind::Choice { options, .. }, Some(Value::Text(text))) => {
+                let titles = options.iter().map(|option| option.title).collect();
+                let index = options
                     .iter()
                     .position(|option| option.value == text)
-                    .unwrap_or(0),
-            },
+                    .unwrap_or(0);
+                if PICTURES.contains(&setting.key) {
+                    Control::Pictures {
+                        options: titles,
+                        index,
+                    }
+                } else {
+                    Control::Choice {
+                        options: titles,
+                        index,
+                    }
+                }
+            }
             (Kind::Number { unit, .. }, _) => Control::Number { unit },
             (Kind::Text { .. }, _) => Control::Text {
                 placeholder: "Not set",
@@ -349,7 +368,7 @@ mod tests {
         ));
         assert_eq!(
             rows[0].control,
-            Control::Choice {
+            Control::Pictures {
                 options: vec!["Beside the article", "Above the article"],
                 index: 1
             }
