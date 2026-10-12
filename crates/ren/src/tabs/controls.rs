@@ -123,6 +123,14 @@ pub fn select_area(css: Area, click: Option<(f32, f32)>, scale: f32) -> Area {
     }
 }
 
+/// Where a context menu opens, in physical pixels relative to the page
+/// area: at the click that asked for it. Servo 0.7 reports the click's
+/// point in CSS pixels as if they were device pixels (and relative to its
+/// frame), so it is used, scaled, only without a click (the menu key).
+pub fn menu_point(css: Area, click: Option<(f32, f32)>, scale: f32) -> (f32, f32) {
+    click.unwrap_or((css.x as f32 * scale, css.y as f32 * scale))
+}
+
 /// A context menu the window shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Menu {
@@ -301,6 +309,18 @@ mod tests {
                 height: 30
             }
         );
+    }
+
+    #[test]
+    fn menus_at_the_click() {
+        let css = Area {
+            x: 100,
+            y: 50,
+            width: 0,
+            height: 0,
+        };
+        assert_eq!(menu_point(css, Some((210.0, 95.0)), 2.0), (210.0, 95.0));
+        assert_eq!(menu_point(css, None, 2.0), (200.0, 100.0));
     }
 
     #[test]
