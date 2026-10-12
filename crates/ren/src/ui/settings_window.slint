@@ -109,7 +109,8 @@ component CategoryItem inherits Rectangle {
 }
 
 // One setting: title, description and key on the left, the control and a
-// reset button on the right.
+// reset button on the right, flush with its edge; a list goes below them,
+// over the row's width.
 component SettingRowView inherits VerticalLayout {
     in property <SettingRow> setting;
     in property <bool> editable;
@@ -176,8 +177,9 @@ component SettingRowView inherits VerticalLayout {
             }
         }
 
+        // A list has only the reset button here.
         VerticalLayout {
-            width: 280px;
+            width: root.setting.kind != 5 ? 280px : root.setting.modified ? 140px : 0px;
             alignment: start;
             spacing: 4px;
 
@@ -201,7 +203,7 @@ component SettingRowView inherits VerticalLayout {
                 }
 
                 if root.setting.kind == 1: ComboBox {
-                    horizontal-stretch: 1;
+                    width: 200px;
                     enabled: root.active;
                     model: root.setting.options;
                     current-index: root.setting.choice;
@@ -239,8 +241,11 @@ component SettingRowView inherits VerticalLayout {
                     }
                 }
 
+                // A number is short, and right-aligned like the column; text
+                // takes the column's width.
                 if root.setting.kind == 2 || root.setting.kind == 3: LineEdit {
-                    horizontal-stretch: 1;
+                    width: root.setting.kind == 2 ? 100px : 280px;
+                    horizontal-alignment: root.setting.kind == 2 ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     enabled: root.active;
                     text: root.setting.input;
                     placeholder-text: root.setting.placeholder;
@@ -260,36 +265,11 @@ component SettingRowView inherits VerticalLayout {
                 }
 
                 if root.setting.kind == 2: Text {
-                    width: 56px;
                     text: root.setting.unit;
                     vertical-alignment: center;
                     color: Palette.foreground;
                     opacity: 0.75;
                 }
-            }
-
-            if root.setting.kind == 5: TextEdit {
-                height: 110px;
-                enabled: root.active;
-                text: root.setting.input;
-                wrap: no-wrap;
-                changed has-focus => {
-                    if !self.has-focus && self.text != root.setting.input {
-                        root.accepted(self.text);
-                    }
-                }
-                property <string> input: root.setting.input;
-                changed input => {
-                    self.text = self.input;
-                }
-            }
-
-            if root.setting.kind == 5: Text {
-                text: "One per line; applied when you leave the field.";
-                font-size: 0.85rem;
-                horizontal-alignment: right;
-                color: Palette.foreground;
-                opacity: 0.6;
             }
 
             if root.setting.modified: HorizontalLayout {
@@ -303,6 +283,33 @@ component SettingRowView inherits VerticalLayout {
                     }
                 }
             }
+        }
+    }
+
+    if root.setting.kind == 5: VerticalLayout {
+        spacing: 4px;
+
+        TextEdit {
+            height: 110px;
+            enabled: root.active;
+            text: root.setting.input;
+            wrap: no-wrap;
+            changed has-focus => {
+                if !self.has-focus && self.text != root.setting.input {
+                    root.accepted(self.text);
+                }
+            }
+            property <string> input: root.setting.input;
+            changed input => {
+                self.text = self.input;
+            }
+        }
+
+        Text {
+            text: "One per line; applied when you leave the field.";
+            font-size: 0.85rem;
+            color: Palette.foreground;
+            opacity: 0.6;
         }
     }
 
