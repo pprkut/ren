@@ -252,6 +252,14 @@ impl Settings {
             .unwrap_or_else(|| panic!("no setting {key}"))
     }
 
+    /// Whether the setting `key` has an effect: the switch it requires,
+    /// if any, is on.
+    pub fn effective(&self, key: &str) -> bool {
+        self.table[self.index(key)]
+            .requires
+            .is_none_or(|required| self.bool(required))
+    }
+
     /// A switch. Panics if `key` isn't one.
     pub fn bool(&self, key: &str) -> bool {
         match self.get(key) {
@@ -409,6 +417,7 @@ pub(crate) mod tests {
             title: "Switch",
             description: "",
             category: schema::Category::Account,
+            requires: None,
             kind: Kind::Switch { default: true },
         },
         Setting {
@@ -416,6 +425,7 @@ pub(crate) mod tests {
             title: "Choice",
             description: "",
             category: schema::Category::Account,
+            requires: None,
             kind: Kind::Choice {
                 options: &[
                     Choice {
@@ -435,6 +445,7 @@ pub(crate) mod tests {
             title: "Number",
             description: "",
             category: schema::Category::Sync,
+            requires: None,
             kind: Kind::Number {
                 min: 1,
                 max: 10,
@@ -447,6 +458,7 @@ pub(crate) mod tests {
             title: "Text",
             description: "",
             category: schema::Category::Sync,
+            requires: None,
             kind: Kind::Text {
                 default: None,
                 check: Some(|text| {
@@ -463,6 +475,7 @@ pub(crate) mod tests {
             title: "Colour",
             description: "",
             category: schema::Category::Account,
+            requires: None,
             kind: Kind::Colour {
                 default: Some(Colour {
                     red: 0,
@@ -476,6 +489,7 @@ pub(crate) mod tests {
             title: "List",
             description: "",
             category: schema::Category::Sync,
+            requires: None,
             kind: Kind::List {
                 default: &["xa", "xb"],
                 check: Some(|text| {
@@ -721,6 +735,12 @@ pub(crate) mod tests {
         let tray = |text: &str| Settings::parse(text).unwrap().settings;
         assert!(tray("[window]\nclose-to-tray = true\n").close_to_tray());
         assert!(!tray("[window]\nclose-to-tray = true\ntray-icon = false\n").close_to_tray());
+        assert!(defaults.effective(schema::CLOSE_TO_TRAY));
+        let off = tray("[window]\ntray-icon = false\n[pages]\nblock-content = false\n");
+        assert!(!off.effective(schema::CLOSE_TO_TRAY));
+        assert!(!off.effective(schema::FILTER_LISTS));
+        assert!(!off.effective(schema::UNBLOCKED_SITES));
+        assert!(off.effective(schema::TRAY_ICON));
         assert!(defaults.load_images());
         assert!(defaults.keep_site_data());
         assert!(!defaults.list_above());
