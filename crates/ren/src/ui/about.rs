@@ -1,15 +1,14 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Help → About ren, and the third-party notices, shown in the article
-//! view like an article.
+//! Help → About ren, and on its second page the third-party notices.
 
 use std::time::Duration;
 
-use slint::ComponentHandle;
+use slint::{ComponentHandle, ModelRc, VecModel};
 
-use super::{AboutWindow, App};
-use crate::article::Article;
+use super::{AboutWindow, App, NoticeBlock};
+use crate::notices::{self, Block};
 
 /// Where ren's source is.
 const SOURCE: &str = "https://github.com/pprkut/ren";
@@ -50,11 +49,21 @@ impl App {
                 app.open_in_browser(SOURCE);
             }
         });
-        let this = self.this.clone();
+        // The notices exist only while their page is shown.
+        let weak = about.as_weak();
         about.on_show_licenses(move || {
-            if let Some(app) = this.upgrade() {
-                app.show_notices();
-                app.close_about();
+            if let Some(about) = weak.upgrade() {
+                let blocks: Vec<NoticeBlock> = notices::blocks(NOTICES)
+                    .into_iter()
+                    .map(notice_block)
+                    .collect();
+                about.set_notices(ModelRc::new(VecModel::from(blocks)));
+            }
+        });
+        let weak = about.as_weak();
+        about.on_hide_licenses(move || {
+            if let Some(about) = weak.upgrade() {
+                about.set_notices(ModelRc::default());
             }
         });
         let this = self.this.clone();
@@ -88,23 +97,16 @@ impl App {
             }
         });
     }
+}
 
-    /// Shows the third-party notices in the article view, in front of the
-    /// tabs; no article is selected meanwhile.
-    pub(super) fn show_notices(&self) {
-        self.reader.borrow_mut().clear_current();
-        let window = self.window();
-        window.set_current_item(-1);
-        window.set_current_starred(false);
-        #[cfg(feature = "servo")]
-        self.pages.borrow_mut().show_article();
-        self.article.borrow_mut().show(Article {
-            title: "Third-party licenses".to_owned(),
-            meta: format!("ren {}", env!("CARGO_PKG_VERSION")),
-            url: None,
-            body: NOTICES.to_owned(),
-            enclosure: None,
-            thumbnail: None,
-        });
+fn notice_block(block: Block) -> NoticeBlock {
+    let (kind, text) = match block {
+        Block::Heading(text) => (0, text),
+        Block::Paragraph(text) => (1, text),
+        Block::Pre(text) => (2, text),
+    };
+    NoticeBlock {
+        kind,
+        text: text.into(),
     }
 }
