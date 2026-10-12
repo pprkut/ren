@@ -12,8 +12,8 @@
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use crate::hash::fnv1a;
@@ -22,13 +22,16 @@ use crate::hash::fnv1a;
 /// below this share of it, so that not every new file removes one.
 const EVICT_TO_PERCENT: u64 = 90;
 
+/// A clone is the same cache: its size limit and count are shared, so the
+/// limit can be changed while the image fetchers use it.
+#[derive(Clone)]
 pub struct ImageCache {
     dir: PathBuf,
-    max_bytes: u64,
+    max_bytes: Arc<AtomicU64>,
     /// The size of the files, read from the directory when the first file
     /// is added. Writes from several threads may make it drift a little;
     /// it is counted anew when files are removed.
-    total: Mutex<Option<u64>>,
+    total: Arc<Mutex<Option<u64>>>,
 }
 
 impl ImageCache {
@@ -37,9 +40,15 @@ impl ImageCache {
     pub fn new(dir: PathBuf, max_bytes: u64) -> Self {
         Self {
             dir,
-            max_bytes,
-            total: Mutex::new(None),
+            max_bytes: Arc::new(AtomicU64::new(max_bytes)),
+            total: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Changes the size limit; a smaller one removes files when the next
+    /// one is added.
+    pub fn set_max_bytes(&self, max_bytes: u64) {
+        self.max_bytes.store(max_bytes, Ordering::Relaxed);
     }
 
     fn path(&self, url: &str) -> PathBuf {
@@ -71,7 +80,8 @@ impl ImageCache {
             return;
         }
         let size = (url.len() + 1 + bytes.len()) as u64;
-        if size > self.max_bytes / 4 {
+        let max_bytes = self.max_bytes.load(Ordering::Relaxed);
+        if size > max_bytes / 4 {
             return;
         }
         // Counted before the new file is there.
@@ -88,8 +98,8 @@ impl ImageCache {
         };
         let total = total.get_or_insert(0);
         *total = (*total + size).saturating_sub(replaced);
-        if *total > self.max_bytes {
-            *total = evict(&self.dir, self.max_bytes * EVICT_TO_PERCENT / 100);
+        if *total > max_bytes {
+            *total = evict(&self.dir, max_bytes * EVICT_TO_PERCENT / 100);
         }
     }
 
@@ -257,6 +267,26 @@ mod tests {
             assert!(cache.get(url).is_some(), "{url}");
         }
         assert_eq!(directory_size(&dir.0), 4_000);
+    }
+
+    #[test]
+    fn a_smaller_limit_applies_to_clones() {
+        let dir = TempDir::new("cache-limit");
+        let cache = ImageCache::new(dir.0.clone(), 10_000);
+        let shared = cache.clone();
+        let bytes = [0u8; 997];
+        for n in 0..4 {
+            let url = format!("u{n}");
+            cache.put(&url, &bytes);
+            age(&cache, &url, 40 - n * 10);
+        }
+        assert_eq!(directory_size(&dir.0), 4_000);
+        shared.set_max_bytes(2_000);
+        cache.put("u4", &[0u8; 497]);
+        // Down to 90 % of 2,000: the newest file and the one before.
+        assert_eq!(directory_size(&dir.0), 1_500);
+        assert!(cache.get("u3").is_some());
+        assert!(cache.get("u4").is_some());
     }
 
     #[test]

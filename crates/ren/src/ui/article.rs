@@ -24,10 +24,6 @@ use crate::article::{Rgb, Style};
 
 const PLACEHOLDER: &str = "No article selected";
 
-/// The most disk space for the images of articles.
-#[cfg(feature = "html-view")]
-const IMAGE_CACHE_BYTES: u64 = 100 * 1024 * 1024;
-
 /// Shows articles in the window's article pane.
 pub struct ArticlePane {
     window: slint::Weak<MainWindow>,
@@ -39,6 +35,10 @@ pub struct ArticlePane {
     /// Whether articles load images from their servers.
     #[cfg(feature = "html-view")]
     load_images: bool,
+    /// The images of articles on disk (`articles.image-cache-mib`), shared
+    /// with the HTML view's image fetchers.
+    #[cfg(feature = "html-view")]
+    image_cache: Option<ImageCache>,
     /// The HTML view, created with the first article so that startup
     /// doesn't pay for Blitz.
     #[cfg(feature = "html-view")]
@@ -121,6 +121,10 @@ impl ArticlePane {
             html_mode: html.then_some(measure),
             #[cfg(feature = "html-view")]
             load_images: true,
+            #[cfg(feature = "html-view")]
+            image_cache: ren_settings::paths::image_cache(|name| std::env::var(name).ok()).map(
+                |dir| ImageCache::new(dir, ren_settings::Settings::default().image_cache_bytes()),
+            ),
             #[cfg(feature = "html-view")]
             html: None,
             #[cfg(feature = "html-view")]
@@ -205,6 +209,16 @@ impl ArticlePane {
         let _ = load;
     }
 
+    /// The most disk space for the images of articles.
+    pub fn set_image_cache_bytes(&mut self, bytes: u64) {
+        #[cfg(feature = "html-view")]
+        if let Some(cache) = &self.image_cache {
+            cache.set_max_bytes(bytes);
+        }
+        #[cfg(not(feature = "html-view"))]
+        let _ = bytes;
+    }
+
     /// Shows the article again with the images from their servers.
     pub fn load_images_once(&mut self) {
         #[cfg(feature = "html-view")]
@@ -259,8 +273,7 @@ impl ArticlePane {
 
     fn create_html_pane(&self, measure: bool) -> HtmlPane {
         let weak = self.window.clone();
-        let cache = ren_settings::paths::image_cache(|name| std::env::var(name).ok())
-            .map(|dir| ImageCache::new(dir, IMAGE_CACHE_BYTES));
+        let cache = self.image_cache.clone();
         HtmlPane {
             view: HtmlView::new(
                 move || {

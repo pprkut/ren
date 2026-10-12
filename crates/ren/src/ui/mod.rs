@@ -156,6 +156,9 @@ struct App {
     saved: RefCell<Saved>,
     /// The arrangement whose pane sizes the window shows.
     arrangement: Cell<Arrangement>,
+    /// `--arrangement` was given: the setting is neither followed nor
+    /// changed.
+    arrangement_forced: bool,
     /// Starts the automatic syncs (`sync.interval-minutes`), counted from
     /// the end of the last sync.
     sync_timer: slint::Timer,
@@ -331,6 +334,20 @@ impl App {
         if old != new {
             self.stash_layout(old);
             self.apply_layout(new);
+        }
+        // The View menu changes the setting.
+        let above = new == Arrangement::Above;
+        let differs = self
+            .settings
+            .borrow()
+            .as_ref()
+            .is_some_and(|file| file.settings().list_above() != above);
+        if differs && !self.arrangement_forced {
+            let value = if above { "above" } else { "beside" };
+            self.change_setting(
+                ren_settings::schema::ARRANGEMENT,
+                Some(&ren_settings::Value::Text(value.to_owned())),
+            );
         }
     }
 
@@ -976,6 +993,25 @@ impl App {
     /// Applies the settings the window uses itself; the sync reads its own
     /// when it starts.
     fn apply_settings(&self, settings: &Settings) {
+        let window = self.window();
+        if !self.arrangement_forced {
+            window.set_arrangement(arrangement_of(settings));
+        }
+        let theme = window.global::<Theme>();
+        let colour = |key| {
+            settings
+                .colour(key)
+                .map(|c| slint::Color::from_rgb_u8(c.red, c.green, c.blue))
+        };
+        let new = colour(ren_settings::schema::NEW_COLOUR);
+        theme.set_custom_new(new.is_some());
+        theme.set_new_colour(new.unwrap_or_default());
+        let unread = colour(ren_settings::schema::UNREAD_COLOUR);
+        theme.set_custom_unread(unread.is_some());
+        theme.set_unread_colour(unread.unwrap_or_default());
+        self.article
+            .borrow_mut()
+            .set_image_cache_bytes(settings.image_cache_bytes());
         self.schedule_syncs(settings.sync_interval());
         self.close_to_tray.set(settings.close_to_tray());
         self.set_tray(settings.tray_icon() && self.tray_allowed);
@@ -1214,6 +1250,15 @@ impl App {
             }
             None => pages.show_article(),
         }
+    }
+}
+
+/// The arrangement the settings ask for.
+fn arrangement_of(settings: &Settings) -> Arrangement {
+    if settings.list_above() {
+        Arrangement::Above
+    } else {
+        Arrangement::Beside
     }
 }
 
@@ -1662,8 +1707,11 @@ fn run_window(
     }
     icons::load(&window, !options.bundled_icons, dark);
     let arrangement = match options.arrangement {
-        cli::Arrangement::Beside => Arrangement::Beside,
-        cli::Arrangement::Above => Arrangement::Above,
+        Some(cli::Arrangement::Beside) => Arrangement::Beside,
+        Some(cli::Arrangement::Above) => Arrangement::Above,
+        None => settings.as_ref().map_or(Arrangement::Beside, |(file, _)| {
+            arrangement_of(file.settings())
+        }),
     };
     window.set_arrangement(arrangement);
     geometry::restore(window.window(), &saved.state().window);
@@ -1722,6 +1770,7 @@ fn run_window(
         no_images: options.no_images,
         saved: RefCell::new(saved),
         arrangement: Cell::new(arrangement),
+        arrangement_forced: options.arrangement.is_some(),
         sync_timer: slint::Timer::default(),
         sync_interval: Cell::new(None),
         auto_sync,

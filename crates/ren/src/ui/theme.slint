@@ -25,9 +25,14 @@ export global Theme {
     }
 
     // Item status colours, as in akregator: new items red, unread green.
-    // Breeze's negative and positive text colours.
-    out property <brush> status-new: root.dark ? #f0505f : #da4453;
-    out property <brush> status-unread: root.dark ? #2ecc71 : #1e8449;
+    // Breeze's negative and positive text colours, unless the settings
+    // (`list.new-colour`, `list.unread-colour`) set others.
+    in property <bool> custom-new;
+    in property <color> new-colour;
+    in property <bool> custom-unread;
+    in property <color> unread-colour;
+    out property <brush> status-new: root.custom-new ? root.new-colour : root.dark ? #f0505f : #da4453;
+    out property <brush> status-unread: root.custom-unread ? root.unread-colour : root.dark ? #2ecc71 : #1e8449;
     out property <brush> starred: root.dark ? #f6c342 : #c9a200;
 
     // Tree

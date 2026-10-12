@@ -62,7 +62,8 @@ Window options:
   --cycle-articles <N>
                      After 2 s, open the first N articles one by one, print
                      render times and memory use, and quit
-  --arrangement <A>  Item list beside or above the article (default: beside)
+  --arrangement <A>  Item list beside or above the article, for this run
+                     (default: the setting list.arrangement)
   --bundled-icons    Use the bundled icons instead of the icon theme
   --color-scheme <S> light or dark instead of the desktop's
   --measure          Print startup timings to stderr
@@ -138,7 +139,8 @@ pub struct Options {
     pub plain_text: bool,
     pub no_images: bool,
     pub cycle_articles: Option<usize>,
-    pub arrangement: Arrangement,
+    /// Instead of the setting `list.arrangement`, for this run.
+    pub arrangement: Option<Arrangement>,
     pub bundled_icons: bool,
     pub color_scheme: Option<ColorScheme>,
     pub measure: bool,
@@ -164,7 +166,7 @@ impl Default for Options {
             plain_text: false,
             no_images: false,
             cycle_articles: None,
-            arrangement: Arrangement::default(),
+            arrangement: None,
             bundled_icons: false,
             color_scheme: None,
             measure: false,
@@ -231,11 +233,11 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> 
                 options.items = Some(n.parse().map_err(|_| format!("invalid item count: {n}"))?);
             }
             "--arrangement" => {
-                options.arrangement = match value("--arrangement")?.as_str() {
+                options.arrangement = Some(match value("--arrangement")?.as_str() {
                     "beside" => Arrangement::Beside,
                     "above" => Arrangement::Above,
                     other => return Err(format!("invalid arrangement: {other}")),
-                }
+                })
             }
             "--dump" => options.dump = Some(value("--dump")?.into()),
             "--plain-text" => options.plain_text = true,
@@ -296,7 +298,7 @@ mod tests {
             plain_text: true,
             no_images: true,
             cycle_articles: Some(20),
-            arrangement: Arrangement::Above,
+            arrangement: Some(Arrangement::Above),
             bundled_icons: true,
             color_scheme: Some(ColorScheme::Light),
             measure: true,
