@@ -800,7 +800,10 @@ From here on every milestone ships with tests for what it adds.
   notices file is a placeholder until M11. In the container: the dialog
   3.2–3.5 MiB while open, 1.0 MiB after closing it; About 1 MiB, given
   back. Not yet checked on the desktop (`just measure-settings`, a real
-  login with KWallet).
+  login with KWallet). After the review: settings that need a switch
+  are disabled while it's off (`Setting::requires`), the category list
+  counts and narrows search results, colour pickers of ren's own, and
+  the arrangement chosen by pictures.
 
 ### Phase 4 — Hardening
 
