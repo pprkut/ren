@@ -333,6 +333,9 @@ component AccountPage inherits VerticalLayout {
     in property <string> user;
     // Who is logged in where, and where the app password comes from.
     in property <string> summary;
+    // Whether logging out revokes the app password on the server (not one
+    // from REN_APP_PASSWORD or the password command).
+    in property <bool> revokes;
     in property <string> message;
     in property <bool> message-error;
     in property <string> login-url;
@@ -377,7 +380,9 @@ component AccountPage inherits VerticalLayout {
         }
 
         Text {
-            text: "Logging out revokes ren's app password on the server and removes it from this computer. The articles stored here stay.";
+            text: root.revokes
+                ? "Logging out revokes ren's app password on the server and removes it from this computer. The articles stored here stay."
+                : "Logging out forgets the account here. The app password comes from outside ren, so it isn't revoked on the server. The articles stored here stay.";
             wrap: word-wrap;
             color: Palette.foreground;
             opacity: 0.75;
@@ -525,6 +530,7 @@ export component SettingsWindow inherits Window {
     in property <string> account-server;
     in property <string> account-user;
     in property <string> account-summary;
+    in property <bool> account-revokes: true;
     in property <string> account-message;
     in property <bool> account-message-error;
     in property <string> login-url;
@@ -640,6 +646,7 @@ export component SettingsWindow inherits Window {
                         server: root.account-server;
                         user: root.account-user;
                         summary: root.account-summary;
+                        revokes: root.account-revokes;
                         message: root.account-message;
                         message-error: root.account-message-error;
                         login-url: root.login-url;

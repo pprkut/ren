@@ -110,7 +110,13 @@ The Account category starts with a page made by hand:
   /ocs/v2.php/core/apppassword` with `OCS-APIRequest: true`; one that's
   revoked already counts as done), removes it from the Secret Service
   and unsets `account.user`. The server stays filled in, and so do the
-  articles stored.
+  articles stored. A password from `REN_APP_PASSWORD` or the
+  password command isn't revoked: ren didn't create it, and it may be
+  in use elsewhere. Nextcloud revokes only the app password a request
+  logged in with, and answers 403 ("no app password in use") to one that
+  logged in with the account's own password (`AppPasswordController`);
+  the page then says that nothing was revoked and suggests logging in
+  through the browser.
 
 A login writes `account.server` (the server's own address, if ren
 accepts it) and `account.user`, stores the app password in the Secret

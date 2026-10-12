@@ -12,7 +12,9 @@
 //! - **With an app password** the user created in Nextcloud by hand: it is
 //!   checked with the server first.
 //! - **Logging out** revokes the app password on the server and removes it
-//!   from the Secret Service.
+//!   from the Secret Service. A password from `REN_APP_PASSWORD` or the
+//!   password command isn't revoked: ren didn't create it, and it may be
+//!   in use elsewhere (or be the account's own password).
 //!
 //! A login stores the app password in the Secret Service. Without one,
 //! the password is still handed to the window, which keeps it until ren
@@ -67,14 +69,35 @@ pub enum Event {
         password: String,
         stored: Result<(), String>,
     },
-    /// Logged out; what didn't work: revoking the app password on the
-    /// server, removing it from the Secret Service.
+    /// Logged out: what happened to the app password on the server, and
+    /// whether removing it from the Secret Service failed.
     LoggedOut {
-        revoked: Result<(), String>,
+        revoked: Revoked,
         removed: Result<(), String>,
     },
     Failed(String),
     Cancelled,
+}
+
+/// What logging out did to the password on the server.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Revoked {
+    /// Revoked, now or before (e.g. in the web interface).
+    Yes,
+    /// Not tried: the password comes from `REN_APP_PASSWORD` or the
+    /// password command, not from ren's login.
+    NotOurs,
+    /// The server says the request didn't log in with an app password:
+    /// it was the account's own password, which this can't revoke.
+    AccountPassword,
+    Failed(String),
+}
+
+/// Whether logging out revokes the password on the server: only if it
+/// isn't one from `REN_APP_PASSWORD` (`env_password`) or the password
+/// command, which ren didn't create.
+pub fn revokes(account: &Account, env_password: Option<&str>) -> bool {
+    env_password.is_none_or(str::is_empty) && account.password_command.is_none()
 }
 
 /// A login or logout running on its thread. Dropping it cancels a login
@@ -282,23 +305,20 @@ fn logout<S: SecretStore>(
     store: &impl Fn() -> Result<S, SecretError>,
     env_password: Option<String>,
 ) -> Event {
-    let password = match password {
-        Some(password) => Ok(password),
-        None => ren_settings::app_password(account, env_password, store)
-            .map(|(password, _)| password)
-            .map_err(|err| err.to_string()),
-    };
-    let revoked = password.and_then(|password| {
-        let credentials = Credentials {
-            user: account.user.clone(),
-            password,
+    let revoked = if revokes(account, env_password.as_deref()) {
+        let password = match password {
+            Some(password) => Ok(password),
+            None => ren_settings::app_password(account, env_password, store)
+                .map(|(password, _)| password)
+                .map_err(|err| err.to_string()),
         };
-        match revoke_app_password(&account.server, &credentials, &config()) {
-            // Revoked already, e.g. in the web interface.
-            Ok(()) | Err(Error::Unauthorized) => Ok(()),
-            Err(err) => Err(format!("{}: {err}", account.server)),
+        match password {
+            Ok(password) => revoke(account, password),
+            Err(err) => Revoked::Failed(err),
         }
-    });
+    } else {
+        Revoked::NotOurs
+    };
     let removed = match store().and_then(|store| store.delete_password(account)) {
         // Nothing to remove without a Secret Service.
         Ok(()) | Err(SecretError::Unavailable(_)) => Ok(()),
@@ -307,10 +327,28 @@ fn logout<S: SecretStore>(
     Event::LoggedOut { revoked, removed }
 }
 
-/// Who is logged in where, for the account page.
-pub fn summary(account: &Account) -> String {
+fn revoke(account: &Account, password: String) -> Revoked {
+    let credentials = Credentials {
+        user: account.user.clone(),
+        password,
+    };
+    match revoke_app_password(&account.server, &credentials, &config()) {
+        // Revoked already, e.g. in the web interface.
+        Ok(()) | Err(Error::Unauthorized) => Revoked::Yes,
+        // Nextcloud's answer when the request didn't log in with an app
+        // password ("no app password in use"): nothing was revoked.
+        Err(Error::Status { code: 403, .. }) => Revoked::AccountPassword,
+        Err(err) => Revoked::Failed(format!("{}: {err}", account.server)),
+    }
+}
+
+/// Who is logged in where, for the account page; `env_password` is
+/// `REN_APP_PASSWORD`.
+pub fn summary(account: &Account, env_password: Option<&str>) -> String {
     let mut text = format!("Logged in as {} on {}.", account.user, account.server);
-    if account.password_command.is_some() {
+    if env_password.is_some_and(|password| !password.is_empty()) {
+        text.push_str(" The app password comes from REN_APP_PASSWORD.");
+    } else if account.password_command.is_some() {
         text.push_str(" The app password comes from the password command (below).");
     }
     text
@@ -340,21 +378,39 @@ pub fn login_message(account: &Account, stored: &Result<(), String>) -> (String,
 
 /// What the account page says after logging out, and whether something
 /// failed.
-pub fn logout_message(
-    revoked: &Result<(), String>,
-    removed: &Result<(), String>,
-) -> (String, bool) {
-    let mut text = match revoked {
-        Ok(()) => "Logged out; the app password was revoked on the server.".to_owned(),
-        Err(err) => format!(
-            "Logged out here, but the app password couldn't be revoked on the server ({err}); \
-             remove it in your Nextcloud's security settings."
+pub fn logout_message(revoked: &Revoked, removed: &Result<(), String>) -> (String, bool) {
+    let (mut text, mut error) = match revoked {
+        Revoked::Yes => (
+            "Logged out; the app password was revoked on the server.".to_owned(),
+            false,
+        ),
+        Revoked::NotOurs => (
+            "Logged out here. The app password comes from REN_APP_PASSWORD or the password \
+             command, so ren didn't revoke it; remove it in your Nextcloud's security \
+             settings if nothing else needs it."
+                .to_owned(),
+            false,
+        ),
+        Revoked::AccountPassword => (
+            "Logged out here. The server says the password was your account's own, not an \
+             app password, so nothing was revoked. Log in through the browser to give ren \
+             an app password of its own."
+                .to_owned(),
+            true,
+        ),
+        Revoked::Failed(err) => (
+            format!(
+                "Logged out here, but the app password couldn't be revoked on the server \
+                 ({err}); remove it in your Nextcloud's security settings."
+            ),
+            true,
         ),
     };
     if let Err(err) = removed {
         text.push_str(&format!(" Removing it from this computer failed: {err}"));
+        error = true;
     }
-    (text, revoked.is_err() || removed.is_err())
+    (text, error)
 }
 
 #[cfg(test)]
@@ -402,6 +458,16 @@ mod tests {
                 ("DELETE", "/ocs/v2.php/core/apppassword") if authorized => {
                     Response::json(r#"{"ocs": {}}"#)
                 }
+                // "ada:secret", the account's own password: Nextcloud
+                // revokes only the app password a request logged in with.
+                ("DELETE", "/ocs/v2.php/core/apppassword")
+                    if request.header("authorization") == Some("Basic YWRhOnNlY3JldA==") =>
+                {
+                    Response::status(
+                        403,
+                        r#"{"ocs": {"meta": {"status": "failure", "statuscode": 403, "message": "no app password in use"}, "data": []}}"#,
+                    )
+                }
                 _ => Response::status(401, ""),
             }
         });
@@ -410,6 +476,15 @@ mod tests {
     }
 
     fn run_with(request: Request, store: &Arc<MemoryStore>) -> (Vec<Event>, Event) {
+        run_with_env(request, store, None)
+    }
+
+    /// With `env_password` as `REN_APP_PASSWORD`.
+    fn run_with_env(
+        request: Request,
+        store: &Arc<MemoryStore>,
+        env_password: Option<&str>,
+    ) -> (Vec<Event>, Event) {
         let events = Mutex::new(Vec::new());
         let send = |event| events.lock().unwrap().push(event);
         let store = store.clone();
@@ -419,7 +494,7 @@ mod tests {
             &AtomicBool::new(false),
             &send,
             || Ok(StoreRef(store.clone())),
-            None,
+            env_password.map(str::to_owned),
         );
         (events.into_inner().unwrap(), last)
     }
@@ -569,24 +644,35 @@ mod tests {
             user: "ada".to_owned(),
             password_command: None,
         };
-        assert_eq!(summary(&account), "Logged in as ada on https://x.org.");
+        assert_eq!(
+            summary(&account, None),
+            "Logged in as ada on https://x.org."
+        );
+        assert!(summary(&account, Some("pw")).contains("REN_APP_PASSWORD"));
+        assert!(revokes(&account, None) && revokes(&account, Some("")));
+        assert!(!revokes(&account, Some("pw")));
         assert!(!login_message(&account, &Ok(())).1);
         let (text, error) = login_message(&account, &Err("no Secret Service".to_owned()));
         assert!(error);
         assert!(text.contains("(no Secret Service)"), "{text}");
         account.password_command = Some("pass x".to_owned());
-        assert!(summary(&account).contains("password command"));
+        assert!(summary(&account, None).contains("password command"));
+        assert!(!revokes(&account, None));
         assert!(login_message(&account, &Ok(())).1);
 
         assert_eq!(
-            logout_message(&Ok(()), &Ok(())),
+            logout_message(&Revoked::Yes, &Ok(())),
             (
                 "Logged out; the app password was revoked on the server.".to_owned(),
                 false
             )
         );
+        let (text, error) = logout_message(&Revoked::NotOurs, &Ok(()));
+        assert!(!error && text.contains("didn't revoke"), "{text}");
+        let (text, error) = logout_message(&Revoked::AccountPassword, &Ok(()));
+        assert!(error && text.contains("account's own"), "{text}");
         let (text, error) = logout_message(
-            &Err("HTTP status 500".to_owned()),
+            &Revoked::Failed("HTTP status 500".to_owned()),
             &Err("locked".to_owned()),
         );
         assert!(error);
@@ -612,7 +698,7 @@ mod tests {
         assert_eq!(
             last,
             Event::LoggedOut {
-                revoked: Ok(()),
+                revoked: Revoked::Yes,
                 removed: Ok(())
             }
         );
@@ -635,7 +721,7 @@ mod tests {
         assert_eq!(
             last,
             Event::LoggedOut {
-                revoked: Ok(()),
+                revoked: Revoked::Yes,
                 removed: Ok(())
             }
         );
@@ -649,7 +735,79 @@ mod tests {
         let Event::LoggedOut { revoked, removed } = last else {
             panic!("{last:?}");
         };
-        assert!(revoked.unwrap_err().contains("no app password"));
+        let Revoked::Failed(err) = revoked else {
+            panic!("{revoked:?}");
+        };
+        assert!(err.contains("no app password"), "{err}");
         assert_eq!(removed, Ok(()));
+    }
+
+    #[test]
+    fn logout_with_the_accounts_own_password() {
+        let server = nextcloud();
+        let store = Arc::new(MemoryStore::default());
+        store.set_password(&ada(&server), "secret").unwrap();
+        let (_, last) = run_with(
+            Request::Logout {
+                account: ada(&server),
+                password: None,
+            },
+            &store,
+        );
+        assert_eq!(
+            last,
+            Event::LoggedOut {
+                revoked: Revoked::AccountPassword,
+                removed: Ok(())
+            }
+        );
+    }
+
+    #[test]
+    fn logout_without_revoking_a_password_from_outside() {
+        let server = nextcloud();
+        let store = Arc::new(MemoryStore::default());
+        // From REN_APP_PASSWORD, also when the window has it from a sync.
+        let (_, last) = run_with_env(
+            Request::Logout {
+                account: ada(&server),
+                password: Some("app-pw".to_owned()),
+            },
+            &store,
+            Some("app-pw"),
+        );
+        assert_eq!(
+            last,
+            Event::LoggedOut {
+                revoked: Revoked::NotOurs,
+                removed: Ok(())
+            }
+        );
+        // From the password command.
+        let account = Account {
+            password_command: Some("echo app-pw".to_owned()),
+            ..ada(&server)
+        };
+        let (_, last) = run_with(
+            Request::Logout {
+                account,
+                password: None,
+            },
+            &store,
+        );
+        assert_eq!(
+            last,
+            Event::LoggedOut {
+                revoked: Revoked::NotOurs,
+                removed: Ok(())
+            }
+        );
+        assert!(
+            !server
+                .requests()
+                .iter()
+                .any(|request| request.method == "DELETE"),
+            "revoked"
+        );
     }
 }
