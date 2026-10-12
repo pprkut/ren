@@ -225,12 +225,19 @@ impl App {
         window.set_account_state(state);
         window.set_account_server(settings.text(schema::SERVER).unwrap_or_default().into());
         window.set_account_user(settings.text(schema::USER).unwrap_or_default().into());
+        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
+        let env_password = env_password.as_deref();
         window.set_account_summary(
             account
                 .as_ref()
-                .map(login::summary)
+                .map(|account| login::summary(account, env_password))
                 .unwrap_or_default()
                 .into(),
+        );
+        window.set_account_revokes(
+            account
+                .as_ref()
+                .is_none_or(|account| login::revokes(account, env_password)),
         );
         let (message, error) = match (&*problem, ui.message.is_empty()) {
             (Some(problem), true) => (problem.as_str(), true),
