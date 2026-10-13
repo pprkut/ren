@@ -18,9 +18,13 @@ pub struct StageStats {
 
 impl StageStats {
     pub fn new(label: &'static str) -> Self {
+        Self::with(label, std::env::var_os("REN_TAB_STATS").is_some())
+    }
+
+    fn with(label: &'static str, enabled: bool) -> Self {
         Self {
             label,
-            enabled: std::env::var_os("REN_TAB_STATS").is_some(),
+            enabled,
             since: Instant::now(),
             counts: Vec::new(),
             stages: Vec::new(),
@@ -60,7 +64,14 @@ impl StageStats {
         if !self.enabled || self.since.elapsed() < Duration::from_secs(1) {
             return;
         }
-        let secs = self.since.elapsed().as_secs_f64();
+        eprintln!("{}", self.line(self.since.elapsed().as_secs_f64()));
+        self.since = Instant::now();
+        self.counts.clear();
+        self.stages.clear();
+    }
+
+    /// The statistics of `secs` seconds as one line.
+    fn line(&self, secs: f64) -> String {
         let mut line = format!("ren: {} stats over {secs:.2} s:", self.label);
         for (name, n) in &self.counts {
             line.push_str(&format!(" {name}={n}"));
@@ -73,9 +84,41 @@ impl StageStats {
                 total.as_secs_f64() / secs * 100.0
             ));
         }
-        eprintln!("{line}");
-        self.since = Instant::now();
-        self.counts.clear();
-        self.stages.clear();
+        line
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_and_stages() {
+        let mut stats = StageStats::with("helper", true);
+        stats.count("frames");
+        stats.add("frames", 2);
+        stats.add("dropped", 0);
+        stats.time("paint", Duration::from_millis(4));
+        stats.time("paint", Duration::from_millis(8));
+        stats.time("read", Duration::from_millis(10));
+        assert_eq!(
+            stats.line(2.0),
+            "ren: helper stats over 2.00 s: frames=3 paint=6.0ms/2x(max 8.0, 1%) \
+             read=10.0ms/1x(max 10.0, 0%)"
+        );
+        // Kept until a second passed.
+        stats.report();
+        assert_eq!(stats.counts, [("frames", 3)]);
+        stats.since -= Duration::from_secs(1);
+        stats.report();
+        assert!(stats.counts.is_empty() && stats.stages.is_empty());
+    }
+
+    #[test]
+    fn nothing_when_off() {
+        let mut stats = StageStats::with("ui", false);
+        stats.count("frames");
+        stats.time("paint", Duration::from_millis(4));
+        assert_eq!(stats.line(1.0), "ren: ui stats over 1.00 s:");
     }
 }
