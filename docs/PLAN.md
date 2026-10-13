@@ -813,9 +813,30 @@ From here on every milestone ships with tests for what it adds.
 
 ### Phase 4 — Hardening
 
-- **M9 — Test coverage.** Measure coverage (`cargo llvm-cov`), close gaps,
+- **M9 — Test coverage.** *(done; see `docs/decisions/0015-tests.md`)*
+  Measure coverage (`cargo llvm-cov`), close gaps,
   add a few UI flow tests with Slint's testing backend, and an end-to-end
   test against a Nextcloud + News container.
+
+  *Result:* `just coverage` (cargo-llvm-cov, without the engines; CI's
+  full job runs its tests with coverage and shows it in its summary):
+  79.9 % of the lines instead of 67.6 %, the library crates at 93–98 %,
+  `ren` outside `ui/` 89.7 % (80.1), `ui/` 40 % (2.9). `just
+  test-nextcloud` runs an end-to-end test against Nextcloud with SQLite
+  in a container (docker or podman): Login Flow v2 with the browser's
+  part done by the test, the initial sync in pages, pushed and pulled
+  changes, a resync, a feed deleted on the server, log out revoking the
+  app password; it serves its own feeds. CI runs it with Nextcloud
+  32/News 28.7.0 (the desktop's) and 33/29.0.0; nothing needed a change
+  for either. Seven UI flows on Slint's testing backend (`ui/flows.rs`,
+  without a display): reading with clicks and keys, the tree, search,
+  sorting, marking read, the settings dialog, About ren; they found
+  Mark Feed as Read panicking since M8 (fixed). Tests for the command
+  line modes, the sync thread, the downloads and the frame statistics.
+  Not covered: the tabs' window side (needs the Servo helper), the
+  account page's login in the window (needs the Secret Service passed
+  in), the window's geometry (winit only), the tray and the measurement
+  modes.
 - **M10 — Performance.** Re-run the measurement scripts: idle, reading, with
   tabs open and after closing them, during initial and incremental sync of a
   large account. Profile and fix hotspots. Compare the UI renderers again
@@ -921,7 +942,9 @@ Not planned into a milestone; picked up when articles or users need them.
   Keep it green. Default CI builds must stay fast: once Blitz and Servo
   arrive (S3/S4), the default job builds without the `html-view`/`servo`
   features and full builds get a separate, less frequent job, which runs
-  for pull requests. So that it also checks work on feature branches,
+  for pull requests; it also measures the coverage (M9). The end-to-end
+  test against Nextcloud runs for the same events. So that it also checks
+  work on feature branches,
   each milestone is developed on a branch with a draft pull request,
   opened with the first push and marked ready when the milestone is done. If
   `-D warnings` gets in the way of rough spike code, it may be relaxed for
