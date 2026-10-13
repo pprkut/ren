@@ -5,7 +5,7 @@
 //! with an app password) and out, through `login`'s thread.
 
 use ren_settings::schema::{self, Category};
-use ren_settings::{Settings, Value};
+use ren_settings::{Settings, Source, Value};
 use slint::ComponentHandle;
 
 use super::{App, ConfirmWindow, SettingsWindow};
@@ -107,8 +107,7 @@ impl App {
                 slint::language::ColorScheme::Light
             });
         }
-        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
-        let (text, label) = if login::revokes(&account, env_password.as_deref()) {
+        let (text, label) = if login::revokes(self.password_source(&account)) {
             (
                 "ren's app password will be revoked on the server and removed from this \
                  computer. This can't be undone; ren needs a new login afterwards. The \
@@ -174,8 +173,8 @@ impl App {
             .borrow()
             .password
             .as_ref()
-            .filter(|(of, _)| *of == account)
-            .map(|(_, password)| password.clone());
+            .filter(|(of, _, _)| *of == account)
+            .map(|(_, password, source)| (password.clone(), *source));
         self.run_login(Request::Logout { account, password }, "Logging out…");
     }
 
@@ -275,12 +274,30 @@ impl App {
             );
             return;
         };
-        self.sync.borrow_mut().password = Some((kept.clone(), password));
+        // ren's own, kept in the Secret Service (or in memory without one).
+        self.sync.borrow_mut().password = Some((kept.clone(), password, Source::Store));
         self.password_problem.borrow_mut().take();
-        let (message, error) = login::login_message(&kept, &stored);
+        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
+        let (message, error) = login::login_message(&kept, &stored, env_password.as_deref());
         self.account_message(&message, error);
         self.status(format!("Logged in as {} on {}", kept.user, kept.server));
         self.start_sync();
+    }
+
+    /// Where the app password for `account` comes from: the one the window
+    /// has from a sync or a login, else where a sync would look it up.
+    fn password_source(&self, account: &ren_settings::Account) -> Source {
+        let held = self
+            .sync
+            .borrow()
+            .password
+            .as_ref()
+            .filter(|(of, _, _)| of == account)
+            .map(|(_, _, source)| *source);
+        held.unwrap_or_else(|| {
+            let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
+            login::source(account, env_password.as_deref())
+        })
     }
 
     /// The settings in effect; the defaults without a settings file.
@@ -308,20 +325,18 @@ impl App {
         window.set_account_state(state);
         window.set_account_server(settings.text(schema::SERVER).unwrap_or_default().into());
         window.set_account_user(settings.text(schema::USER).unwrap_or_default().into());
-        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
-        let env_password = env_password.as_deref();
+        let source = account
+            .as_ref()
+            .map(|account| self.password_source(account));
         window.set_account_summary(
             account
                 .as_ref()
-                .map(|account| login::summary(account, env_password))
+                .zip(source)
+                .map(|(account, source)| login::summary(account, source))
                 .unwrap_or_default()
                 .into(),
         );
-        window.set_account_revokes(
-            account
-                .as_ref()
-                .is_none_or(|account| login::revokes(account, env_password)),
-        );
+        window.set_account_revokes(source.is_none_or(login::revokes));
         let (message, error) = match (&*problem, ui.message.is_empty()) {
             (Some(problem), true) => (problem.as_str(), true),
             _ => (ui.message.as_str(), ui.error),

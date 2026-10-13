@@ -47,8 +47,9 @@ pub struct Job {
 /// What the sync thread reports.
 #[derive(Debug)]
 pub enum Event {
-    /// The app password, fetched for this sync, for the next ones.
-    Password(String),
+    /// The app password, fetched for this sync, for the next ones, with
+    /// where it came from.
+    Password(String, ren_settings::Source),
     Progress(Progress),
     Finished(Result<Report, Failure>),
 }
@@ -164,13 +165,13 @@ fn run(job: Job, cancel: &AtomicBool, send: &impl Fn(Event)) -> Result<Report, F
     let password = match job.password {
         Some(password) => password,
         None => {
-            let (password, _) = ren_settings::app_password(
+            let (password, source) = ren_settings::app_password(
                 &job.account,
                 std::env::var(PASSWORD_VAR).ok(),
                 SecretService::connect,
             )
             .map_err(|err| Failure::Password(err.to_string()))?;
-            send(Event::Password(password.clone()));
+            send(Event::Password(password.clone(), source));
             password
         }
     };
