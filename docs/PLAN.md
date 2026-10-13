@@ -821,7 +821,8 @@ From here on every milestone ships with tests for what it adds.
   *Result:* `just coverage` (cargo-llvm-cov, without the engines; CI's
   full job runs its tests with coverage and shows it in its summary):
   79.9 % of the lines instead of 67.6 %, the library crates at 93–98 %,
-  `ren` outside `ui/` 89.7 % (80.1), `ui/` 40 % (2.9). `just
+  `ren` outside `ui/` 89.7 % (80.1), `ui/` 40 % (2.9); with the article
+  view 78.5 %. `just
   test-nextcloud` runs an end-to-end test against Nextcloud with SQLite
   in a container (docker or podman): Login Flow v2 with the browser's
   part done by the test, the initial sync in pages, pushed and pulled

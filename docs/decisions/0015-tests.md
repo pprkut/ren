@@ -201,8 +201,16 @@ the review sees them in the full job's summary.
 
 ## In CI
 
-The first full job with coverage (all default features): see the pull
-request's job summary.
+The full job with coverage (all default features, 23db19c): **78.5 % of
+16,713 lines**. The article view adds 1,284 lines: `article/html.rs`
+(Blitz) 77.5 %, `article/paint.rs` 75.2 %, `article/images.rs` 92.2 %,
+and its pane in the window (`ui/article.rs`) 23 %, as the flows show
+articles as plain text. The job took 4 minutes instead of 1.5 (the
+instrumented build, not cached yet).
+
+In both measurements the tests inside `src/` (`ui/flows.rs`,
+`testing.rs`, the modules' `tests`) count too; without `ui/flows.rs`,
+`ui/` is at 34.6 % (1,170 of 3,379 lines).
 
 ## Open
 
