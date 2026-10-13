@@ -256,7 +256,112 @@ pub fn result_text(result: &Result<Report, Failure>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::time::Duration;
+
     use super::*;
+    use crate::testing::mock::{MockServer, Response};
+    use crate::testing::{self, TempDir};
+
+    fn job(dir: &TempDir, server: &MockServer, password: Option<&str>) -> Job {
+        Job {
+            database: dir.join("ren.db"),
+            account: Account {
+                server: server.url(),
+                user: testing::USER.to_owned(),
+                password_command: Some(format!("echo {}", testing::PASSWORD)),
+            },
+            password: password.map(str::to_owned),
+            options: ren_sync::Options::default(),
+        }
+    }
+
+    /// Runs `job` on its thread; returns the events until it finished,
+    /// and how often the UI was woken.
+    fn run_job(job: Job, cancel: bool) -> (Vec<Event>, usize) {
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let woken = wakes.clone();
+        let running = start(job, move || {
+            woken.fetch_add(1, Ordering::Relaxed);
+        })
+        .unwrap();
+        if cancel {
+            running.cancel();
+        }
+        let mut events = Vec::new();
+        loop {
+            let event = running
+                .events
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap();
+            let finished = matches!(event, Event::Finished(_));
+            events.push(event);
+            if finished {
+                break;
+            }
+        }
+        (events, wakes.load(Ordering::Relaxed))
+    }
+
+    fn result(events: Vec<Event>) -> Result<Report, Failure> {
+        match events.into_iter().last() {
+            Some(Event::Finished(result)) => result,
+            other => panic!("not finished: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sync_on_a_thread() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("sync-thread");
+        // Without a password, the thread fetches it and hands it on.
+        let (events, wakes) = run_job(job(&dir, &server, None), false);
+        // Woken after each event; the last may still be under way.
+        assert!(
+            wakes + 1 >= events.len(),
+            "{wakes} wakes, {} events",
+            events.len()
+        );
+        assert!(matches!(
+            &events[0],
+            Event::Password(password, ren_settings::Source::Command) if password == testing::PASSWORD
+        ));
+        assert!(matches!(events[1], Event::Progress(Progress::Pushed)));
+        assert_eq!(result(events).unwrap().kind, Kind::Initial);
+
+        let (events, _) = run_job(job(&dir, &server, Some(testing::PASSWORD)), false);
+        assert!(matches!(events[0], Event::Progress(Progress::Pushed)));
+        assert_eq!(result(events).unwrap().kind, Kind::Incremental);
+    }
+
+    #[test]
+    fn failed_syncs() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("sync-thread-failed");
+        let (events, _) = run_job(job(&dir, &server, Some(testing::PASSWORD)), true);
+        assert!(matches!(
+            result(events),
+            Err(Failure::Sync(ren_sync::Error::Cancelled))
+        ));
+
+        // The database is the account's now, and no other's.
+        let mut other = job(&dir, &server, Some(testing::PASSWORD));
+        other.account.user = "other".to_owned();
+        let (events, _) = run_job(other, false);
+        assert!(matches!(result(events), Err(Failure::OtherAccount)));
+
+        // A new database for another server.
+        let dir = TempDir::new("sync-thread-refused");
+        let refusing = MockServer::start(|_| Response::status(401, ""));
+        let (events, _) = run_job(job(&dir, &refusing, Some("revoked")), false);
+        let failure = result(events).unwrap_err();
+        assert!(failure.unauthorized(), "{failure}");
+
+        let mut no_password = job(&dir, &server, None);
+        no_password.account.password_command = Some("exit 3".to_owned());
+        let (events, _) = run_job(no_password, false);
+        assert!(matches!(result(events), Err(Failure::Password(_))));
+    }
 
     fn account(user: &str) -> Account {
         Account {

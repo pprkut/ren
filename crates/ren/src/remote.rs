@@ -552,7 +552,211 @@ fn sync(client: &Client, db: &Path, options: &Options, settings: &Settings) -> C
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
+    use crate::testing::mock::{MockServer, Request, Response};
+    use crate::testing::{self, TempDir};
+
+    fn options(dir: &TempDir, server: &MockServer, mode: Mode) -> Options {
+        Options {
+            mode,
+            settings: Some(testing::settings_file(dir, &server.url())),
+            ..Options::default()
+        }
+    }
+
+    /// The requests' methods and paths below the API.
+    fn requests(server: &MockServer) -> Vec<String> {
+        server
+            .requests()
+            .iter()
+            .map(|r| format!("{} {}", r.method, r.api_path().unwrap_or(&r.path)))
+            .collect()
+    }
+
+    #[test]
+    fn check_and_fetch_unread() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("remote-check");
+        run(&options(&dir, &server, Mode::Check)).unwrap();
+        assert_eq!(
+            requests(&server),
+            ["GET status", "GET folders", "GET feeds"]
+        );
+        // With the app password from password-command.
+        let request = &server.requests()[0];
+        assert_eq!(
+            request.header("authorization"),
+            Some("Basic cmVhZGVyOmFwcC1wYXNzd29yZA==")
+        );
+        assert_eq!(request.header("user-agent"), Some(USER_AGENT));
+
+        run(&options(&dir, &server, Mode::FetchUnread)).unwrap();
+        // One short page.
+        assert_eq!(requests(&server)[3..], ["GET items"]);
+    }
+
+    #[test]
+    fn errors_name_the_server() {
+        let server = MockServer::start(|_| Response::status(401, ""));
+        let dir = TempDir::new("remote-401");
+        let err = run(&options(&dir, &server, Mode::Check)).unwrap_err();
+        assert_eq!(
+            err,
+            format!(
+                "{}: authentication failed (HTTP 401)",
+                nextcloud_news::api_base(&server.url())
+            )
+        );
+
+        let options = Options {
+            settings: Some(dir.join("missing.toml")),
+            ..options(&dir, &server, Mode::Check)
+        };
+        assert!(run(&options).unwrap_err().contains("no such file"));
+    }
+
+    #[test]
+    fn dump_items_into_an_empty_directory() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("remote-dump");
+        let dump = dir.join("dump");
+        run(&options(&dir, &server, Mode::DumpItems(dump.clone()))).unwrap();
+        let mut files: Vec<String> = std::fs::read_dir(&dump)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            [
+                "feeds.json",
+                "folders.json",
+                "starred-0001.json",
+                "status.json",
+                "unread-0001.json",
+                "updated-1d.json",
+                "version.json",
+            ]
+        );
+        assert_eq!(
+            std::fs::read(dump.join("unread-0001.json")).unwrap(),
+            testing::recorded("items")
+        );
+        // Not into one with files.
+        let err = run(&options(&dir, &server, Mode::DumpItems(dump.clone()))).unwrap_err();
+        assert!(err.ends_with("is not empty"), "{err}");
+    }
+
+    #[test]
+    fn sync_into_a_database() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("remote-sync");
+        let db = dir.join("sub").join("ren.db");
+        run(&options(&dir, &server, Mode::Sync(db.clone()))).unwrap();
+        let count = |db: &Path| {
+            Store::open(db)
+                .unwrap()
+                .item_count(&ren_store::ItemQuery::default())
+                .unwrap()
+        };
+        assert!(count(&db) > 0);
+        run(&Options {
+            resync: true,
+            ..options(&dir, &server, Mode::Sync(db.clone()))
+        })
+        .unwrap();
+        assert!(requests(&server).iter().all(|r| r != "GET items/updated"));
+
+        let err = run(&Options {
+            batch_size: None,
+            ..options(&dir, &server, Mode::Sync(db))
+        })
+        .unwrap_err();
+        assert!(err.ends_with("needs a batch size"), "{err}");
+    }
+
+    /// One item (7, in feed 3 of folder 2) whose state the write requests
+    /// change; `ignored` actions are answered but do nothing.
+    fn one_item_server(ignored: &'static [&'static str]) -> MockServer {
+        let state = Arc::new(Mutex::new((true, false)));
+        MockServer::start(move |request: &Request| {
+            let mut state = state.lock().unwrap();
+            let path = request.api_path().unwrap_or_default();
+            let body = match (request.method.as_str(), path) {
+                ("GET", "items") => format!(
+                    r#"{{"items": [{{"id": 7, "feedId": 3, "unread": {}, "starred": {}}}]}}"#,
+                    state.0, state.1
+                ),
+                ("GET", "feeds") => {
+                    r#"{"feeds": [{"id": 3, "url": "https://e/f", "folderId": 2}]}"#.to_owned()
+                }
+                ("POST", "folders/0/read") => {
+                    return Response::status(500, r#"{"message": "folder 0"}"#);
+                }
+                ("POST", path) => {
+                    // "Mark all as read" up to id 0 marks nothing.
+                    let action = path
+                        .strip_prefix("items/")
+                        .and_then(|path| path.strip_suffix("/multiple"))
+                        .unwrap_or_default();
+                    if !ignored.contains(&action) {
+                        match action {
+                            "read" => state.0 = false,
+                            "unread" => state.0 = true,
+                            "star" => state.1 = true,
+                            "unstar" => state.1 = false,
+                            _ => {}
+                        }
+                    }
+                    String::new()
+                }
+                _ => return Response::status(404, ""),
+            };
+            Response::json(body)
+        })
+    }
+
+    #[test]
+    fn check_writes_restores_the_item() {
+        let server = one_item_server(&[]);
+        let dir = TempDir::new("remote-writes");
+        run(&options(&dir, &server, Mode::CheckWrites)).unwrap();
+        let posts: Vec<String> = requests(&server)
+            .into_iter()
+            .filter(|r| r.starts_with("POST"))
+            .collect();
+        assert_eq!(
+            posts,
+            [
+                "POST items/read/multiple",
+                "POST items/unread/multiple",
+                "POST items/star/multiple",
+                "POST items/unstar/multiple",
+                "POST items/read",
+                "POST feeds/3/read",
+                "POST folders/2/read",
+                "POST folders/0/read",
+                "POST items/unread/multiple",
+                "POST items/unstar/multiple",
+            ]
+        );
+
+        // A request the server ignores fails the check; the item is
+        // restored all the same.
+        let server = one_item_server(&["star"]);
+        let err = run(&options(&dir, &server, Mode::CheckWrites)).unwrap_err();
+        assert!(
+            err.ends_with("POST items/star/multiple: the item is unread, not starred, expected unread, starred"),
+            "{err}"
+        );
+        assert!(requests(&server).ends_with(&[
+            "POST items/unread/multiple".to_owned(),
+            "POST items/unstar/multiple".to_owned(),
+            "GET items".to_owned(),
+        ]));
+    }
 
     #[test]
     fn dump_dir_inside_source_tree_is_refused() {

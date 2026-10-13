@@ -344,6 +344,7 @@ mod tests {
     use ren_store::{ItemQuery, Selection, Sort, Status};
 
     use super::*;
+    use crate::testing::TempDir;
 
     fn ids(store: &Store, selection: Selection) -> Vec<u64> {
         let query = ItemQuery {
@@ -389,28 +390,6 @@ mod tests {
         assert!(item(1, 100).pub_date < item(0, 100).pub_date);
     }
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("ren-dump-test-{name}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-
-        fn write(&self, name: &str, json: &str) {
-            std::fs::write(self.0.join(name), json).unwrap();
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     fn dump_item(id: u64, feed: u64, unread: bool, starred: bool) -> String {
         format!(
             r#"{{"id": {id}, "feedId": {feed}, "title": "Item {id}", "url": "https://e/{id}",
@@ -435,12 +414,12 @@ mod tests {
         let page = |items: &[String]| format!(r#"{{"items": [{}]}}"#, items.join(","));
         dir.write(
             "unread-0001.json",
-            &page(&[dump_item(5, 10, true, false), dump_item(4, 11, true, true)]),
+            page(&[dump_item(5, 10, true, false), dump_item(4, 11, true, true)]),
         );
-        dir.write("unread-0002.json", &page(&[dump_item(3, 99, true, false)]));
+        dir.write("unread-0002.json", page(&[dump_item(3, 99, true, false)]));
         dir.write(
             "starred-0001.json",
-            &page(&[dump_item(4, 11, true, true), dump_item(1, 10, false, true)]),
+            page(&[dump_item(4, 11, true, true), dump_item(1, 10, false, true)]),
         );
         dir.write("version.json", r#"{"version": "28.7.0"}"#);
         dir
@@ -449,7 +428,7 @@ mod tests {
     #[test]
     fn dump_items() {
         let dir = dump("load");
-        let db = DemoDb::from_dump(&dir.0, 100).unwrap();
+        let db = DemoDb::from_dump(dir.path(), 100).unwrap();
         let store = Store::open(db.path()).unwrap();
         assert_eq!(store.folders().unwrap().len(), 1);
         // By title; feed 11 has none. A folder id of 0 is no folder.
@@ -471,7 +450,7 @@ mod tests {
     #[test]
     fn dump_limit() {
         let dir = dump("limit");
-        let db = DemoDb::from_dump(&dir.0, 2).unwrap();
+        let db = DemoDb::from_dump(dir.path(), 2).unwrap();
         let store = Store::open(db.path()).unwrap();
         assert_eq!(ids(&store, Selection::All), [5, 4]);
     }
@@ -479,7 +458,7 @@ mod tests {
     #[test]
     fn dump_without_files() {
         let dir = TempDir::new("missing");
-        let Err(err) = DemoDb::from_dump(&dir.0, 10) else {
+        let Err(err) = DemoDb::from_dump(dir.path(), 10) else {
             panic!("loaded an empty directory");
         };
         assert!(err.contains("folders.json"));

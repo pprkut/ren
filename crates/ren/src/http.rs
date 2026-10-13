@@ -38,3 +38,26 @@ pub fn fetch(agent: &ureq::Agent, url: &str, limit: u64) -> Result<Vec<u8>, Stri
         .read_to_vec()
         .map_err(|err| err.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::mock::{MockServer, Response};
+
+    #[test]
+    fn fetch_with_a_limit() {
+        let server = MockServer::start(|request| match request.path.as_str() {
+            "/body" => Response::status(200, "0123456789"),
+            _ => Response::status(404, ""),
+        });
+        let agent = agent();
+        let url = format!("{}/body", server.url());
+        assert_eq!(fetch(&agent, &url, 11), Ok(b"0123456789".to_vec()));
+        // ureq refuses a body of the limit's size already.
+        assert!(fetch(&agent, &url, 10).is_err());
+        let err = fetch(&agent, &format!("{}/missing", server.url()), 10).unwrap_err();
+        assert!(err.contains("404"), "{err}");
+        // Sent as ren.
+        assert_eq!(server.requests()[0].header("user-agent"), Some(USER_AGENT));
+    }
+}
