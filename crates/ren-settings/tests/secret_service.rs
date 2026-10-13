@@ -31,7 +31,7 @@ fn round_trip() {
     service.set_password(&account, "sëcond").unwrap();
     assert_eq!(service.password(&account), Ok(Some("sëcond".to_owned())));
     assert_eq!(
-        app_password(&account, None, SecretService::connect).map(|(password, _)| password),
+        app_password(&account, SecretService::connect).map(|(password, _)| password),
         Ok("sëcond".to_owned())
     );
 

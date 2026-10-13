@@ -17,7 +17,8 @@
 #   OUT_DIR   raw output (default target/measure/fetch-<timestamp>)
 #
 # A password-command is run once per invocation of ren; to avoid repeated
-# prompts, export REN_APP_PASSWORD or let gpg-agent cache the passphrase.
+# prompts, let gpg-agent cache the passphrase, or log in in ren so the app
+# password is kept in the Secret Service.
 # Its CPU time is not part of the measurement.
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md. The server

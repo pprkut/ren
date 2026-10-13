@@ -11,8 +11,7 @@ use std::time::Instant;
 
 use nextcloud_news::{Client, Config, Credentials};
 use ren_settings::{
-    Account, PASSWORD_VAR, Problem, Reload, SecretService, SecretStore, Settings, SettingsFile,
-    paths,
+    Account, Problem, Reload, SecretService, SecretStore, Settings, SettingsFile, paths,
 };
 
 use crate::cli::Options;
@@ -64,16 +63,12 @@ pub fn located(path: &Path, problem: &Problem) -> String {
     format!("{}{separator}{problem}", path.display())
 }
 
-/// The app password for `account`: from [`PASSWORD_VAR`], `password-command`
-/// or the Secret Service.
+/// The app password for `account`: from `password-command` or the Secret
+/// Service.
 pub fn password(account: &Account) -> Result<String, String> {
-    ren_settings::app_password(
-        account,
-        std::env::var(PASSWORD_VAR).ok(),
-        SecretService::connect,
-    )
-    .map(|(password, _)| password)
-    .map_err(|err| err.to_string())
+    ren_settings::app_password(account, SecretService::connect)
+        .map(|(password, _)| password)
+        .map_err(|err| err.to_string())
 }
 
 /// `--set-password`: reads an app password from stdin, checks it against

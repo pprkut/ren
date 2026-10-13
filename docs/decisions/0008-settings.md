@@ -70,7 +70,8 @@ A new crate, `ren-settings`, with no UI and no knowledge of the server.
   delete the app password of an account), `SecretService` (below), and
   `MemoryStore`, a fake that can also fail on demand. `app_password`
   takes the first of `REN_APP_PASSWORD`, `password-command` (if set) and
-  the secret store, which it only connects to then. Its errors tell
+  the secret store, which it only connects to then. *M8b: `REN_APP_PASSWORD`
+  removed, see 0014.* Its errors tell
   apart "not stored" (log in), "no Secret Service" (use
   `password-command`), "denied" (the user didn't unlock the keyring)
   and a failing command.

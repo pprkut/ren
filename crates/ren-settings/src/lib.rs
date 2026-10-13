@@ -32,8 +32,8 @@ pub use error::Error;
 pub use file::{Reload, SettingsFile, write_atomically};
 pub use schema::{Category, Colour, Kind, Setting, Value};
 pub use secret::{
-    MemoryStore, PASSWORD_VAR, PasswordError, SecretError, SecretService, SecretStore, Source,
-    app_password, run_password_command,
+    MemoryStore, PasswordError, SecretError, SecretService, SecretStore, Source, app_password,
+    run_password_command,
 };
 pub use settings::{Account, Loaded, Position, Problem, Problems, Settings, Severity};
 pub use state::{Columns, Layout, List, Selection, Sort, SortColumn, State, Window};

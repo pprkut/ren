@@ -19,10 +19,6 @@ use keyring_core::api::CredentialStoreApi;
 
 use crate::settings::Account;
 
-/// Environment variable with the app password; takes precedence over
-/// everything else.
-pub const PASSWORD_VAR: &str = "REN_APP_PASSWORD";
-
 /// Where app passwords are kept, per account.
 pub trait SecretStore {
     /// The app password of `account`; `None` if there's none.
@@ -193,8 +189,6 @@ impl SecretStore for MemoryStore {
 /// Where an app password came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
-    /// [`PASSWORD_VAR`].
-    Environment,
     /// The `password-command` setting.
     Command,
     /// The secret store.
@@ -232,17 +226,12 @@ impl std::error::Error for PasswordError {}
 
 /// The app password of `account`, from the first of:
 ///
-/// 1. `env_password` (from [`PASSWORD_VAR`]), unless it's empty,
-/// 2. the account's `password-command`, if set,
-/// 3. the secret store, which `store` connects to only then.
+/// 1. the account's `password-command`, if set,
+/// 2. the secret store, which `store` connects to only then.
 pub fn app_password<S: SecretStore>(
     account: &Account,
-    env_password: Option<String>,
     store: impl FnOnce() -> Result<S, SecretError>,
 ) -> Result<(String, Source), PasswordError> {
-    if let Some(password) = env_password.filter(|p| !p.is_empty()) {
-        return Ok((password, Source::Environment));
-    }
     if let Some(command) = &account.password_command {
         return run_password_command(command)
             .map(|password| (password, Source::Command))
@@ -323,29 +312,18 @@ mod tests {
     }
 
     #[test]
-    fn environment_first() {
-        let account = account(Some("echo from-command"));
-        let result = app_password(&account, Some("from-env".to_owned()), || {
-            Ok::<_, SecretError>(store_with("stored"))
-        });
-        assert_eq!(result, Ok(("from-env".to_owned(), Source::Environment)));
-    }
-
-    #[test]
     fn command_before_store() {
         let account = account(Some("printf 'from-command\\nsecond line\\n'"));
-        let result = app_password(
-            &account,
-            Some(String::new()),
-            || -> Result<MemoryStore, _> { panic!("the store isn't needed") },
-        );
+        let result = app_password(&account, || -> Result<MemoryStore, _> {
+            panic!("the store isn't needed")
+        });
         assert_eq!(result, Ok(("from-command".to_owned(), Source::Command)));
     }
 
     #[test]
     fn command_errors() {
         let failing = |command| {
-            app_password(&account(Some(command)), None, || {
+            app_password(&account(Some(command)), || {
                 Ok::<_, SecretError>(store_with("stored"))
             })
             .unwrap_err()
@@ -362,18 +340,18 @@ mod tests {
 
     #[test]
     fn store_last() {
-        let result = app_password(&account(None), None, || {
+        let result = app_password(&account(None), || {
             Ok::<_, SecretError>(store_with("stored"))
         });
         assert_eq!(result, Ok(("stored".to_owned(), Source::Store)));
 
-        let result = app_password(&account(None), None, || {
+        let result = app_password(&account(None), || {
             Ok::<_, SecretError>(MemoryStore::default())
         });
         assert_eq!(result, Err(PasswordError::NotStored));
 
         let unavailable = SecretError::Unavailable("no bus".to_owned());
-        let result = app_password(&account(None), None, || {
+        let result = app_password(&account(None), || {
             Err::<MemoryStore, _>(unavailable.clone())
         });
         assert_eq!(result, Err(PasswordError::Store(unavailable)));
@@ -383,7 +361,7 @@ mod tests {
             failure: Some(denied.clone()),
             ..MemoryStore::default()
         };
-        let result = app_password(&account(None), None, || Ok::<_, SecretError>(store));
+        let result = app_password(&account(None), || Ok::<_, SecretError>(store));
         assert_eq!(result, Err(PasswordError::Store(denied)));
     }
 

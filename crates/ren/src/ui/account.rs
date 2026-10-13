@@ -277,8 +277,7 @@ impl App {
         // ren's own, kept in the Secret Service (or in memory without one).
         self.sync.borrow_mut().password = Some((kept.clone(), password, Source::Store));
         self.password_problem.borrow_mut().take();
-        let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
-        let (message, error) = login::login_message(&kept, &stored, env_password.as_deref());
+        let (message, error) = login::login_message(&kept, &stored);
         self.account_message(&message, error);
         self.status(format!("Logged in as {} on {}", kept.user, kept.server));
         self.start_sync();
@@ -294,10 +293,7 @@ impl App {
             .as_ref()
             .filter(|(of, _, _)| of == account)
             .map(|(_, _, source)| *source);
-        held.unwrap_or_else(|| {
-            let env_password = std::env::var(ren_settings::PASSWORD_VAR).ok();
-            login::source(account, env_password.as_deref())
-        })
+        held.unwrap_or_else(|| login::source(account))
     }
 
     /// The settings in effect; the defaults without a settings file.
