@@ -19,6 +19,8 @@ mod settings_dialog;
 mod sync_thread;
 #[cfg(feature = "servo")]
 mod tabs;
+#[cfg(test)]
+mod testing;
 mod ui;
 mod window_state;
 

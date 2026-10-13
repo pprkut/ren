@@ -479,4 +479,69 @@ mod tests {
         assert_eq!(filters.due(&urls, later), urls);
         fs::remove_dir_all(&dir).unwrap();
     }
+
+    /// Serves lists below `/lists/`; `broken.txt` fails.
+    fn list_server() -> crate::testing::mock::MockServer {
+        use crate::testing::mock::{MockServer, Response};
+        MockServer::start(|request| {
+            let text = match request.path.as_str() {
+                "/lists/main.txt" => "||ads.example^\n!#include extra.txt\n",
+                "/lists/extra.txt" => "||tracker.example^\n",
+                "/lists/many.txt" => &"!#include extra.txt\n".repeat(MAX_INCLUDES + 1),
+                "/lists/bad.txt" => "!#include broken.txt\n||ads.example^\n",
+                "/lists/binary.txt" => return Response::status(200, vec![0xff, 0xfe]),
+                _ => return Response::status(404, "no such list"),
+            };
+            Response::status(200, text.to_owned())
+        })
+    }
+
+    #[test]
+    fn downloads() {
+        let server = list_server();
+        let dir = crate::testing::TempDir::new("filters");
+        let filters = Filters::new(dir.join("filters"));
+        let agent = crate::http::agent();
+        let url = |name: &str| format!("{}/lists/{name}", server.url());
+
+        let main = url("main.txt");
+        let len = filters.download(&agent, &main).unwrap();
+        let list = fs::read_to_string(filters.path(&main)).unwrap();
+        assert_eq!(list, "||ads.example^\n||tracker.example^\n");
+        assert_eq!(len, list.len());
+        assert!(
+            filters
+                .due(std::slice::from_ref(&main), SystemTime::now())
+                .is_empty()
+        );
+
+        // A failing include keeps the old list.
+        fs::write(filters.path(&url("bad.txt")), "old").unwrap();
+        let err = filters.download(&agent, &url("bad.txt")).unwrap_err();
+        assert!(err.starts_with(&url("broken.txt")), "{err}");
+        assert_eq!(
+            fs::read_to_string(filters.path(&url("bad.txt"))).unwrap(),
+            "old"
+        );
+        assert_eq!(
+            filters.download(&agent, &url("many.txt")),
+            Err(format!("more than {MAX_INCLUDES} includes"))
+        );
+        assert_eq!(
+            filters.download(&agent, &url("binary.txt")),
+            Err("not UTF-8".to_owned())
+        );
+        assert!(filters.download(&agent, &url("missing.txt")).is_err());
+
+        // On a thread, one update at a time.
+        let (sender, done) = std::sync::mpsc::channel();
+        assert!(!filters.update(Vec::new(), |_| {}));
+        assert!(
+            filters.update(vec![url("extra.txt"), url("missing.txt")], move |changed| {
+                sender.send(changed).unwrap();
+            })
+        );
+        assert!(done.recv_timeout(Duration::from_secs(10)).unwrap());
+        assert!(filters.path(&url("extra.txt")).exists());
+    }
 }

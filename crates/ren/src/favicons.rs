@@ -287,4 +287,44 @@ mod tests {
         assert_eq!(favicons.due(urls, tomorrow), ["https://b.example/icon.png"]);
         fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn downloads() {
+        use crate::testing::mock::{MockServer, Response};
+        let server = MockServer::start(|request| match request.path.as_str() {
+            "/icon.png" => Response {
+                content_type: "image/png",
+                ..Response::status(200, png(64))
+            },
+            "/large.png" => Response::status(200, vec![0; MAX_BYTES as usize + 1]),
+            _ => Response::html(404, "Not found"),
+        });
+        let dir = crate::testing::TempDir::new("favicons-download");
+        let favicons = Favicons::new(dir.join("icons"));
+        let agent = crate::http::agent();
+        let icon = format!("{}/icon.png", server.url());
+        let missing = format!("{}/missing.ico", server.url());
+
+        favicons.download(&agent, &icon).unwrap();
+        let written = decoded(&fs::read(favicons.path(&icon)).unwrap());
+        assert_eq!(written.dimensions(), (SIZE, SIZE));
+        // Failures are marked, and not tried again for a while.
+        assert!(favicons.download(&agent, &missing).is_err());
+        assert!(favicons.failed_path(&missing).exists());
+        let large = format!("{}/large.png", server.url());
+        assert!(favicons.download(&agent, &large).is_err());
+        assert!(
+            favicons
+                .due([icon.as_str(), &missing, &large], SystemTime::now())
+                .is_empty()
+        );
+
+        // On a thread, one update at a time; nothing new is no change.
+        let (sender, done) = std::sync::mpsc::channel();
+        assert!(!favicons.update(Vec::new(), |_| {}));
+        assert!(favicons.update(vec![missing], move |changed| {
+            sender.send(changed).unwrap();
+        }));
+        assert!(!done.recv_timeout(Duration::from_secs(10)).unwrap());
+    }
 }

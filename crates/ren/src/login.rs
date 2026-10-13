@@ -422,18 +422,14 @@ pub fn logout_message(revoked: &Revoked, removed: &Result<(), String>) -> (Strin
 }
 
 #[cfg(test)]
-#[path = "../../nextcloud-news/tests/mock/mod.rs"]
-mod mock;
-
-#[cfg(test)]
 mod tests {
     use std::sync::Mutex;
     use std::sync::atomic::AtomicUsize;
 
     use ren_settings::MemoryStore;
 
-    use super::mock::{self, MockServer, Response};
     use super::*;
+    use crate::testing::mock::{self, MockServer, Response};
 
     const FAST: Timing = Timing {
         poll: Duration::from_millis(10),
