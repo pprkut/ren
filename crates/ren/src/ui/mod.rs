@@ -1804,10 +1804,78 @@ fn run_window(
     reader: Reader,
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
-    (saved, state_problem): (Saved, Option<String>),
+    saved: (Saved, Option<String>),
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
+    let (window, app) = build_window(options, started, reader, settings, database, saved)?;
 
+    let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
+    let _measure_sync = options
+        .measure_sync
+        .then(|| start_sync_measurement(Rc::downgrade(&app)));
+    let _measure_settings = options
+        .measure_settings
+        .then(|| start_settings_measurement(Rc::downgrade(&app)));
+    let _measure_hidden = options
+        .measure_hidden
+        .then(|| start_hidden_measurement(Rc::downgrade(&app), options.tab_urls.clone()));
+    let _cycle = options
+        .cycle_articles
+        .map(|count| start_article_cycle(Rc::downgrade(&app), count));
+    #[cfg(feature = "servo")]
+    let _measure_tabs = options.measure_tabs.then(|| {
+        let urls = if options.tab_urls.is_empty() {
+            let reader = app.reader.borrow();
+            (0..reader.len())
+                .filter_map(|row| reader.url(reader.id(row)?).ok().flatten())
+                .take(3)
+                .collect()
+        } else {
+            options.tab_urls.clone()
+        };
+        if urls.is_empty() {
+            eprintln!("ren: --measure-tabs needs --tab-url or items with links (--dump)");
+            std::process::exit(1);
+        }
+        pages::start_measurement(Rc::downgrade(&app.pages), urls)
+    });
+    window.show()?;
+    geometry::place(window.as_weak(), app.saved.borrow().state().window.clone());
+    let weak = Rc::downgrade(&app);
+    geometry::on_moved(window.window(), move || {
+        if let Some(app) = weak.upgrade() {
+            app.window_moved();
+        }
+    });
+    // Until quit: the window may be hidden in the tray.
+    let result = slint::run_event_loop_until_quit();
+    window.hide()?;
+    app.dialog.borrow_mut().take();
+    app.login.borrow_mut().take();
+    app.about.borrow_mut().take();
+    *app.tray.borrow_mut() = None;
+    if let Err(err) = app.saved.borrow_mut().save() {
+        eprintln!("ren: saving the window's state: {err}");
+    }
+    // Closing the tabs ends the helper; it saves the site data before it
+    // exits, which ren's exit would cut short.
+    #[cfg(feature = "servo")]
+    {
+        app.pages.borrow_mut().close_all();
+        crate::tabs::helper::wait_for_helpers();
+    }
+    result
+}
+
+/// The main window and the app behind it, connected, but not shown yet.
+fn build_window(
+    options: &Options,
+    started: Instant,
+    reader: Reader,
+    settings: Option<(SettingsFile, Reload)>,
+    database: Option<PathBuf>,
+    (saved, state_problem): (Saved, Option<String>),
+) -> Result<(MainWindow, Rc<App>), slint::PlatformError> {
     let window = MainWindow::new()?;
     let dark = options.color_scheme.map(|s| s == cli::ColorScheme::Dark);
     if let Some(dark) = dark {
@@ -2049,62 +2117,7 @@ fn run_window(
             }
         });
     }
-    let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
-    let _measure_sync = options
-        .measure_sync
-        .then(|| start_sync_measurement(Rc::downgrade(&app)));
-    let _measure_settings = options
-        .measure_settings
-        .then(|| start_settings_measurement(Rc::downgrade(&app)));
-    let _measure_hidden = options
-        .measure_hidden
-        .then(|| start_hidden_measurement(Rc::downgrade(&app), options.tab_urls.clone()));
-    let _cycle = options
-        .cycle_articles
-        .map(|count| start_article_cycle(Rc::downgrade(&app), count));
-    #[cfg(feature = "servo")]
-    let _measure_tabs = options.measure_tabs.then(|| {
-        let urls = if options.tab_urls.is_empty() {
-            let reader = app.reader.borrow();
-            (0..reader.len())
-                .filter_map(|row| reader.url(reader.id(row)?).ok().flatten())
-                .take(3)
-                .collect()
-        } else {
-            options.tab_urls.clone()
-        };
-        if urls.is_empty() {
-            eprintln!("ren: --measure-tabs needs --tab-url or items with links (--dump)");
-            std::process::exit(1);
-        }
-        pages::start_measurement(Rc::downgrade(&app.pages), urls)
-    });
-    window.show()?;
-    geometry::place(window.as_weak(), app.saved.borrow().state().window.clone());
-    let weak = Rc::downgrade(&app);
-    geometry::on_moved(window.window(), move || {
-        if let Some(app) = weak.upgrade() {
-            app.window_moved();
-        }
-    });
-    // Until quit: the window may be hidden in the tray.
-    let result = slint::run_event_loop_until_quit();
-    window.hide()?;
-    app.dialog.borrow_mut().take();
-    app.login.borrow_mut().take();
-    app.about.borrow_mut().take();
-    *app.tray.borrow_mut() = None;
-    if let Err(err) = app.saved.borrow_mut().save() {
-        eprintln!("ren: saving the window's state: {err}");
-    }
-    // Closing the tabs ends the helper; it saves the site data before it
-    // exits, which ren's exit would cut short.
-    #[cfg(feature = "servo")]
-    {
-        app.pages.borrow_mut().close_all();
-        crate::tabs::helper::wait_for_helpers();
-    }
-    result
+    Ok((window, app))
 }
 
 #[cfg(test)]
