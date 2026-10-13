@@ -214,8 +214,9 @@ struct SyncState {
     running: Option<Running>,
     /// The account the running sync is for.
     account: Option<ren_settings::Account>,
-    /// The app password from the last sync, with the account it is for.
-    password: Option<(ren_settings::Account, String)>,
+    /// The app password from the last sync or login, with the account it
+    /// is for and where it came from.
+    password: Option<(ren_settings::Account, String, ren_settings::Source)>,
     /// When the lists were last read again during a sync.
     refreshed: Option<Instant>,
 }
@@ -1109,8 +1110,8 @@ impl App {
             .borrow()
             .password
             .as_ref()
-            .filter(|(of, _)| *of == account)
-            .map(|(_, password)| password.clone());
+            .filter(|(of, _, _)| *of == account)
+            .map(|(_, password, _)| password.clone());
         let job = sync_thread::Job {
             database,
             account: account.clone(),
@@ -1157,9 +1158,12 @@ impl App {
         };
         for event in events {
             match event {
-                Event::Password(password) => {
+                Event::Password(password, source) => {
                     let mut sync = self.sync.borrow_mut();
-                    sync.password = sync.account.clone().map(|account| (account, password));
+                    sync.password = sync
+                        .account
+                        .clone()
+                        .map(|account| (account, password, source));
                 }
                 Event::Progress(progress) => {
                     self.status_until_next(sync_thread::progress_text(Some(progress)));
