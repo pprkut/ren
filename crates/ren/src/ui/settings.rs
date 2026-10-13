@@ -29,7 +29,7 @@ const NEW_FILE: &str = "\
 
 /// The open dialog.
 pub(super) struct SettingsDialog {
-    window: SettingsWindow,
+    pub(super) window: SettingsWindow,
     model: Dialog,
     rows: Rc<VecModel<SettingRow>>,
     /// The settings the rows show, to update them in place.

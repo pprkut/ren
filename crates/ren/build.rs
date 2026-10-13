@@ -6,6 +6,11 @@ fn main() {
     if std::env::var_os("CARGO_FEATURE_STYLE_QT").is_some() {
         config = config.with_style("qt".to_owned());
     }
+    // The element names and types the UI flow tests look elements up by
+    // (ui/flows.rs); not in release builds.
+    if std::env::var("PROFILE").as_deref() == Ok("debug") {
+        config = config.with_debug_info(true);
+    }
     slint_build::compile_with_config("src/ui/main_window.slint", config)
         .expect("Slint build failed");
 }
