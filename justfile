@@ -28,6 +28,13 @@ check-light:
     cargo test --locked --no-default-features --features renderer-software,servo
     @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
+# Measure test coverage without the rendering engines (cargo-llvm-cov); the report is in target/llvm-cov/html
+coverage *args:
+    cargo llvm-cov clean --workspace
+    cargo llvm-cov --no-report --locked --workspace --no-default-features --features renderer-software,servo {{args}}
+    cargo llvm-cov report --html
+    cargo llvm-cov report --summary-only
+
 # Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored
 check-secret-service:
     cargo run --release --locked --no-default-features --features renderer-software -- --check-secret-service
