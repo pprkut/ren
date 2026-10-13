@@ -88,6 +88,31 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
 
+  # Login, syncs and log out against Nextcloud with the News app in a
+  # container (scripts/test-nextcloud.sh): the release on the desktop's
+  # server and the newest. For the same events as `full`: it downloads
+  # Nextcloud and News.
+  nextcloud:
+    name: End to end with Nextcloud ${{ matrix.nextcloud }} and News ${{ matrix.news }}
+    if: github.event_name != 'push' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nextcloud: "32"
+            news: 28.7.0
+          - nextcloud: "33"
+            news: 29.0.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/test-nextcloud.sh
+        env:
+          NEXTCLOUD_IMAGE: docker.io/library/nextcloud:${{ matrix.nextcloud }}-apache
+          NEWS_VERSION: ${{ matrix.news }}
+
   # Servo's helper for web page tabs (crates/ren-servo, a workspace of its
   # own), for the same events as `full`: Servo is big (SpiderMonkey,
   # WebRender, about 430 more crates). Without debug info the target
