@@ -70,7 +70,8 @@ jobs:
           scripts/test-secret-service.sh
 
   # Everything with the default features, including the article view: for
-  # pull requests, master, weekly and on demand.
+  # pull requests, master, weekly and on demand. The tests run with
+  # coverage (cargo-llvm-cov), which the job's summary shows.
   full:
     name: Lint and test with all default features
     if: github.event_name != 'push' || github.ref == 'refs/heads/master'
@@ -83,10 +84,19 @@ jobs:
           sudo apt-get install -y --no-install-recommends libfontconfig-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      # The tests, with their coverage in the job's summary.
+      - run: cargo llvm-cov --no-report --locked --workspace
+      - name: Coverage
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
   # Login, syncs and log out against Nextcloud with the News app in a
   # container (scripts/test-nextcloud.sh): the release on the desktop's
