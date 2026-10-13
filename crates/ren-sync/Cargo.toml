@@ -13,5 +13,9 @@ nextcloud-news = { path = "../nextcloud-news" }
 ren-store = { path = "../ren-store" }
 
 [dev-dependencies]
+# The end-to-end test's requests to the News API that ren doesn't make,
+# and its login pages.
+base64 = "0.23"
+serde_json = "1"
 # To build network errors in the fake server.
 ureq = { version = "3.4", default-features = false }

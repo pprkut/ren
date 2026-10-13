@@ -36,6 +36,10 @@ check-secret-service:
 test-secret-service *args:
     scripts/test-secret-service.sh {{args}}
 
+# Test login, syncs and log out against Nextcloud with News in a container (docker or podman); --keep keeps it for the next run
+test-nextcloud *args:
+    scripts/test-nextcloud.sh {{args}}
+
 # Run the checks of CI's Servo job: the helper, ren-servo (a long build)
 check-servo:
     cd crates/ren-servo && cargo fmt --check
