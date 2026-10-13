@@ -4372,8 +4372,10 @@ dependencies = [
 name = "ren-sync"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "nextcloud-news",
  "ren-store",
+ "serde_json",
  "ureq",
 ]
 

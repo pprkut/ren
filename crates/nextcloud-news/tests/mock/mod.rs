@@ -96,7 +96,16 @@ impl MockServer {
     /// Starts serving on a free port. The server runs until the test
     /// process ends.
     pub fn start(handler: impl Fn(&Request) -> Response + Send + Sync + 'static) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        Self::start_on("127.0.0.1", handler)
+    }
+
+    /// Starts serving on a free port of the address `ip`, e.g. `0.0.0.0`
+    /// for a server in a container.
+    pub fn start_on(
+        ip: &str,
+        handler: impl Fn(&Request) -> Response + Send + Sync + 'static,
+    ) -> Self {
+        let listener = TcpListener::bind((ip, 0)).unwrap();
         let addr = listener.local_addr().unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let handler: Arc<Handler> = Arc::new(handler);
@@ -115,6 +124,11 @@ impl MockServer {
     /// The server URL, as configured in the account settings.
     pub fn url(&self) -> String {
         format!("http://{}", self.addr)
+    }
+
+    /// The port the server listens on.
+    pub fn port(&self) -> u16 {
+        self.addr.port()
     }
 
     pub fn requests(&self) -> Vec<Request> {
