@@ -685,7 +685,12 @@ impl App {
             "next-article" => self.item_key("down", 1),
             "next-unread" => self.next_unread(),
             "load-images" => self.article.borrow_mut().load_images_once(),
-            "mark-feed-read" => self.mark_node_read(self.reader.borrow().selected()),
+            "mark-feed-read" => {
+                // Not borrowed while marking: the reader is borrowed
+                // mutably then.
+                let selected = self.reader.borrow().selected();
+                self.mark_node_read(selected);
+            }
             "mark-all-read" => self.mark_node_read(Node::All),
             "mark-read" | "mark-unread" => {
                 if let Some(id) = current {
