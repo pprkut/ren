@@ -25,9 +25,8 @@ Server commands (instead of opening the window):
   --batch-size <N>     Items per request, or \"all\" (default: 1000)
   --settings <FILE>    Settings file (default:
                        $XDG_CONFIG_HOME/ren/settings.toml)
-  The app password comes from $REN_APP_PASSWORD, else from password-command
-  in the [account] table of the settings file if set, else from the Secret
-  Service.
+  The app password comes from password-command in the [account] table of
+  the settings file if set, else from the Secret Service.
 
 App password:
   --set-password       Read the app password from stdin, check it with the

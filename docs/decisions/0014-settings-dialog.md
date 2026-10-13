@@ -113,14 +113,17 @@ The Account category starts with a page made by hand:
   articles stored. It asks first, in a window of its own that the window
   manager decorates (`ConfirmWindow`, made on demand like About ren):
   "Revoke and Log Out" or Cancel (also Escape), as revoking can't be
-  undone. A password from `REN_APP_PASSWORD` or the
-  password command isn't revoked: ren didn't create it, and it may be
-  in use elsewhere. What counts is the password ren uses: the window
-  keeps where the one it has came from (a sync's lookup, or a login),
-  so after a login through the browser the page names the new app
-  password and Log Out revokes it, even with `REN_APP_PASSWORD` set; the
-  login says that the variable (or a password command) wins again after
-  a restart. Nextcloud revokes only the app password a request
+  undone. A password from the password command isn't revoked: ren
+  didn't create it, and it may be in use elsewhere. What counts is the
+  password ren uses: the window keeps where the one it has came from (a
+  sync's lookup, or a login), so after a login through the browser the
+  page names the new app password and Log Out revokes it, even with a
+  password command set; the login says that the command wins again after
+  a restart.
+- **`REN_APP_PASSWORD` is gone:** it predates the login (S2 and M4 used
+  it to keep the keyring out of the way) and took precedence over
+  everything, so a login through ren was overridden at the next start.
+  The login and the password command cover what it was for. Nextcloud revokes only the app password a request
   logged in with, and answers 403 ("no app password in use") to one that
   logged in with the account's own password (`AppPasswordController`);
   the page then says that nothing was revoked and suggests logging in

@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use nextcloud_news::{Client, Config, Credentials};
-use ren_settings::{Account, PASSWORD_VAR, SecretService};
+use ren_settings::{Account, SecretService};
 use ren_store::Store;
 use ren_sync::{Kind, Progress, Report, SystemClock};
 
@@ -165,12 +165,9 @@ fn run(job: Job, cancel: &AtomicBool, send: &impl Fn(Event)) -> Result<Report, F
     let password = match job.password {
         Some(password) => password,
         None => {
-            let (password, source) = ren_settings::app_password(
-                &job.account,
-                std::env::var(PASSWORD_VAR).ok(),
-                SecretService::connect,
-            )
-            .map_err(|err| Failure::Password(err.to_string()))?;
+            let (password, source) =
+                ren_settings::app_password(&job.account, SecretService::connect)
+                    .map_err(|err| Failure::Password(err.to_string()))?;
             send(Event::Password(password.clone(), source));
             password
         }

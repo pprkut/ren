@@ -490,7 +490,8 @@ From here on every milestone ships with tests for what it adds.
   when the window gains focus (M5), not watched. The Secret Service goes
   through `keyring-core` and its zbus store, on Slint's zbus 5 and
   async-io (the other store needs libdbus); five new small crates.
-  Lookup order: `REN_APP_PASSWORD`, `password-command`, Secret Service.
+  Lookup order: `REN_APP_PASSWORD`, `password-command`, Secret Service
+  (`REN_APP_PASSWORD` removed in M8b).
   `ren --set-password` and `ren --check-secret-service` until M8b's
   account page; the Secret Service tests run against GNOME Keyring on a
   private bus (`just test-secret-service`, also in CI). Connecting costs
