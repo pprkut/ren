@@ -26,6 +26,8 @@ use crate::window_state::{self, Saved};
 mod about;
 mod account;
 mod article;
+#[cfg(test)]
+mod flows;
 mod geometry;
 mod icons;
 #[cfg(feature = "servo")]

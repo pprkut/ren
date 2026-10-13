@@ -4324,6 +4324,7 @@ dependencies = [
  "blitz-traits",
  "cursor-icon",
  "freedesktop-icons",
+ "i-slint-backend-testing",
  "image",
  "jpeg-decoder",
  "keyboard-types",
