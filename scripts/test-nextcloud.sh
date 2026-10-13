@@ -42,11 +42,11 @@ occ() {
 }
 
 if ! $keep; then
-    trap '"$engine" rm -f "$name" >/dev/null 2>&1 || true' EXIT
+    trap '"$engine" rm -fv "$name" >/dev/null 2>&1 || true' EXIT
 fi
 
 if [[ "$("$engine" inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" != true ]]; then
-    "$engine" rm -f "$name" >/dev/null 2>&1 || true
+    "$engine" rm -fv "$name" >/dev/null 2>&1 || true
     echo "Starting $image"
     # The server fetches the test's feeds from this machine, by the name
     # host.docker.internal.
