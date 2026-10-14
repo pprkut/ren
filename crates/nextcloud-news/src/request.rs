@@ -202,6 +202,107 @@ impl Update<'_> {
     }
 }
 
+/// A change to the feeds and folders on the server. Adding a feed or a
+/// folder answers with it ([`Edited`](crate::Edited)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Edit<'a> {
+    /// `POST /feeds` with `{"url": …, "folderId": …}`: the server finds
+    /// the feed (also from a web page's address) and fetches it. Folder 0
+    /// is none.
+    AddFeed {
+        url: &'a str,
+        folder_id: Option<u64>,
+    },
+    /// `POST /feeds/{id}/rename` with `{"feedTitle": …}`.
+    RenameFeed { id: u64, title: &'a str },
+    /// `POST /feeds/{id}/move` with `{"folderId": …}`; 0 is no folder.
+    MoveFeed { id: u64, folder_id: Option<u64> },
+    /// `DELETE /feeds/{id}`, with its articles.
+    DeleteFeed { id: u64 },
+    /// `POST /folders` with `{"name": …}`.
+    AddFolder { name: &'a str },
+    /// `PUT /folders/{id}` with `{"name": …}`.
+    RenameFolder { id: u64, name: &'a str },
+    /// `DELETE /folders/{id}`, with its feeds and their articles.
+    DeleteFolder { id: u64 },
+}
+
+/// The HTTP methods of [`Edit`]s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Method {
+    Post,
+    Put,
+    Delete,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NewFeed<'a> {
+    url: &'a str,
+    folder_id: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedTitle<'a> {
+    feed_title: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderId {
+    folder_id: u64,
+}
+
+#[derive(Serialize)]
+struct FolderName<'a> {
+    name: &'a str,
+}
+
+impl Edit<'_> {
+    pub fn method(&self) -> Method {
+        match self {
+            Edit::AddFeed { .. }
+            | Edit::RenameFeed { .. }
+            | Edit::MoveFeed { .. }
+            | Edit::AddFolder { .. } => Method::Post,
+            Edit::RenameFolder { .. } => Method::Put,
+            Edit::DeleteFeed { .. } | Edit::DeleteFolder { .. } => Method::Delete,
+        }
+    }
+
+    /// Path relative to the API base URL.
+    pub fn path(&self) -> String {
+        match *self {
+            Edit::AddFeed { .. } => "feeds".to_owned(),
+            Edit::RenameFeed { id, .. } => format!("feeds/{id}/rename"),
+            Edit::MoveFeed { id, .. } => format!("feeds/{id}/move"),
+            Edit::DeleteFeed { id } => format!("feeds/{id}"),
+            Edit::AddFolder { .. } => "folders".to_owned(),
+            Edit::RenameFolder { id, .. } | Edit::DeleteFolder { id } => format!("folders/{id}"),
+        }
+    }
+
+    /// The JSON request body; none for deletions.
+    pub fn body(&self) -> Option<Vec<u8>> {
+        let body = match *self {
+            Edit::AddFeed { url, folder_id } => serde_json::to_vec(&NewFeed {
+                url,
+                folder_id: folder_id.unwrap_or(0),
+            }),
+            Edit::RenameFeed { title, .. } => serde_json::to_vec(&FeedTitle { feed_title: title }),
+            Edit::MoveFeed { folder_id, .. } => serde_json::to_vec(&FolderId {
+                folder_id: folder_id.unwrap_or(0),
+            }),
+            Edit::AddFolder { name } | Edit::RenameFolder { name, .. } => {
+                serde_json::to_vec(&FolderName { name })
+            }
+            Edit::DeleteFeed { .. } | Edit::DeleteFolder { .. } => return None,
+        };
+        Some(body.expect("serialising strings and numbers can't fail"))
+    }
+}
+
 /// Paging through `GET /items`: the next page starts below the lowest id of
 /// the previous one.
 ///
@@ -456,6 +557,70 @@ mod tests {
             };
             assert_eq!(update.path(), path);
             assert_eq!(update.body(), br#"{"newestItemId":227491}"#);
+        }
+    }
+
+    #[test]
+    fn edits() {
+        let body = |edit: Edit<'_>| edit.body().map(|body| String::from_utf8(body).unwrap());
+        let cases = [
+            (
+                Edit::AddFeed {
+                    url: "https://example.org/\"feed\"",
+                    folder_id: Some(3),
+                },
+                Method::Post,
+                "feeds",
+                Some(r#"{"url":"https://example.org/\"feed\"","folderId":3}"#),
+            ),
+            (
+                Edit::AddFeed {
+                    url: "example.org",
+                    folder_id: None,
+                },
+                Method::Post,
+                "feeds",
+                Some(r#"{"url":"example.org","folderId":0}"#),
+            ),
+            (
+                Edit::RenameFeed { id: 4, title: "Ä" },
+                Method::Post,
+                "feeds/4/rename",
+                Some(r#"{"feedTitle":"Ä"}"#),
+            ),
+            (
+                Edit::MoveFeed {
+                    id: 4,
+                    folder_id: None,
+                },
+                Method::Post,
+                "feeds/4/move",
+                Some(r#"{"folderId":0}"#),
+            ),
+            (Edit::DeleteFeed { id: 4 }, Method::Delete, "feeds/4", None),
+            (
+                Edit::AddFolder { name: "News" },
+                Method::Post,
+                "folders",
+                Some(r#"{"name":"News"}"#),
+            ),
+            (
+                Edit::RenameFolder { id: 2, name: "Old" },
+                Method::Put,
+                "folders/2",
+                Some(r#"{"name":"Old"}"#),
+            ),
+            (
+                Edit::DeleteFolder { id: 2 },
+                Method::Delete,
+                "folders/2",
+                None,
+            ),
+        ];
+        for (edit, method, path, expected) in cases {
+            assert_eq!(edit.method(), method, "{edit:?}");
+            assert_eq!(edit.path(), path, "{edit:?}");
+            assert_eq!(body(edit).as_deref(), expected, "{edit:?}");
         }
     }
 }

@@ -17,8 +17,8 @@ use ureq::{Agent, Body};
 
 use crate::decode::{decode, decode_items};
 use crate::error::Error;
-use crate::request::{Endpoint, ItemQuery, PageInfo, Pager, Selection, Update};
-use crate::types::{Feeds, Folder, Folders, Item, Status, Version};
+use crate::request::{Edit, Endpoint, ItemQuery, Method, PageInfo, Pager, Selection, Update};
+use crate::types::{Feed, Feeds, Folder, Folders, Item, Status, Version};
 
 /// How much of an error response is read for the News app's message.
 const ERROR_BODY_LIMIT: u64 = 64 * 1024;
@@ -108,6 +108,23 @@ pub(crate) fn basic_auth(credentials: &Credentials) -> String {
 #[derive(Deserialize)]
 struct ErrorBody {
     message: Option<String>,
+}
+
+/// What the server answered to an [`Edit`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Edited {
+    /// The feed added.
+    Feed(Feed),
+    /// The folder added.
+    Folder(Folder),
+    /// Renamed, moved or deleted.
+    Done,
+}
+
+/// The answer to `POST /folders`.
+#[derive(Deserialize)]
+struct NewFolders {
+    folders: Vec<Folder>,
 }
 
 /// [`Client::server_time`] before a response with a date.
@@ -278,6 +295,73 @@ impl Client {
         );
         Ok(())
     }
+}
+
+impl Client {
+    /// Changes the feeds or folders. Fails with [`Error::Status`] and the
+    /// server's message if it refuses: 409 for a feed or folder that
+    /// exists already, 422 for an invalid folder name, 404 for a feed
+    /// that can't be found or read, or one or a folder that is gone.
+    pub fn edit(&self, edit: &Edit<'_>) -> Result<Edited, Error> {
+        let url = format!("{}{}", self.base, edit.path());
+        let response = match (edit.method(), edit.body()) {
+            (Method::Delete, _) => self
+                .agent
+                .delete(url)
+                .header("Authorization", &self.authorization)
+                .header("Accept", "application/json")
+                .call()?,
+            (method, body) => {
+                let request = match method {
+                    Method::Put => self.agent.put(url),
+                    _ => self.agent.post(url),
+                };
+                request
+                    .header("Authorization", &self.authorization)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .send(&body.unwrap_or_default()[..])?
+            }
+        };
+        let response = self.check(response)?;
+        let reader = response
+            .into_body()
+            .into_with_config()
+            .limit(self.body_limit)
+            .reader();
+        match edit {
+            Edit::AddFeed { .. } => {
+                let feeds: Feeds = decode(reader)?;
+                let feed = feeds
+                    .feeds
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| missing("the feed added"))?;
+                Ok(Edited::Feed(feed))
+            }
+            Edit::AddFolder { .. } => {
+                let folders: NewFolders = decode(reader)?;
+                let folder = folders
+                    .folders
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| missing("the folder added"))?;
+                Ok(Edited::Folder(folder))
+            }
+            _ => {
+                // The body is empty or `[]`.
+                let _ = std::io::copy(&mut reader.take(ERROR_BODY_LIMIT), &mut std::io::sink());
+                Ok(Edited::Done)
+            }
+        }
+    }
+}
+
+/// An answer that lacks `what`.
+fn missing(what: &str) -> Error {
+    Error::Decode(serde::de::Error::custom(format!(
+        "the server answered without {what}"
+    )))
 }
 
 /// The `Date` header of a response, in unix seconds.

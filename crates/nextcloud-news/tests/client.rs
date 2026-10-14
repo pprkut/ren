@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use nextcloud_news::{
-    Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
-    Selection, Update,
+    Client, Config, Credentials, Edit, Edited, Endpoint, Error, ItemAction, ItemQuery, Pager,
+    ReadScope, Selection, Update,
 };
 
 use mock::{MockServer, Request, Response, closed_port_url};
@@ -487,4 +487,102 @@ fn server_time_from_the_date_header() {
     client.get::<serde_json::Value>(&Endpoint::Status).unwrap();
     client.get::<serde_json::Value>(&Endpoint::Feeds).unwrap();
     assert_eq!(client.server_time(), Some(1_791_391_449));
+}
+
+#[test]
+fn feed_and_folder_edits() {
+    let server =
+        MockServer::start(
+            |request| match (request.method.as_str(), request.api_path().unwrap()) {
+                ("POST", "feeds") => Response::json(
+                    r#"{"feeds": [{"id": 39, "url": "https://example.org/feed", "title": "Example",
+                    "folderId": 3, "unreadCount": 2}], "newestItemId": 500}"#,
+                ),
+                ("POST", "folders") => {
+                    Response::json(r#"{"folders": [{"id": 7, "name": "News"}]}"#)
+                }
+                ("PUT", "folders/7") => Response::status(
+                    409,
+                    r#"{"message": "Folder with the same name already exists"}"#,
+                ),
+                _ => Response::json("[]"),
+            },
+        );
+    let client = client(&server);
+    let Edited::Feed(feed) = client
+        .edit(&Edit::AddFeed {
+            url: "example.org",
+            folder_id: Some(3),
+        })
+        .unwrap()
+    else {
+        panic!("a feed");
+    };
+    assert_eq!((feed.id, feed.folder_id), (39, Some(3)));
+    assert_eq!(
+        client.edit(&Edit::AddFolder { name: "News" }).unwrap(),
+        Edited::Folder(nextcloud_news::types::Folder {
+            id: 7,
+            name: "News".to_owned()
+        })
+    );
+    for edit in [
+        Edit::RenameFeed {
+            id: 39,
+            title: "Ex",
+        },
+        Edit::MoveFeed {
+            id: 39,
+            folder_id: None,
+        },
+        Edit::DeleteFeed { id: 39 },
+        Edit::DeleteFolder { id: 7 },
+    ] {
+        assert_eq!(client.edit(&edit).unwrap(), Edited::Done, "{edit:?}");
+    }
+    let err = client
+        .edit(&Edit::RenameFolder { id: 7, name: "Old" })
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "HTTP status 409: Folder with the same name already exists"
+    );
+
+    let summary: Vec<_> = server
+        .requests()
+        .iter()
+        .map(|r| {
+            (
+                r.method.clone(),
+                r.api_path().unwrap().to_owned(),
+                String::from_utf8(r.body.clone()).unwrap(),
+            )
+        })
+        .collect();
+    let expected = [
+        ("POST", "feeds", r#"{"url":"example.org","folderId":3}"#),
+        ("POST", "folders", r#"{"name":"News"}"#),
+        ("POST", "feeds/39/rename", r#"{"feedTitle":"Ex"}"#),
+        ("POST", "feeds/39/move", r#"{"folderId":0}"#),
+        ("DELETE", "feeds/39", ""),
+        ("DELETE", "folders/7", ""),
+        ("PUT", "folders/7", r#"{"name":"Old"}"#),
+    ];
+    let expected: Vec<_> = expected
+        .iter()
+        .map(|(m, p, b)| ((*m).to_owned(), (*p).to_owned(), (*b).to_owned()))
+        .collect();
+    assert_eq!(summary, expected);
+}
+
+#[test]
+fn an_added_feed_must_be_in_the_answer() {
+    let server = MockServer::start(|_| Response::json(r#"{"feeds": []}"#));
+    let err = client(&server)
+        .edit(&Edit::AddFeed {
+            url: "https://example.org",
+            folder_id: None,
+        })
+        .unwrap_err();
+    assert!(err.to_string().contains("without the feed added"), "{err}");
 }
