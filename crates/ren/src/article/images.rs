@@ -39,6 +39,8 @@ pub struct Scaled {
     /// its own size, so the article sets this width on it to show it as
     /// wide as it would be without the limit.
     pub width: Option<u32>,
+    /// Bytes of the largest decoded image while scaling it down.
+    pub decoded_bytes: u64,
 }
 
 /// Prepares the bytes of an image for Blitz. `Ok(None)` keeps them as they
@@ -68,6 +70,7 @@ pub fn prepare(bytes: &[u8], limits: Limits) -> Result<Option<Scaled>, String> {
         ImageFormat::Jpeg => decode_jpeg_scaled(bytes, target).or_else(|_| decode(bytes))?,
         _ => decode(bytes)?,
     };
+    let decoded_bytes = image.as_bytes().len() as u64;
     let image = if (image.width(), image.height()) == target {
         image
     } else {
@@ -77,6 +80,7 @@ pub fn prepare(bytes: &[u8], limits: Limits) -> Result<Option<Scaled>, String> {
     Ok(Some(Scaled {
         png: encode_png(image)?,
         width: (target.0 < shown).then_some(width),
+        decoded_bytes,
     }))
 }
 
@@ -199,12 +203,15 @@ mod tests {
         let scaled = prepare(&png(&image), LIMITS).unwrap().unwrap();
         assert_eq!(dimensions(&scaled.png), (100, 50));
         assert_eq!(scaled.width, None);
+        assert_eq!(scaled.decoded_bytes, 400 * 200 * 4);
         let decoded = image::load_from_memory(&scaled.png).unwrap().into_rgba8();
         assert_eq!(decoded.get_pixel(50, 25), &Rgba([255, 0, 0, 128]));
 
         // At 1/4 of the size by the JPEG decoder, then to the exact width.
         let scaled = prepare(&jpeg(800, 600), LIMITS).unwrap().unwrap();
         assert_eq!(dimensions(&scaled.png), (100, 75));
+        // At 1/8 of the size.
+        assert_eq!(scaled.decoded_bytes, 100 * 75 * 3);
         let scaled = prepare(&jpeg(130, 30), LIMITS).unwrap().unwrap();
         assert_eq!(dimensions(&scaled.png), (100, 23));
     }
