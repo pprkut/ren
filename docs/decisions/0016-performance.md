@@ -205,6 +205,15 @@ measurement with an `OUT_DIR` of its own built Servo's helper again, and
 so did the next build without it: 12–24 minutes each on the desktop.
 The scripts no longer export it.
 
+`measure.sh` ended its "30 s" of idle sampling at a time printed by awk
+with 6 significant digits, which rounds a Unix time to 10,000 s: the
+sampling stopped after one sample or ran on for up to 2.8 hours,
+depending on the time of day (found when the desktop run sat in it for
+more than an hour). Since S1, the idle numbers (0001, 0002) came from
+windows of unknown length: a single second of RSS is still a fair
+number, the idle CPU less so. Fixed; the scroll pass also stops ren
+after `SCROLL_SECS` (900) now instead of waiting for it however long.
+
 ## On the desktop
 
 Prepared as one command, to be run by the user (a display, the network
