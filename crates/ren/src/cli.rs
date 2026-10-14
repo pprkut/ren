@@ -68,9 +68,10 @@ Window options:
   --measure          Print startup timings to stderr
   --autoscroll       After 3 s, scroll through the item list once, print
                      the time it took and quit
-  --measure-hidden   After 2 s, show the first article (and the --tab-url
-                     pages), hide the window as in the tray and show it
-                     again, print memory use at each step, and quit
+  --measure-hidden   After 2 s, show the first article (and then the
+                     --tab-url pages), hide the window as in the tray, show
+                     it again (and the article instead of the page), print
+                     memory use at each step, and quit
   --measure-settings After 2 s, open the settings dialog, show its web page
                      settings, close it, open About ren, show its
                      licenses and close it, print memory use at each
