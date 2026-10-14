@@ -6,8 +6,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # 0016 — Performance (M10)
 
 **Status:** for review (2026-10-14). Checked and measured in the
-container; the measurements on the desktop are still to be run
-(`just measure-all`, see "On the desktop").
+container; measured on the desktop by the user at bd641b9 (`just
+measure-all`, see "On the desktop"); Ars Technica by hand is still to
+be done.
 
 ## Context
 
@@ -235,10 +236,99 @@ out. Then, by hand: scroll Ars Technica's article in a tab with
 `REN_SERVO_WR_PROFILER=1 target/release/ren` and note what the profiler
 shows, and the same page in servoshell 0.7.
 
+### The run
+
+By the user, at bd641b9, on the machine of the earlier measurements
+(i7-1185G7, Iris Xe, Mesa, Linux 7.2.8, KDE on X11), release builds;
+`~/ren-dump` (at most 10,000 of its items), heise's and Ars Technica's
+articles as the pages (the tabs scroll the first, heise). RSS in MiB.
+
+**The window, idle and scrolling the item list:**
+
+| renderer | idle RSS / PSS | anon / file / shmem | idle CPU % | scrolling CPU % (fps median / min) |
+|---|---|---|---|---|
+| software | 53.8 / 35.0 | 7.8 / 30.4 / 15.7 | 0.0 | 54.0 (63 / 53) |
+| FemtoVG | 103.5 / 53.4 | 23.2 / 80.2 / 0.0 | 0.0 | 27.9 (60 / 25) |
+| Skia | 100.4 / 61.3 | 21.4 / 78.9 / 0.1 | 0.0 | 34.6 (60 / 52) |
+
+As in 0001: the GPU renderers halve the CPU of scrolling the list and
+cost about 47–50 MiB more.
+
+**Pages, scrolled for 3 s** (heise, with content blocking unless noted;
+the synthetic page from `pattern-helper` costs the helper nothing):
+
+| variant | before tabs | 1 tab (UI + helper) | frames | CPU % window / helper | window ms per frame | frame to UI ms mean / max |
+|---|---|---|---|---|---|---|
+| software | 50.4 | 491.0 (64.3 + 426.6) | 132 | 27 / 41 | 6.1 | 9.0 / 88.9 |
+| without blocking | 51.0 | 623.0 (65.0 + 558.0) | 93 | 25 / 183 | 8.1 | 23.4 / 245.2 |
+| one frame under way | 50.8 | 498.4 (64.8 + 433.6) | 131 | 26 / 42 | 6.0 | 8.8 / 43.1 |
+| FemtoVG | 102.4 | 566.6 (116.5 + 450.1) | 93 | 42 / 48 | 13.5 | 26.3 / 235.8 |
+| Skia | 100.4 | 581.2 (124.0 + 457.2) | 87 | 87 / 41 | 30.0 | 26.3 / 168.1 |
+| synthetic, software | 50.8 | 53.9 | 187 | 40 / 15 | 6.4 | 1.0 / 6.3 |
+| synthetic, FemtoVG | 103.5 | 106.5 | 182 | 68 / 15 | 11.2 | 1.5 / 14.8 |
+| synthetic, Skia | 100.4 | 105.9 | 108 | 99 / 10 | 27.5 | 1.1 / 5.1 |
+
+**Articles** (100 of the dump, 300 ms apart; with M6's numbers, 0010):
+
+| variant | after the 1st | after the last | peak | first frame ms median / p90 |
+|---|---|---|---|---|
+| Blitz, no images | 66.4 | 72.8 (M6: 70.1) | 81.1 (78.6) | 6.3 / 10.9 |
+| Blitz, images from their servers | 67.0 | 79.4 (76.4) | 101.1 (90.3) | 4.3 / 9.2 |
+| Blitz, images from the cache | 67.2 | 78.9 (75.6) | 103.9 (88.2) | 4.2 / 9.7 |
+| the same, glibc's dynamic mmap threshold | 67.4 | 86.9 (80.0) | 114.0 (107.4) | 4.6 / 9.8 |
+
+67 image requests (M6: 52; M8 added the items' thumbnails and image
+enclosures), 2 scaled down; the largest image decoded before scaling
+took 5.9 MiB.
+
+**Hidden in the tray** (two pages): at the start 50.3–51.0, the article
+66.6–67.3, the pages opened 556–564 (UI 73.9–74.5), hidden 58.4–58.9,
+shown again 555–564, the article again 562–571 (UI 80.7–81.2). In M8
+(0013) the window with the article and the pages took 85.6–86.4 MiB and
+hidden 61.6–62.4.
+
+**The settings dialog:** 10.3 MiB while open, 1.4 after closing it;
+About 4.3, given back; as in M8b.
+
+**Sync:** the account has only 98 unread and starred items now, so the
+syncs took 0.4–0.5 s and the window 53.7 MiB after them; a large account
+is only measured with the store's synthetic one (`just measure-store`,
+above).
+
+### What it says
+
+- **No renderer setting.** For pages the GPU renderers are worse, not
+  better: the window takes 11–14 ms (FemtoVG) and 27–30 ms (Skia) per
+  frame against 6 with the software renderer, real page or synthetic,
+  and scrolls fewer frames (Skia saturates a core), while costing 50 MiB
+  more for the whole session. They upload every frame as a new texture,
+  which is likely what costs them; the software renderer only copies it.
+  For the item list they save CPU, as in 0001, but not enough to pay for
+  the memory. The software renderer stays the only one.
+- **No row-by-row PNG decoding.** The largest image decoded at full size
+  before scaling took 5.9 MiB over 100 real articles; the 29 MiB case
+  of M6's synthetic dump doesn't occur.
+- **The frame pacing changes nothing on heise here** (132 against 131
+  frames, 6.1 against 6.0 ms of the window per frame): with content
+  blocking, heise's frames reach the window in 9 ms on average, and the
+  overlap only helps when the GPU's and the window's parts are both
+  long. It stays: it costs nothing, and the container showed it helping
+  where they are.
+- **The window with pages gives back more:** 74 MiB with the article and
+  two pages against 86 in M8, the article's frames going while a page is
+  shown (and the page's renderer data, M7's change, as before).
+- **The article peak is above 100 MiB** with images (101–104 against
+  88–90 in M6), while the memory after the articles is as in M6 (+3).
+  More images per article (thumbnails, enclosures) are the likely cause,
+  not confirmed; see "Open".
+
 ## Open
 
-- The desktop measurements above; the conclusions on the renderers, on
-  row-by-row PNG decoding and on Ars Technica depend on them.
+- **Ars Technica** by hand, with `REN_SERVO_WR_PROFILER=1` and against
+  servoshell 0.7.
+- **The article peak above 100 MiB** with images: find which article
+  and image make it (the run logs only every 100 articles), and whether
+  thumbnails decoded at full size are the cause.
 - Slint's fast path for unscaled opaque images (above): upstream, a
   patch in ren, or neither.
 - From 0001 and 0002: `--autoscroll` still scrolls by a 16 ms timer, so
