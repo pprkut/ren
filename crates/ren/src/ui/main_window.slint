@@ -92,6 +92,11 @@ export component MainWindow inherits Window {
     in property <[TabRow]> tabs;
     in-out property <int> current-tab: -1;
     in property <image> page-image;
+    // The article's frames are dropped while a page is shown and painted
+    // again when the article is.
+    changed current-tab => {
+        root.article-render();
+    }
     // 0 default, 1 pointer, 2 text.
     in property <int> page-cursor;
     // The navigation bar above the page.
@@ -804,7 +809,9 @@ export component MainWindow inherits Window {
                                 root.article-resized();
                             }
 
-                            Image {
+                            // Only while the article is shown: the renderer keeps the
+                            // last image of an element it no longer draws.
+                            if root.html-view && root.current-tab < 0: Image {
                                 width: parent.width;
                                 height: parent.height;
                                 source: root.article-image;

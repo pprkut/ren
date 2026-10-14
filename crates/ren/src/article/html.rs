@@ -416,7 +416,8 @@ fn new_renderer(width: u32, height: u32) -> VelloCpuImageRenderer {
 /// An article rendered by Blitz.
 pub struct HtmlView {
     doc: Option<HtmlDocument>,
-    renderer: VelloCpuImageRenderer,
+    /// Made for the view's size by the next [`Self::render`] when `None`.
+    renderer: Option<VelloCpuImageRenderer>,
     /// Size in physical pixels.
     size: (u32, u32),
     scale: f32,
@@ -464,7 +465,7 @@ impl HtmlView {
         });
         Self {
             doc: None,
-            renderer: new_renderer(1, 1),
+            renderer: None,
             size: (1, 1),
             scale: 1.0,
             color_scheme: ColorScheme::Light,
@@ -518,7 +519,7 @@ impl HtmlView {
         // the renderer with its copies of the images and the glyphs (see
         // `new_renderer`).
         self.doc = None;
-        self.renderer = new_renderer(self.size.0, self.size.1);
+        self.renderer = None;
         self.net.shared.remote.store(load_images, Ordering::Release);
         let doc = HtmlDocument::from_html(html, config);
         self.net
@@ -543,7 +544,16 @@ impl HtmlView {
         }
         // Sized again by the next `set_size`.
         self.size = (1, 1);
-        self.renderer = new_renderer(1, 1);
+        self.renderer = None;
+    }
+
+    /// Drops the renderer, with its buffers for the view's size and its
+    /// images, while the view isn't shown; the document stays. The next
+    /// [`Self::render`] makes a new one and paints the document again.
+    pub fn release_renderer(&mut self) {
+        if self.renderer.take().is_some() {
+            self.shell.request_redraw();
+        }
     }
 
     /// Sets the size of the view in physical pixels and its scale factor.
@@ -559,7 +569,9 @@ impl HtmlView {
             .shared
             .scale
             .store(scale.to_bits(), Ordering::Relaxed);
-        self.renderer.resize(size.0, size.1);
+        if let Some(renderer) = &mut self.renderer {
+            renderer.resize(size.0, size.1);
+        }
         let viewport = self.viewport();
         if let Some(doc) = &mut self.doc {
             doc.set_viewport(viewport);
@@ -599,11 +611,14 @@ impl HtmlView {
         let started = Instant::now();
         doc.resolve(self.started.elapsed().as_secs_f64());
         let resolved = started.elapsed();
+        let renderer = self
+            .renderer
+            .get_or_insert_with(|| new_renderer(width, height));
         // The renderer keeps the commands of earlier frames until reset; they
         // would be painted again and may refer to images already freed.
-        self.renderer.reset();
+        renderer.reset();
         let selection = self.selection;
-        self.renderer.render(
+        renderer.render(
             |scene| {
                 let mut painter = SelectionPainter {
                     inner: scene,

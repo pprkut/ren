@@ -364,6 +364,17 @@ impl ArticlePane {
             return;
         };
         html.render_scheduled = false;
+        if window.get_current_tab() >= 0 {
+            // A page is shown: the frames and the renderer go until the
+            // article is shown again, which paints it again.
+            html.stop_glide();
+            html.view.release_renderer();
+            if html.buffers.iter().any(Option::is_some) {
+                html.buffers = [None, None];
+                window.set_article_image(slint::Image::default());
+            }
+            return;
+        }
         let (width, height) = set_view_size(&window, &mut html.view);
 
         if html.view.needs_render() {
