@@ -11,6 +11,8 @@
 # Environment:
 #   NEXTCLOUD_IMAGE  the image (default docker.io/library/nextcloud:32-apache)
 #   NEWS_VERSION     the News release to install (default 28.7.0)
+#   NEWS_SHA256      its news.tar.gz's SHA-256, for a release not listed
+#                    below
 #   NEWS_APP         a directory with a built News app, instead of the
 #                    release download
 #   REN_E2E_PORT     the port on localhost for the server (default 8089)
@@ -26,6 +28,16 @@ name=ren-e2e-nextcloud
 user=ren
 # Only for this disposable server.
 password=ren-e2e-password
+
+# The SHA-256 of each release's news.tar.gz, as GitHub records it for the
+# release asset: a download that differs isn't installed.
+news_sha256() {
+    case $1 in
+        28.7.0) echo aaeadd2c018aa2d8e5844309d5c754ae8ba47067f06f87a0f82afe5af257dff8 ;;
+        29.0.0) echo e51d400e5712b5dc65d3499ab2752e89f03c50f7cfca25cede0e81db92c4b89a ;;
+        *) echo "${NEWS_SHA256:-}" ;;
+    esac
+}
 
 keep=false
 if [[ "${1:-}" == --keep ]]; then
@@ -75,8 +87,18 @@ if ! occ app:list --output=json | grep -q '"news":'; then
             --transform "s,^$(basename "$NEWS_APP"),news," -cf - "$(basename "$NEWS_APP")" \
             | "$engine" cp - "$name:/var/www/html/custom_apps/"
     else
-        curl -fsSL "https://github.com/nextcloud/news/releases/download/$news_version/news.tar.gz" \
-            | gzip -dc | "$engine" cp - "$name:/var/www/html/custom_apps/"
+        sha256=$(news_sha256 "$news_version")
+        [[ -n "$sha256" ]] || { echo "no SHA-256 for News $news_version: set NEWS_SHA256" >&2; exit 1; }
+        tarball=$(mktemp)
+        curl -fsSL -o "$tarball" \
+            "https://github.com/nextcloud/news/releases/download/$news_version/news.tar.gz"
+        if ! echo "$sha256  $tarball" | sha256sum -c --quiet -; then
+            rm -f "$tarball"
+            echo "News $news_version's download doesn't match its SHA-256" >&2
+            exit 1
+        fi
+        gzip -dc "$tarball" | "$engine" cp - "$name:/var/www/html/custom_apps/"
+        rm -f "$tarball"
     fi
     "$engine" exec "$name" chown -R www-data:www-data /var/www/html/custom_apps/news
 fi
@@ -92,4 +114,5 @@ app_password=$(curl -fsS -u "$user:$password" -H 'OCS-APIRequest: true' \
     | grep -o '"apppassword":"[^"]*"' | cut -d'"' -f4)
 
 REN_E2E_SERVER="http://localhost:$port" REN_E2E_USER=$user REN_E2E_PASSWORD=$app_password \
+    REN_E2E_ACCOUNT_PASSWORD=$password \
     cargo test --locked -p ren-sync --test nextcloud "$@" -- --ignored
