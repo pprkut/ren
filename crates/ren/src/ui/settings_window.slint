@@ -4,6 +4,7 @@
 import { Button, ComboBox, LineEdit, Palette, ScrollView, Switch, TextEdit } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { ArrangementChoice, ColourButton, NumberField } from "setting_controls.slint";
+import { Logo } from "logo.slint";
 
 // A setting as the dialog shows it, made from its descriptor.
 export struct SettingRow {
@@ -559,6 +560,7 @@ export component SettingsWindow inherits Window {
     }
 
     title: "Settings – Ren";
+    icon: Logo.large;
     preferred-width: 920px;
     preferred-height: 660px;
     min-width: 640px;

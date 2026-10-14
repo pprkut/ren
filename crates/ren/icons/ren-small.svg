@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!-- Ren's logo for 16 to 32 pixels: the lotus of ren.svg without its wires. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="6" x2="0" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0609e"/>
+      <stop offset="1" stop-color="#8e4fd0"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#petal)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 54C19 55 6 48 2.5 35C13 33 26 39 32 54Z"/>
+    <path d="M32 54C45 55 58 48 61.5 35C51 33 38 39 32 54Z"/>
+    <path d="M32 54C20 49 11 35 13 18C23.5 22.5 31 35 32 54Z"/>
+    <path d="M32 54C44 49 53 35 51 18C40.5 22.5 33 35 32 54Z"/>
+    <path d="M32 54C21.5 44 21.5 23 32 6C42.5 23 42.5 44 32 54Z"/>
+  </g>
+</svg>
