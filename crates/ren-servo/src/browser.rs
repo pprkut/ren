@@ -86,6 +86,40 @@ struct Delegate {
     /// Drop-downs and context menus the window shows.
     controls: RefCell<Vec<Shown>>,
     next_control: Cell<u32>,
+    /// Every request and load, for measurements (`REN_SERVO_REQUEST_LOG`).
+    request_log: Option<RequestLog>,
+}
+
+/// A line per request and per change of a tab's load status, with the
+/// milliseconds since the helper started: to compare what a page loads
+/// from one visit to the next (`docs/decisions/0016-performance.md`).
+struct RequestLog {
+    file: RefCell<std::io::LineWriter<std::fs::File>>,
+    started: Instant,
+}
+
+impl RequestLog {
+    /// From `REN_SERVO_REQUEST_LOG`, a file the lines are added to.
+    fn from_env() -> Option<Self> {
+        let path = std::env::var_os("REN_SERVO_REQUEST_LOG")?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .inspect_err(|err| eprintln!("ren-servo: the request log: {err}"))
+            .ok()?;
+        Some(Self {
+            file: RefCell::new(std::io::LineWriter::new(file)),
+            started: Instant::now(),
+        })
+    }
+
+    fn line(&self, tab: Option<TabId>, fields: std::fmt::Arguments) {
+        use std::io::Write;
+        let ms = self.started.elapsed().as_millis();
+        let tab = tab.map_or_else(|| "-".to_owned(), |tab| tab.to_string());
+        let _ = writeln!(self.file.borrow_mut(), "{ms}\t{tab}\t{fields}");
+    }
 }
 
 impl Delegate {
@@ -136,6 +170,10 @@ impl WebViewDelegate for Delegate {
     }
 
     fn notify_load_status_changed(&self, webview: WebView, status: LoadStatus) {
+        if let Some(log) = &self.request_log {
+            let url = webview.url().map(|url| url.to_string()).unwrap_or_default();
+            log.line(self.tab(&webview), format_args!("load\t{status:?}\t{url}"));
+        }
         let loading = status != LoadStatus::Complete;
         self.push(&webview, |tab| Event::Loading { tab, loading });
     }
@@ -191,8 +229,21 @@ impl WebViewDelegate for Delegate {
     /// this must not wait for anything.
     fn load_web_resource(&self, webview: WebView, load: WebResourceLoad) {
         let request = load.request();
+        let log = |verdict: &str| {
+            if let Some(log) = &self.request_log {
+                log.line(
+                    self.tab(&webview),
+                    format_args!(
+                        "request\t{verdict}\t{}\t{}",
+                        request.destination.as_str(),
+                        request.url
+                    ),
+                );
+            }
+        };
         // The page the reader opened is always loaded.
         if request.is_for_main_frame {
+            log("main");
             return;
         }
         // The tab's URL may still be the last page's while the first
@@ -205,6 +256,11 @@ impl WebViewDelegate for Delegate {
             tab.as_ref(),
             request.destination.as_str(),
         );
+        log(match verdict {
+            Verdict::Allow => "allowed",
+            Verdict::Block => "blocked",
+            Verdict::Wait => "waiting",
+        });
         match verdict {
             // Dropping the load lets it go on.
             Verdict::Allow => {}
@@ -385,6 +441,7 @@ impl Browser {
             waiting: RefCell::default(),
             controls: RefCell::default(),
             next_control: Cell::new(0),
+            request_log: RequestLog::from_env(),
         });
         Self {
             servo,
