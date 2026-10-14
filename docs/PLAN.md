@@ -915,11 +915,51 @@ From here on every milestone ships with tests for what it adds.
 
 ### Phase 5 — Later
 
-- **M12 — The rest of Servo's embedder controls** (M7, 0011): file
-  pickers (uploads, through the desktop's portal or a Slint dialog),
-  colour pickers, input methods (IME, for Chinese, Japanese or Korean
-  text), and the `alert`/`confirm`/`prompt` dialogs, which are dismissed
-  now. Drop-downs and the context menu come earlier, in M8.
+- **M12 — Features after the first release.**
+  - **The rest of Servo's embedder controls** (M7, 0011): file pickers
+    (uploads, through the desktop's portal or a Slint dialog), colour
+    pickers, input methods (IME, for Chinese, Japanese or Korean text),
+    and the `alert`/`confirm`/`prompt` dialogs, which are dismissed now.
+    Drop-downs and the context menu come earlier, in M8.
+  - **One instance:** starting ren while it runs brings the running
+    one's window to the front (also from the tray) instead of a second
+    window on the same database. A well-known name on the session bus
+    (zbus is in the build already) or a socket in `$XDG_RUNTIME_DIR`;
+    the second process hands over and exits. Measurement and test modes
+    (`--dump`, `--measure-*`, a `--database` copy) stay independent.
+  - **Broken feeds:** the store has the server's `updateErrorCount` and
+    `lastUpdateError` per feed (M2, synced already); show them: a mark
+    on the feed in the tree with the error as its tooltip, the feed's
+    last successful update if the server tells it, and a way to list
+    all broken feeds (a filter or a "Broken feeds" node in the tree).
+  - **Adding feeds, and fixing their URLs:** Add Feed (now "not
+    implemented yet") with the URL and a folder (`POST /feeds`; the
+    server finds the feed from a page's URL and reports what fails).
+    The News API v1-3 can create, delete, move and rename feeds but has
+    no call to change a feed's URL, so "Change URL" is adding the new
+    feed and deleting the old one, whose articles (starred ones
+    included) go with it: ren says so before, and keeps the name and the
+    folder. Also renaming, moving and deleting feeds and folders (0009's
+    "not implemented yet" list).
+  - **"Ren" in what users see:** window titles, menus, dialogs, About,
+    the tray's tooltip, status and settings texts, the welcome page, and
+    the `.desktop` file's name (M11). Not the executable, crate names,
+    paths (`$XDG_*/ren`), application and D-Bus ids, or the `ren:`
+    prefix of messages on stderr.
+  - **A logo:** a wire-frame lotus (蓮, *ren*) as an SVG of ren's own,
+    licensed like the code (or CC-BY-SA), at the sizes a desktop needs;
+    it becomes the app icon of the `.desktop` file and AppStream (M11
+    has a placeholder until then).
+  - **The logo in the tray:** it replaces the feed icon on an orange
+    square (`icons/tray.svg`, M8), with a setting for a monochrome
+    version that fits Plasma's symbolic tray icons (drawn in the panel's
+    text colour, light or dark), next to the coloured one.
+  - **A welcome page** instead of "No article selected" at the start,
+    as KDE's applications have: ren's name and version, the unread
+    count and what the last sync did, a few shortcuts and links (log
+    in, add a feed, the settings), over the logo as a faint background.
+    Shown in the article view, so it costs nothing beyond what the
+    first article costs anyway.
 
 ### Backlog
 
