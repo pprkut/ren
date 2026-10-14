@@ -13,6 +13,8 @@
 //! - `REN_E2E_USER`, `REN_E2E_PASSWORD`: an admin account and an app
 //!   password of it, entered on the login page as a browser would. The
 //!   login hands it back, and logging out revokes it: a new one per run;
+//! - `REN_E2E_ACCOUNT_PASSWORD`: the account's own password, which the
+//!   server must refuse to revoke;
 //! - `REN_E2E_FEED_HOST`: the name under which the server reaches this
 //!   machine (default `host.docker.internal`).
 
@@ -213,6 +215,20 @@ fn login_sync_and_log_out() {
     assert!(store.feeds().unwrap().iter().all(|f| f.id != feed_b));
     assert!(ids(&store, Selection::Feed(feed_b)).is_empty());
     assert_eq!(unread_counts(&store), []);
+
+    // The account's own password isn't an app password: the server refuses
+    // to revoke it (403, "no app password in use"), which ren's log out
+    // tells apart, and it still works afterwards.
+    let own = Credentials {
+        user: user.clone(),
+        password: env("REN_E2E_ACCOUNT_PASSWORD"),
+    };
+    let refused = nextcloud_news::revoke_app_password(server, &own, &config);
+    assert!(
+        matches!(refused, Err(Error::Status { code: 403, .. })),
+        "{refused:?}"
+    );
+    Client::new(server, &own, &config).version().unwrap();
 
     // Logging out revokes the app password.
     api.clear_account();
