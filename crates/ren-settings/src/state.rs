@@ -100,6 +100,8 @@ pub enum List {
     Starred,
     Folder(u64),
     Feed(u64),
+    /// The feeds the server can't update.
+    Broken,
 }
 
 const HEADER: &str = "\

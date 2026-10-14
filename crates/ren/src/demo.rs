@@ -163,11 +163,17 @@ fn feeds() -> Vec<Feed> {
             ordering: 0,
             link: None,
             pinned: false,
-            update_error_count: 0,
-            last_update_error: None,
+            // One feed the server can't update.
+            update_error_count: if *title == BROKEN_FEED { 12 } else { 0 },
+            last_update_error: (*title == BROKEN_FEED).then(|| {
+                "Could not find a valid feed at the given URL: 404 Not Found".to_owned()
+            }),
         })
         .collect()
 }
+
+/// The feed of the demo data that the server can't update.
+const BROKEN_FEED: &str = "Planet GNOME";
 
 /// The generated item `index` of `count`; index 0 is the newest and has
 /// the highest id, as on the server. The newest items are new and

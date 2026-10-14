@@ -161,6 +161,11 @@ impl Reader {
         self.tree.unread()
     }
 
+    /// The feeds the server can't update: id, title and why.
+    pub fn broken_feeds(&self) -> Vec<(u64, &str, &str)> {
+        self.tree.broken()
+    }
+
     /// The counts and the last sync, for the welcome page.
     pub fn overview(&self) -> Result<Overview> {
         Ok(Overview {
@@ -391,8 +396,9 @@ impl Reader {
 
     /// Marks all items of a feed, a folder or everything as read, up to
     /// the newest one stored, so that items arriving meanwhile stay
-    /// unread. For "Starred", which the server can't mark as a whole, the
-    /// items are marked one by one. Returns the number of items marked.
+    /// unread. For "Starred" and "Broken feeds", which the server can't
+    /// mark as a whole, the items are marked one by one. Returns the
+    /// number of items marked.
     pub fn mark_all_read(&mut self, node: Node) -> Result<(usize, Changes)> {
         let query = ItemQuery {
             selection: node.selection(),
@@ -401,7 +407,7 @@ impl Reader {
         };
         let ids = self.store.item_ids(&query, Sort::default())?;
         let marked = match node {
-            Node::Starred => self.store.set_unread(&ids, false)?,
+            Node::Starred | Node::Broken => self.store.set_unread(&ids, false)?,
             Node::All | Node::Folder(_) | Node::Feed(_) => match ids.iter().max() {
                 Some(&newest) => {
                     let scope = match node {
@@ -484,6 +490,35 @@ mod tests {
         items[1].starred = true;
         store.upsert_items(&items, false).unwrap();
         Reader::new(store).unwrap()
+    }
+
+    #[test]
+    fn broken_feeds() {
+        let mut reader = reader();
+        assert!(reader.broken_feeds().is_empty());
+        reader
+            .store
+            .replace_feeds(&[
+                api_feed(1, Some(7), "One"),
+                api_feed(2, Some(7), "Two"),
+                types::Feed {
+                    update_error_count: 10,
+                    last_update_error: Some("Gone".into()),
+                    ..api_feed(3, None, "Three")
+                },
+            ])
+            .unwrap();
+        reader.reload().unwrap();
+        let broken = reader.broken_feeds();
+        assert_eq!(broken.len(), 1);
+        assert_eq!(broken[0].0, 3);
+        reader.select(Node::Broken).unwrap();
+        assert_eq!(reader.len(), 2);
+        let (marked, changes) = reader.mark_all_read(Node::Broken).unwrap();
+        assert_eq!(marked, 2);
+        assert!(changes.counts);
+        // Item by item: the server can't mark them as a whole.
+        assert!(reader.store.pending_mark_read().unwrap().is_empty());
     }
 
     #[test]

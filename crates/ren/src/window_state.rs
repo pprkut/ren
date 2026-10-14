@@ -92,6 +92,7 @@ pub fn view(state: &State) -> View {
                 List::Starred => Node::Starred,
                 List::Folder(id) => Node::Folder(id),
                 List::Feed(id) => Node::Feed(id),
+                List::Broken => Node::Broken,
             }),
     }
 }
@@ -116,6 +117,7 @@ pub fn set_view(state: &mut State, view: &View, item: Option<u64>) {
             Node::Starred => List::Starred,
             Node::Folder(id) => List::Folder(id),
             Node::Feed(id) => List::Feed(id),
+            Node::Broken => List::Broken,
         },
         item,
     });
@@ -223,7 +225,7 @@ mod tests {
         );
         assert_eq!(super::view(&state), view);
 
-        for node in [Node::All, Node::Starred, Node::Feed(4)] {
+        for node in [Node::All, Node::Starred, Node::Feed(4), Node::Broken] {
             let view = View {
                 selected: node,
                 ..view.clone()

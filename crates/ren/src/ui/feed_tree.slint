@@ -24,6 +24,10 @@ export struct FeedRow {
     full-page: bool,
     // A feed's own icon, if it has one; otherwise the feed icon.
     icon: image,
+    // The "Broken feeds" entry.
+    broken-list: bool,
+    // Why the server can't update a feed, or "".
+    error: string,
 }
 
 component Chevron inherits Path {
@@ -49,7 +53,7 @@ component FeedTreeRow inherits Rectangle {
     callback menu(action: string);
 
     property <length> indent: Theme.tree-indent;
-    property <bool> is-feed: root.entry.depth > 0 && !root.entry.is-folder && !root.entry.starred;
+    property <bool> is-feed: root.entry.depth > 0 && !root.entry.is-folder && !root.entry.starred && !root.entry.broken-list;
     // Centre of the column with this row's own branch line or chevron.
     property <length> branch-x: Theme.row-padding + (root.entry.depth - 1) * root.indent + root.indent / 2;
     // Gap around the chevron, so the branch line doesn't run through it.
@@ -144,6 +148,28 @@ component FeedTreeRow inherits Rectangle {
         }
     }
 
+    if root.entry.error != "": Tooltip {
+        Rectangle {
+            // At the pointer, not centred on it.
+            x: 0;
+            y: 0;
+            width: min(tooltip-text.preferred-width, 360px) + 16px;
+            height: tooltip-text.preferred-height + 10px;
+            background: Palette.alternate-background;
+            border-color: Theme.separator;
+            border-width: 1px;
+            border-radius: 4px;
+
+            tooltip-text := Text {
+                x: 8px;
+                width: min(self.preferred-width, 360px);
+                text: root.entry.error;
+                wrap: word-wrap;
+                color: Palette.foreground;
+            }
+        }
+    }
+
     ContextMenuArea {
         Menu {
             if root.entry.depth == 0: MenuItem {
@@ -152,19 +178,19 @@ component FeedTreeRow inherits Rectangle {
                     root.menu("fetch-all");
                 }
             }
-            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred && !root.entry.broken-list: MenuItem {
                 title: root.entry.is-folder ? "Fetch Feeds in Folder" : "Fetch Feed";
                 activated => {
                     root.menu("fetch-feed");
                 }
             }
             MenuItem {
-                title: root.entry.depth == 0 ? "Mark All Articles as Read" : root.entry.starred ? "Mark Starred Articles as Read" : root.entry.is-folder ? "Mark Folder as Read" : "Mark Feed as Read";
+                title: root.entry.depth == 0 ? "Mark All Articles as Read" : root.entry.starred ? "Mark Starred Articles as Read" : root.entry.broken-list ? "Mark Articles of Broken Feeds as Read" : root.entry.is-folder ? "Mark Folder as Read" : "Mark Feed as Read";
                 activated => {
                     root.menu("mark-feed-read");
                 }
             }
-            if !root.entry.starred: MenuSeparator { }
+            if !root.entry.starred && !root.entry.broken-list: MenuSeparator { }
             if root.is-feed && root.tabs-available: MenuItem {
                 title: "Show Full Pages Instead of Articles";
                 checkable: true;
@@ -179,13 +205,13 @@ component FeedTreeRow inherits Rectangle {
                     root.menu("open-homepage");
                 }
             }
-            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred && !root.entry.broken-list: MenuItem {
                 title: root.entry.is-folder ? "Rename Folder…" : "Edit Feed…";
                 activated => {
                     root.menu(root.entry.is-folder ? "rename-folder" : "edit-feed");
                 }
             }
-            if root.entry.depth > 0 && !root.entry.starred: MenuItem {
+            if root.entry.depth > 0 && !root.entry.starred && !root.entry.broken-list: MenuItem {
                 title: root.entry.is-folder ? "Delete Folder…" : "Delete Feed…";
                 activated => {
                     root.menu(root.entry.is-folder ? "delete-folder" : "delete-feed");
@@ -210,7 +236,7 @@ component FeedTreeRow inherits Rectangle {
             height: Theme.tree-icon-size;
             y: (parent.height - self.height) / 2;
             property <bool> own-icon: root.is-feed && root.entry.icon.width > 0;
-            source: root.entry.depth == 0 ? Icons.all-items : root.entry.starred ? Icons.starred : root.entry.is-folder ? Icons.folder : self.own-icon ? root.entry.icon : Icons.feed;
+            source: root.entry.depth == 0 ? Icons.all-items : root.entry.starred ? Icons.starred : root.entry.broken-list ? Icons.broken : root.entry.is-folder ? Icons.folder : self.own-icon ? root.entry.icon : Icons.feed;
             colorize: Icons.monochrome && !self.own-icon ? Palette.foreground : transparent;
         }
 
@@ -219,8 +245,17 @@ component FeedTreeRow inherits Rectangle {
             text: root.entry.title;
             overflow: elide;
             vertical-alignment: center;
-            font-weight: root.entry.count > 0 && !root.entry.starred ? 700 : 400;
+            font-weight: root.entry.count > 0 && !root.entry.starred && !root.entry.broken-list ? 700 : 400;
             color: Palette.foreground;
+        }
+
+        // A feed the server can't update; the tooltip says why.
+        if root.entry.error != "": Image {
+            width: 14px;
+            height: 14px;
+            y: (parent.height - self.height) / 2;
+            source: Icons.broken;
+            colorize: Icons.monochrome ? Theme.negative : transparent;
         }
 
         Text {

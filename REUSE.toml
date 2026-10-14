@@ -41,6 +41,7 @@ path = [
     "crates/ren/icons/rss.svg",
     "crates/ren/icons/search.svg",
     "crates/ren/icons/star.svg",
+    "crates/ren/icons/triangle-alert.svg",
 ]
 SPDX-FileCopyrightText = [
     "Copyright 2026 Lucide Icons and Contributors",
