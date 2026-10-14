@@ -31,6 +31,8 @@ html-view = [
     "dep:parley",
     "dep:peniko",
     "dep:percent-encoding",
+    # Smooth wheel scrolling, as in the tabs.
+    "dep:ren-tabs",
     "dep:url",
 ]
 # Full web pages in tabs, rendered by Servo in a helper process

@@ -21,6 +21,8 @@ use crate::article::glide::Glide;
 use crate::article::html::{Button, Cursor, HtmlView, Mods, PointerKind};
 #[cfg(feature = "html-view")]
 use crate::article::{Rgb, Style};
+#[cfg(feature = "html-view")]
+use ren_tabs::scroll::{SmoothScroll, Wheel};
 
 const PLACEHOLDER: &str = "No article selected";
 
@@ -65,9 +67,12 @@ struct HtmlPane {
     /// Gives freed memory back to the system a moment after the article
     /// changed.
     trim_timer: slint::Timer,
-    /// Scrolling by keyboard, eased over a few frames by `glide_timer`.
+    /// Scrolling by keyboard, eased over a few frames.
     glide: Option<Glide>,
-    glide_timer: slint::Timer,
+    /// Wheel steps, spread over a few frames.
+    wheel: SmoothScroll,
+    /// Moves the glide and the wheel on by a frame.
+    scroll_timer: slint::Timer,
 }
 
 /// The time after an article switch until freed memory is given back to
@@ -76,15 +81,17 @@ struct HtmlPane {
 #[cfg(feature = "html-view")]
 const TRIM_DELAY: Duration = Duration::from_secs(1);
 
-/// The time between frames of a keyboard scroll.
+/// The time between frames of a keyboard or wheel scroll.
 #[cfg(feature = "html-view")]
-const GLIDE_FRAME: Duration = Duration::from_millis(16);
+const SCROLL_FRAME: Duration = ren_tabs::scroll::SMOOTH_TICK;
 
 #[cfg(feature = "html-view")]
 impl HtmlPane {
-    fn stop_glide(&mut self) {
+    /// Stops scrolling by keyboard and wheel.
+    fn stop_scrolling(&mut self) {
         self.glide = None;
-        self.glide_timer.stop();
+        self.wheel.clear();
+        self.scroll_timer.stop();
     }
 
     /// glibc keeps freed memory in its heap. Blocks of a MiB or more have
@@ -167,7 +174,7 @@ impl ArticlePane {
                 .window
                 .upgrade()
                 .expect("the pane only lives as long as the window");
-            html.stop_glide();
+            html.stop_scrolling();
             html.view.clear();
             html.buffers = [None, None];
             window.set_html_view(false);
@@ -294,7 +301,8 @@ impl ArticlePane {
             render_scheduled: false,
             trim_timer: slint::Timer::default(),
             glide: None,
-            glide_timer: slint::Timer::default(),
+            wheel: SmoothScroll::default(),
+            scroll_timer: slint::Timer::default(),
         }
     }
 
@@ -319,7 +327,7 @@ impl ArticlePane {
         let Some(html) = &mut self.html else {
             return;
         };
-        html.stop_glide();
+        html.stop_scrolling();
         // Images are scaled for the size and scale factor known when the
         // document is created.
         set_view_size(&window, &mut html.view);
@@ -367,7 +375,7 @@ impl ArticlePane {
         if window.get_current_tab() >= 0 {
             // A page is shown: the frames and the renderer go until the
             // article is shown again, which paints it again.
-            html.stop_glide();
+            html.stop_scrolling();
             html.view.release_renderer();
             if html.buffers.iter().any(Option::is_some) {
                 html.buffers = [None, None];
@@ -448,20 +456,39 @@ impl ArticlePane {
         self.schedule_render();
     }
 
+    /// A wheel step: long ones (a mouse's) are spread over a few frames,
+    /// as in the tabs; with modifiers, or short ones (a touchpad's), go at
+    /// once.
     fn scroll(&mut self, dx: f32, dy: f32, mods: i32) {
         let Some(html) = &mut self.html else {
             return;
         };
-        html.stop_glide();
-        html.view.wheel(dx, dy, decode_mods(mods));
-        self.schedule_render();
+        html.glide = None;
+        let mods = decode_mods(mods);
+        if mods != Mods::default() {
+            html.wheel.clear();
+            html.view.wheel(dx, dy, mods);
+            self.schedule_render();
+            return;
+        }
+        let wheel = Wheel {
+            dx,
+            dy,
+            x: 0.0,
+            y: 0.0,
+        };
+        if let Some(at_once) = html.wheel.add(wheel, Instant::now()) {
+            html.view.wheel(at_once.dx, at_once.dy, mods);
+            self.schedule_render();
+        }
+        self.scroll_step();
     }
 
     fn scroll_to(&mut self, y: f32) {
         let Some(html) = &mut self.html else {
             return;
         };
-        html.stop_glide();
+        html.stop_scrolling();
         html.view.scroll_to(y);
         self.schedule_render();
     }
@@ -469,7 +496,6 @@ impl ArticlePane {
     /// Scrolls by `dy` logical pixels (positive: towards the top) for a
     /// key, smoothly: from where the last key was going.
     fn key_scroll(&mut self, dy: f32) {
-        let weak = self.window.clone();
         let Some(html) = &mut self.html else {
             return;
         };
@@ -477,32 +503,45 @@ impl ArticlePane {
         let base = html.glide.as_ref().map_or(offset, Glide::target);
         let to = (base - dy).clamp(0.0, max);
         html.glide = Some(Glide::new(offset, to, Instant::now()));
-        if !html.glide_timer.running() {
-            html.glide_timer
-                .start(slint::TimerMode::Repeated, GLIDE_FRAME, move || {
+        html.wheel.clear();
+        self.scroll_step();
+    }
+
+    /// Moves a keyboard or wheel scroll on by a frame, and keeps the timer
+    /// for the next one running while there is one.
+    fn scroll_step(&mut self) {
+        let weak = self.window.clone();
+        let Some(html) = &mut self.html else {
+            return;
+        };
+        let now = Instant::now();
+        let mut moved = false;
+        // The timer paces the parts.
+        if let Some(step) = html.wheel.step(now) {
+            html.view.wheel(step.dx, step.dy, Mods::default());
+            moved = true;
+        }
+        if let Some(glide) = html.glide {
+            let (offset, done) = glide.at(now);
+            html.view.scroll_to(offset);
+            if done {
+                html.glide = None;
+            }
+            moved = true;
+        }
+        if html.glide.is_none() && html.wheel.next_tick().is_none() {
+            html.scroll_timer.stop();
+        } else if !html.scroll_timer.running() {
+            html.scroll_timer
+                .start(slint::TimerMode::Repeated, SCROLL_FRAME, move || {
                     if let Some(window) = weak.upgrade() {
                         window.invoke_article_glide();
                     }
                 });
         }
-        self.glide_step();
-    }
-
-    /// Moves a keyboard scroll on by a frame.
-    fn glide_step(&mut self) {
-        let Some(html) = &mut self.html else {
-            return;
-        };
-        let Some(glide) = html.glide else {
-            html.glide_timer.stop();
-            return;
-        };
-        let (offset, done) = glide.at(Instant::now());
-        html.view.scroll_to(offset);
-        if done {
-            html.stop_glide();
+        if moved {
+            self.schedule_render();
         }
-        self.schedule_render();
     }
 
     fn key(&mut self, text: &str, mods: i32) -> bool {
@@ -582,7 +621,7 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     let w = with.clone();
     window.on_article_key_scroll(move |dy| w(&|p| p.key_scroll(dy)));
     let w = with.clone();
-    window.on_article_glide(move || w(&|p| p.glide_step()));
+    window.on_article_glide(move || w(&|p| p.scroll_step()));
     let weak = Rc::downgrade(pane);
     window.on_article_key(move |text, mods| {
         weak.upgrade()
