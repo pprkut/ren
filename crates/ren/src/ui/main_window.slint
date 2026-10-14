@@ -15,6 +15,7 @@ import { ConfirmWindow } from "confirm_window.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { Logo } from "logo.slint";
+import { WelcomePage } from "welcome.slint";
 
 export { AboutWindow, CategoryEntry, ConfirmWindow, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
 
@@ -77,6 +78,14 @@ export component MainWindow inherits Window {
     // A link in the article: action "open" (clicked with any button, or
     // the context menu's "Open Link in Tab"), "browser" or "copy".
     callback article-link-action(url: string, action: string);
+    // No article is shown: the welcome page is, with Ren's version, the
+    // counts and the last sync.
+    in property <bool> welcome: true;
+    in property <string> version;
+    in property <string> welcome-articles;
+    in property <string> welcome-sync;
+    in property <bool> logged-in;
+
     // Whether links can open in tabs (built with Servo).
     in property <bool> tabs-available;
     // Called when the HTML view needs to be rendered again (from a wake-up).
@@ -984,6 +993,21 @@ export component MainWindow inherits Window {
 
                         pure function mods(m: KeyboardModifiers) -> int {
                             return (m.control ? 1 : 0) + (m.shift ? 2 : 0) + (m.alt ? 4 : 0) + (m.meta ? 8 : 0);
+                        }
+                    }
+
+                    WelcomePage {
+                        visible: root.welcome && root.current-tab < 0;
+                        x: article.x;
+                        y: article.y;
+                        width: article.width;
+                        height: article.height;
+                        version: root.version;
+                        articles: root.welcome-articles;
+                        sync: root.welcome-sync;
+                        logged-in: root.logged-in;
+                        action(name) => {
+                            root.action(name);
                         }
                     }
 

@@ -225,10 +225,18 @@ fn reading_articles() {
     );
     // Newest first.
     assert_eq!(ui.titles(), ["Fourth", "Third", "Second", "First"]);
-    assert_eq!(ui.article(), "No article selected");
+    // The welcome page, until an article is shown.
+    assert_eq!(ui.article(), "");
+    assert!(ui.window.get_welcome());
+    assert_eq!(
+        ui.window.get_welcome_articles(),
+        "3 unread articles in 2 feeds."
+    );
+    assert_eq!(ui.window.get_welcome_sync(), "Not synced yet.");
 
     // A click shows the article and marks it read.
     ui.click("ItemTableRow", 1);
+    assert!(!ui.window.get_welcome());
     assert_eq!(ui.window.get_current_item(), 1);
     assert_eq!(ui.article(), "Third");
     assert!(ui.window.get_article_body().contains("The body of Third."));

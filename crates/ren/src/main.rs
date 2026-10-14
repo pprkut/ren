@@ -22,6 +22,7 @@ mod tabs;
 #[cfg(test)]
 mod testing;
 mod ui;
+mod welcome;
 mod window_state;
 
 use std::process::ExitCode;

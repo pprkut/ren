@@ -39,6 +39,17 @@ pub struct View {
     pub selected: Node,
 }
 
+/// What the welcome page says about the articles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Overview {
+    pub unread: u64,
+    pub feeds: usize,
+    /// Articles that arrived in the latest sync.
+    pub new: u64,
+    /// When the last sync that finished ended (unix seconds).
+    pub last_sync: Option<i64>,
+}
+
 /// Rows fetched at a time when looking for the next unread item.
 const SCAN_CHUNK: usize = 100;
 
@@ -148,6 +159,16 @@ impl Reader {
     /// The number of unread items.
     pub fn unread(&self) -> u64 {
         self.tree.unread()
+    }
+
+    /// The counts and the last sync, for the welcome page.
+    pub fn overview(&self) -> Result<Overview> {
+        Ok(Overview {
+            unread: self.unread(),
+            feeds: self.feed_titles.len(),
+            new: self.store.new_count()?,
+            last_sync: self.store.last_sync()?,
+        })
     }
 
     /// Selects a feed, a folder, "All items" or "Starred", and lists its
@@ -463,6 +484,32 @@ mod tests {
         items[1].starred = true;
         store.upsert_items(&items, false).unwrap();
         Reader::new(store).unwrap()
+    }
+
+    #[test]
+    fn overview() {
+        let mut reader = reader();
+        assert_eq!(
+            reader.overview().unwrap(),
+            Overview {
+                unread: 6,
+                feeds: 3,
+                new: 0,
+                last_sync: None,
+            }
+        );
+        reader
+            .store
+            .upsert_items(&[api_item(7, 1, "Seven", "")], true)
+            .unwrap();
+        reader
+            .store
+            .set_sync_values(&[(ren_store::LAST_SYNC, Some(1_790_000_000))])
+            .unwrap();
+        reader.reload().unwrap();
+        let overview = reader.overview().unwrap();
+        assert_eq!((overview.unread, overview.new), (7, 1));
+        assert_eq!(overview.last_sync, Some(1_790_000_000));
     }
 
     fn counts(reader: &Reader) -> Vec<(Node, u64)> {
