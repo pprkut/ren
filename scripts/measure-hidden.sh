@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Measures memory with the window hidden in the system tray (M8): the
-# first article of a dump shown (and pages in tabs, if URLs are given),
-# then the window hidden, then shown again; twice, release builds with the
-# default features. Needs a graphical session; don't touch the window
+# first article of a dump shown (and then pages in tabs, if URLs are
+# given), then the window hidden, then shown again (and the article instead
+# of the page); twice, release builds with the default features. Needs a graphical session; don't touch the window
 # while it runs. With URLs, also network access.
 #
 # Usage: scripts/measure-hidden.sh DUMP_DIR [URL...]
@@ -76,13 +76,22 @@ summary=$OUT_DIR/summary.md
     echo
     echo "RSS in MiB, total (UI + Servo's helper):"
     echo
-    echo "| run | at the start | article$([[ ${#urls[@]} -gt 0 ]] && echo " and pages") shown | hidden | shown again |"
-    echo "|---|---|---|---|---|"
+    if [[ ${#urls[@]} -gt 0 ]]; then
+        echo "| run | at the start | article shown | pages opened | hidden | shown again | article shown again |"
+        echo "|---|---|---|---|---|---|---|"
+    else
+        echo "| run | at the start | article shown | hidden | shown again |"
+        echo "|---|---|---|---|---|"
+    fi
 } >"$summary"
 for run in $(seq 1 "$RUNS"); do
     echo "== run $run" >&2
     log=$OUT_DIR/run-$run.log
     "$OUT_DIR/ren" --dump "$DUMP" --measure-hidden "${urls[@]}" 2>"$log" || true
-    echo "| $run | $(memory "$log" "at the start") | $(memory "$log" shown) | $(memory "$log" hidden) | $(memory "$log" "shown again") |" >>"$summary"
+    if [[ ${#urls[@]} -gt 0 ]]; then
+        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" "article shown") | $(memory "$log" shown) | $(memory "$log" hidden) | $(memory "$log" "shown again") | $(memory "$log" "article shown again") |" >>"$summary"
+    else
+        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" shown) | $(memory "$log" hidden) | $(memory "$log" "shown again") |" >>"$summary"
+    fi
 done
 cat "$summary"

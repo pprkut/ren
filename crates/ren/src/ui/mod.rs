@@ -1532,9 +1532,9 @@ fn start_article_cycle(app: std::rc::Weak<App>, count: usize) -> slint::Timer {
 /// pages) shown, the window hidden, shown again.
 const HIDDEN_STEP: Duration = Duration::from_secs(4);
 
-/// Shows the first article (and opens `urls` in tabs), hides the window as
-/// in the tray and shows it again, logging memory use at each step, then
-/// quits. After `CYCLE_DELAY`.
+/// Shows the first article, then opens `urls` in tabs, hides the window as
+/// in the tray, shows it again and shows the article instead of the page,
+/// logging memory use at each step, then quits. After `CYCLE_DELAY`.
 fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint::Timer {
     let timer = slint::Timer::default();
     let started = Instant::now() + CYCLE_DELAY;
@@ -1559,6 +1559,9 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
                 if app.reader.borrow().len() > 0 {
                     app.item_clicked(0);
                 }
+            }
+            1 => {
+                log("article shown");
                 #[cfg(feature = "servo")]
                 for url in &urls {
                     if let Err(err) = app.pages.borrow_mut().open(url) {
@@ -1568,15 +1571,20 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
                 #[cfg(not(feature = "servo"))]
                 let _ = &urls;
             }
-            1 => {
+            2 => {
                 log("shown");
                 app.hide_window();
             }
-            2 => {
+            3 => {
                 log("hidden");
                 app.show_window();
             }
-            3 => log("shown again"),
+            4 => {
+                log("shown again");
+                #[cfg(feature = "servo")]
+                app.pages.borrow_mut().show_article();
+            }
+            5 => log("article shown again"),
             _ => {
                 let _ = slint::quit_event_loop();
             }
