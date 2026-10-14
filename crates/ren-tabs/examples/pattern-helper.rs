@@ -275,7 +275,7 @@ fn draw(pixels: &mut [u8], width: usize, offset: usize, scale: f32) {
             None
         };
         if let Some(colour) = colour {
-            for px in row.chunks_exact_mut(3) {
+            for px in row.as_chunks_mut::<3>().0 {
                 px.copy_from_slice(&colour);
             }
             continue;
@@ -284,7 +284,7 @@ fn draw(pixels: &mut [u8], width: usize, offset: usize, scale: f32) {
         if page_y % line >= text {
             continue;
         }
-        for (x, px) in row.chunks_exact_mut(3).enumerate() {
+        for (x, px) in row.as_chunks_mut::<3>().0.iter_mut().enumerate() {
             let w = x / word;
             if !(w.wrapping_mul(7) + line_no).is_multiple_of(5) && x % word < word - word / 5 {
                 px.copy_from_slice(&[0x40, 0x40, 0x40]);
