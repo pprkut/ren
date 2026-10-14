@@ -89,6 +89,9 @@ pub enum Selection {
     Starred,
     Folder(u64),
     Feed(u64),
+    /// The items of the feeds the server can't update
+    /// ([`Feed::is_broken`](crate::Feed::is_broken)).
+    Broken,
 }
 
 /// The items of a list: a selection, narrowed down.
@@ -156,6 +159,10 @@ fn list_filter(query: &ItemQuery, sort: Sort) -> (String, Vec<Value>) {
         Selection::Feed(id) => {
             sql.push_str(" AND i.feed_id = ?");
             params.push(Value::Integer(id.cast_signed()));
+        }
+        Selection::Broken => {
+            sql.push_str(" AND f.update_error_count > ?");
+            params.push(Value::Integer(crate::feeds::BROKEN_AFTER.cast_signed()));
         }
     }
     if query.unread_only {
@@ -712,6 +719,36 @@ mod tests {
         };
         assert_eq!(page(&store, &unread, Sort::default()), [1, 5]);
         assert_eq!(store.item_count(&query(Selection::Feed(9))).unwrap(), 0);
+        assert_eq!(store.item_count(&query(Selection::Broken)).unwrap(), 0);
+    }
+
+    #[test]
+    fn broken_feeds() {
+        let mut store = list_store();
+        store
+            .replace_feeds(&[
+                types::Feed {
+                    update_error_count: 9,
+                    last_update_error: Some("404 Not Found".into()),
+                    ..api_feed(1, Some(7), "Beta")
+                },
+                // Not yet: the News web interface also waits for nine.
+                types::Feed {
+                    update_error_count: 8,
+                    ..api_feed(2, Some(7), "alpha")
+                },
+                api_feed(3, None, "Gamma"),
+            ])
+            .unwrap();
+        let broken = query(Selection::Broken);
+        assert_eq!(page(&store, &broken, Sort::default()), [1, 4]);
+        let feeds = store.feeds().unwrap();
+        let broken: Vec<u64> = feeds
+            .iter()
+            .filter(|f| f.is_broken())
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(broken, [1]);
     }
 
     #[test]
