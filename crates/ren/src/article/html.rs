@@ -8,7 +8,7 @@
 //!
 //! No UI toolkit types here; `ui` converts events and pixels.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -218,6 +218,8 @@ pub struct ImageStats {
     pub failed: AtomicUsize,
     /// Times the heap was trimmed after the requests were done.
     pub trims: AtomicUsize,
+    /// Bytes of the largest image decoded before it was scaled down.
+    pub largest_decoded: AtomicU64,
 }
 
 impl std::fmt::Display for ImageStats {
@@ -225,12 +227,14 @@ impl std::fmt::Display for ImageStats {
         let n = |count: &AtomicUsize| count.load(Ordering::Relaxed);
         write!(
             f,
-            "{} fetched, {} from the cache, {} not loaded, {} scaled down, {} failed; \
+            "{} fetched, {} from the cache, {} not loaded, {} scaled down \
+             (the largest decoded at {:.1} MiB first), {} failed; \
              heap trimmed {} times after loading",
             n(&self.fetched),
             n(&self.cached),
             n(&self.blocked),
             n(&self.scaled),
+            self.largest_decoded.load(Ordering::Relaxed) as f64 / (1024.0 * 1024.0),
             n(&self.failed),
             n(&self.trims)
         )
@@ -291,6 +295,9 @@ impl NetShared {
             Ok(None) => Ok(bytes),
             Ok(Some(scaled)) => {
                 count(&self.stats.scaled);
+                self.stats
+                    .largest_decoded
+                    .fetch_max(scaled.decoded_bytes, Ordering::Relaxed);
                 if let Some(width) = scaled.width
                     && let Ok(mut widths) = self.widths.lock()
                 {
