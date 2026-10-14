@@ -30,6 +30,9 @@ fi
 DUMP=$1
 ARTICLES=${2:-100}
 OUT_DIR=${OUT_DIR:-target/measure/articles-$(date +%Y%m%d-%H%M%S)}
+# Not passed on to cargo: ring's build script runs again when OUT_DIR
+# changes, and with it much of Servo's helper is built again.
+export -n OUT_DIR
 
 if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
     echo "no graphical session (neither DISPLAY nor WAYLAND_DISPLAY is set)" >&2

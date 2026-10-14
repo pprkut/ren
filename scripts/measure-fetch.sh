@@ -29,6 +29,9 @@ cd "$(dirname "$0")/.."
 
 RUNS=${RUNS:-3}
 OUT_DIR=${OUT_DIR:-target/measure/fetch-$(date +%Y%m%d-%H%M%S)}
+# Not passed on to cargo: ring's build script runs again when OUT_DIR
+# changes, and with it much of Servo's helper is built again.
+export -n OUT_DIR
 
 batch_sizes=("$@")
 if [[ ${#batch_sizes[@]} -eq 0 ]]; then

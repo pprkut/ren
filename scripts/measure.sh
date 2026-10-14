@@ -33,6 +33,9 @@ SETTLE_SECS=${SETTLE_SECS:-5}
 IDLE_SECS=${IDLE_SECS:-30}
 ITEMS=${ITEMS:-10000}
 OUT_DIR=${OUT_DIR:-target/measure/$(date +%Y%m%d-%H%M%S)}
+# Not passed on to cargo: ring's build script runs again when OUT_DIR
+# changes, and with it much of Servo's helper is built again.
+export -n OUT_DIR
 
 # What the window shows. A database holds real feed data, so its copy
 # stays outside the repository.
