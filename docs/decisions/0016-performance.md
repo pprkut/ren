@@ -206,9 +206,32 @@ what is slow is something the page only loads on some visits (an ad
 rotation, a video, an embed), not the page as such, not the blocking,
 and not the frame path. The profiler capture above most likely came from
 a fast load: WebRender's own work in it is far below what the slow
-loads cost. What the slow loads contain is still to be found (see
-"Open"). Between the two fast runs the new pacing shows: 14 % more
+loads cost. Between the two fast runs the new pacing shows: 14 % more
 frames, and frames reach the window in half the time.
+
+The profiler on a slow load (the user, reloading until the frame rate
+dropped):
+
+| WebRender | fast load | slow load |
+|---|---|---|
+| frames per second | 52 | 36 |
+| CPU per frame, recent mean / max | 10.5 / 25.9 ms | 77.1 / 215.7 ms |
+| renderer CPU, mean / max | 1.3 / 11.6 ms | 12.2 / 175.4 ms |
+| GPU per frame (graph), mean / max | 5.8 / 22.0 ms | 7.5 / 60.0 ms |
+| visible primitives, draw calls | 76, 51 | 142, 48 |
+| standalone textures, MB (max) | 40.1 (57.5) | 48.3 (68.7) |
+| GPU memory, MB (max) | 121.1 (139.1) | 131.1 (150.5) |
+| image batches in the GPU timeline | none | several |
+
+The slow load draws large images that the fast one doesn't (image
+batches, 8–11 MB more of standalone textures), and the time goes mostly
+to WebRender's renderer on the CPU (up to 175 ms in a frame) rather than
+to the GPU (up to 60 ms): uploading large textures, or the driver
+waiting for the GPU, in WebRender with Mesa. An animated image (an ad or
+a teaser) uploaded again with each frame would fit. It is not in ren's
+frame path: the readback waits for it, the window's part stays at 6–11
+ms per frame. Which resource it is is still to be found (see "Open");
+then it is a report for Servo, with the page and the profiler's numbers.
 
 ### Elsewhere
 
@@ -356,10 +379,10 @@ above).
 
 ## Open
 
-- **What Ars Technica's slow loads contain:** WebRender's profiler on a
-  slow load (until the frame rate drops) names the costly passes, and a
-  list of the hosts a load requests, compared between a fast and a slow
-  load, names what the slow one adds.
+- **Which image Ars Technica's slow loads add:** the profiler shows
+  large images and the renderer stalling on them; a list of the hosts
+  (or resource types) a load requests, compared between a fast and a
+  slow load, would name it, for a report to Servo.
 - **WebRender's GPU memory** is a large part of a heavy page's cost
   (121 MB on Ars Technica, in system memory on Iris Xe): its texture
   cache and picture tiles could be bounded for background tabs or in
