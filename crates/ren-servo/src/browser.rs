@@ -16,8 +16,8 @@ use servo::{
     ContextMenu, CreateNewWebViewRequest, DevicePoint, EmbedderControl, EmbedderControlId,
     EventLoopWaker, InputEvent, KeyState, KeyboardEvent, LoadStatus, Location, MouseButtonAction,
     MouseButtonEvent, MouseMoveEvent, NavigationRequest, Opts, RenderingContext, SelectElement,
-    Servo, ServoBuilder, Theme, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
-    WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
+    Servo, ServoBuilder, Theme, WebRenderDebugOption, WebResourceLoad, WebResourceResponse,
+    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
 };
 use url::Url;
 
@@ -37,6 +37,10 @@ pub struct Browser {
     tabs: Vec<(TabId, WebView)>,
     active: Option<TabId>,
     size: Size,
+    /// WebRender's profiler is to be shown over the pages
+    /// (`REN_SERVO_WR_PROFILER`), from the first tab on: it belongs to
+    /// the renderer that all tabs share.
+    profiler: bool,
 }
 
 /// A drop-down or context menu the window shows, until it answers.
@@ -389,6 +393,7 @@ impl Browser {
             tabs: Vec::new(),
             active: None,
             size,
+            profiler: std::env::var_os("REN_SERVO_WR_PROFILER").is_some(),
         }
     }
 
@@ -407,6 +412,9 @@ impl Browser {
             .build();
         webview.notify_theme_change(self.delegate.theme());
         webview.hide();
+        if std::mem::take(&mut self.profiler) {
+            webview.toggle_webrender_debugging(WebRenderDebugOption::Profiler);
+        }
         self.delegate.tab_ids.borrow_mut().insert(webview.id(), tab);
         self.tabs.push((tab, webview));
     }
