@@ -233,6 +233,39 @@ frame path: the readback waits for it, the window's part stays at 6–11
 ms per frame. Which resource it is is still to be found (see "Open");
 then it is a report for Servo, with the page and the profiler's numbers.
 
+**Found on the desktop (2026-10-14, at acd87a5 with a request log):
+the slow loads are the GPU at its lowest clock while the CPU is busy,
+not the page.** `REN_SERVO_REQUEST_LOG=<file>` (cc4186f) writes every
+request of the helper; with it, the article was loaded again and again
+with `--measure-tabs`:
+
+- Eight loads, three slow (19–21 frames in 3 s) and five fast
+  (118–173), all made **the same 376 requests**, URL for URL, the first
+  tab's done after 0.8–1.3 s. So the slow loads don't load anything the
+  fast ones don't; "about 280 against about 370 requests" above came
+  from comparing different runs of the measurement, not the loads. In
+  the slow ones each frame's readback waited 120–140 ms for the GPU,
+  Servo's paint 5–13 ms.
+- The three slow loads came within one minute, right after an 11-minute
+  build at about 3.5 cores; 14 loads on an idle machine afterwards were
+  all fast. The article has no animated image: 43 JPEGs, the largest
+  3000×2000 (the gallery's first photo), the others 1440×960 and
+  1024×683.
+- Reproduced with a GPU clock sampler (`rps_act_freq_mhz` and the
+  throttle reasons of i915): with four cores kept busy (`yes`), four
+  loads scrolled 35–37 frames, the GPU at 100 MHz, its lowest, and 60–80
+  ms of readback per frame; with the cores idle again, four loads
+  scrolled 148–169 frames, the GPU at up to 550–950 MHz, about 8 ms per
+  frame. The package stayed at 54–58 °C, so not heat: the integrated
+  GPU stays at its lowest clock while the CPU takes the power budget
+  (PL1 was flagged in both cases).
+
+Ars Technica's frames are heavy for the GPU, so they show it; heise's
+fit even at the lowest clock. The slow loads of 0012 and of the run
+above (in the middle of `just measure-all`) fit too. It is neither
+Servo's nor ren's, and nothing for a report. Page measurements need an
+idle machine (`measure-tabs.sh` says so now).
+
 ### Elsewhere
 
 - **The item list** while it scrolls: Slint drawing text and rectangles;
@@ -367,8 +400,8 @@ above).
   window (8.5 against 15.9 ms); on heise nothing (132 against 131),
   whose frames reach the window in 9 ms with either.
 - **Ars Technica is slow only on some loads** (57 frames per second
-  with ~280 requests, 16–18 with ~370, as in 0012); see "Ars Technica"
-  above.
+  against 16–18, as in 0012): the GPU at its lowest clock while the CPU
+  was busy, not the page; see "Ars Technica" above.
 - **The window with pages gives back more:** 74 MiB with the article and
   two pages against 86 in M8: the article's frames and renderer go while
   a page is shown.
@@ -379,13 +412,10 @@ above).
 
 ## Open
 
-- **Which image Ars Technica's slow loads add:** the profiler shows
-  large images and the renderer stalling on them; a list of the hosts
-  (or resource types) a load requests, compared between a fast and a
-  slow load, would name it, for a report to Servo. The article's images
-  still look corrupted in the tab (as in 0011), so the slow loads may be
-  a symptom of the same fault in Servo's image handling; servoshell 0.7
-  on the same page tells whether both are Servo's.
+- **Ars Technica's images look corrupted** in the tab (as in 0011);
+  the slow loads turned out to be the GPU's clock (above), so this is a
+  question of its own: servoshell 0.7 on the same page tells whether
+  it's Servo's, for a report.
 - **WebRender's GPU memory** is a large part of a heavy page's cost
   (121 MB on Ars Technica, in system memory on Iris Xe): its texture
   cache and picture tiles could be bounded for background tabs or in
