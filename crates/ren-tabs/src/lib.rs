@@ -228,6 +228,42 @@ pub enum MenuEntry {
     Separator,
 }
 
+/// A dialog a page's script opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DialogKind {
+    /// `alert()`: a message and OK.
+    Alert,
+    /// `confirm()`: OK or Cancel.
+    Confirm,
+    /// `prompt()`: a line of text, or Cancel.
+    Prompt,
+}
+
+/// The answer to a page's dialog ([`Event::Dialog`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DialogAnswer {
+    /// OK; for a prompt, with the text entered.
+    Ok(Option<String>),
+    Cancel,
+}
+
+/// An RGB colour of a page's colour picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rgb {
+    pub red: u8,
+    pub green: u8,
+    pub blue: u8,
+}
+
+/// The longest message of a page's dialog passed on, in characters.
+pub const MAX_DIALOG_MESSAGE: usize = 2_000;
+
+/// The longest default text of a prompt passed on, in characters.
+pub const MAX_DIALOG_TEXT: usize = 1_000;
+
+/// The most file name extensions of a file picker's filter passed on.
+pub const MAX_FILE_FILTERS: usize = 50;
+
 /// Where a page's control was activated, in physical pixels relative to
 /// the page area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -302,6 +338,24 @@ pub enum Command {
     ContextMenu {
         control: u32,
         action: Option<MenuAction>,
+    },
+    /// The answer to a page's `alert`, `confirm` or `prompt`
+    /// ([`Event::Dialog`]).
+    Dialog {
+        control: u32,
+        answer: DialogAnswer,
+    },
+    /// The colour chosen in a colour picker ([`Event::ColourPicker`]);
+    /// none keeps the one the page had.
+    Colour {
+        control: u32,
+        colour: Option<Rgb>,
+    },
+    /// The files chosen in a file picker ([`Event::FilePicker`]); none
+    /// dismisses it.
+    Files {
+        control: u32,
+        paths: Option<Vec<std::path::PathBuf>>,
     },
 }
 
@@ -380,8 +434,38 @@ pub enum Event {
         link: Option<String>,
         image: Option<String>,
     },
-    /// The page took back a drop-down or context menu it asked for (it
-    /// navigated away, the element went away); the window closes it.
+    /// A page's script opened a dialog (`alert`, `confirm`, `prompt`) in
+    /// the page shown; the window shows it over the page and answers with
+    /// [`Command::Dialog`]. The message is the page's, at most
+    /// [`MAX_DIALOG_MESSAGE`] characters; `text` is a prompt's default.
+    Dialog {
+        tab: TabId,
+        control: u32,
+        kind: DialogKind,
+        message: String,
+        text: String,
+    },
+    /// A colour input (`<input type=color>`) of the page shown was
+    /// clicked; the window shows a colour picker at `area` (as for
+    /// [`Event::Select`]) and answers with [`Command::Colour`].
+    ColourPicker {
+        tab: TabId,
+        control: u32,
+        area: Area,
+        current: Option<Rgb>,
+    },
+    /// A file input (`<input type=file>`) of the page shown was clicked;
+    /// the window asks the desktop for files and answers with
+    /// [`Command::Files`]. `extensions` are the file name extensions the
+    /// page accepts (none: any file).
+    FilePicker {
+        tab: TabId,
+        control: u32,
+        multiple: bool,
+        extensions: Vec<String>,
+    },
+    /// The page took back a control it asked for (it navigated away, the
+    /// element went away); the window closes it.
     ControlHidden {
         control: u32,
     },
@@ -460,6 +544,26 @@ mod tests {
             Command::ContextMenu {
                 control: 3,
                 action: Some(MenuAction::Copy),
+            },
+            Command::Dialog {
+                control: 4,
+                answer: DialogAnswer::Ok(Some("a\nb".to_owned())),
+            },
+            Command::Dialog {
+                control: 5,
+                answer: DialogAnswer::Cancel,
+            },
+            Command::Colour {
+                control: 6,
+                colour: Some(Rgb {
+                    red: 1,
+                    green: 2,
+                    blue: 3,
+                }),
+            },
+            Command::Files {
+                control: 7,
+                paths: Some(vec!["/home/u/a b.pdf".into()]),
             },
         ];
         for command in commands {

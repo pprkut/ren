@@ -11,13 +11,16 @@ use std::time::Instant;
 
 use dpi::PhysicalSize;
 use euclid::Scale;
-use ren_tabs::{Blocking, Cursor, Event, FIRST_PAGE_TAB, Input, MenuAction, Size, TabId};
+use ren_tabs::{
+    Blocking, Cursor, DialogAnswer, Event, FIRST_PAGE_TAB, Input, MenuAction, Rgb, Size, TabId,
+};
 use servo::{
-    ContextMenu, CreateNewWebViewRequest, DevicePoint, EmbedderControl, EmbedderControlId,
-    EventLoopWaker, InputEvent, KeyState, KeyboardEvent, LoadStatus, Location, MouseButtonAction,
-    MouseButtonEvent, MouseMoveEvent, NavigationRequest, Opts, RenderingContext, SelectElement,
-    Servo, ServoBuilder, Theme, WebRenderDebugOption, WebResourceLoad, WebResourceResponse,
-    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
+    ColorPicker, ContextMenu, CreateNewWebViewRequest, DevicePoint, EmbedderControl,
+    EmbedderControlId, EventLoopWaker, FilePicker, InputEvent, KeyState, KeyboardEvent, LoadStatus,
+    Location, MouseButtonAction, MouseButtonEvent, MouseMoveEvent, NavigationRequest, Opts,
+    RenderingContext, SelectElement, Servo, ServoBuilder, SimpleDialog, Theme,
+    WebRenderDebugOption, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
+    WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
 };
 use url::Url;
 
@@ -43,11 +46,14 @@ pub struct Browser {
     profiler: bool,
 }
 
-/// A drop-down or context menu the window shows, until it answers.
-/// Dropping one dismisses it.
+/// A control the window shows, until it answers. Dropping one dismisses
+/// it (an `alert` counts as answered).
 enum Control {
     Select(SelectElement),
     Menu(ContextMenu),
+    Dialog(SimpleDialog),
+    Colour(ColorPicker),
+    Files(FilePicker),
 }
 
 /// A [`Control`] with the number the window knows it by, its tab and
@@ -272,10 +278,10 @@ impl WebViewDelegate for Delegate {
         }
     }
 
-    /// Drop-downs and context menus of the page shown go to the window.
-    /// Colour and file pickers, input methods and the `alert`, `confirm`
-    /// and `prompt` dialogs are dismissed (M10b), as are controls of
-    /// hidden tabs.
+    /// Drop-downs, context menus, colour and file pickers and the
+    /// `alert`, `confirm` and `prompt` dialogs of the page shown go to the
+    /// window. Input methods aren't passed on (0017), and controls of
+    /// hidden tabs are dismissed.
     fn show_embedder_control(&self, webview: WebView, control: EmbedderControl) {
         if self.active.get() != Some(webview.id()) {
             return;
@@ -311,7 +317,38 @@ impl WebViewDelegate for Delegate {
                     Control::Menu(menu),
                 )
             }
-            _ => return,
+            EmbedderControl::SimpleDialog(dialog) => {
+                let (kind, message, text) = controls::dialog(&dialog);
+                (
+                    Event::Dialog {
+                        tab,
+                        control: number,
+                        kind,
+                        message,
+                        text,
+                    },
+                    Control::Dialog(dialog),
+                )
+            }
+            EmbedderControl::ColorPicker(picker) => (
+                Event::ColourPicker {
+                    tab,
+                    control: number,
+                    area: controls::area(picker.position()),
+                    current: picker.current_color().map(controls::rgb),
+                },
+                Control::Colour(picker),
+            ),
+            EmbedderControl::FilePicker(picker) => (
+                Event::FilePicker {
+                    tab,
+                    control: number,
+                    multiple: picker.allow_select_multiple(),
+                    extensions: controls::extensions(picker.filter_patterns()),
+                },
+                Control::Files(picker),
+            ),
+            EmbedderControl::InputMethod(_) => return,
         };
         self.next_control.set(number.wrapping_add(1));
         // The window doesn't tell when a menu was closed without a choice:
@@ -565,6 +602,47 @@ impl Browser {
             match action.and_then(controls::servo_action) {
                 Some(action) => menu.select(action),
                 None => menu.dismiss(),
+            }
+        }
+    }
+
+    /// The window's answer to a page's `alert`, `confirm` or `prompt`.
+    pub fn answer_dialog(&mut self, number: u32, answer: DialogAnswer) {
+        let Some(Control::Dialog(dialog)) = self.delegate.take_control(number) else {
+            return;
+        };
+        match (dialog, answer) {
+            (SimpleDialog::Prompt(mut prompt), DialogAnswer::Ok(text)) => {
+                if let Some(text) = text {
+                    prompt.set_current_value(&text);
+                }
+                prompt.confirm();
+            }
+            (dialog, DialogAnswer::Ok(_)) => dialog.confirm(),
+            (dialog, DialogAnswer::Cancel) => dialog.dismiss(),
+        }
+    }
+
+    /// The window's answer to a colour picker: the colour chosen, or none
+    /// to keep the page's.
+    pub fn answer_colour(&mut self, number: u32, colour: Option<Rgb>) {
+        if let Some(Control::Colour(mut picker)) = self.delegate.take_control(number) {
+            if let Some(colour) = colour {
+                picker.select(Some(controls::servo_rgb(colour)));
+            }
+            picker.submit();
+        }
+    }
+
+    /// The window's answer to a file picker: the files chosen, or none.
+    pub fn answer_files(&mut self, number: u32, paths: Option<Vec<PathBuf>>) {
+        if let Some(Control::Files(mut picker)) = self.delegate.take_control(number) {
+            match paths {
+                Some(paths) => {
+                    picker.select(&paths);
+                    picker.submit();
+                }
+                None => picker.dismiss(),
             }
         }
     }

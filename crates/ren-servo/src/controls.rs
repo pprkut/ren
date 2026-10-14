@@ -1,14 +1,18 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Drop-downs (`<select>`) and context menus of pages, which the window
+//! Drop-downs (`<select>`), context menus, colour and file pickers and the
+//! `alert`, `confirm` and `prompt` dialogs of pages, which the window
 //! shows: Servo's requests as `ren_tabs` messages, and the window's
 //! answers as Servo's actions.
 
-use ren_tabs::{Area, MenuAction, MenuEntry, SelectEntry};
+use ren_tabs::{
+    Area, DialogKind, MAX_DIALOG_MESSAGE, MAX_DIALOG_TEXT, MAX_FILE_FILTERS, MenuAction, MenuEntry,
+    Rgb, SelectEntry,
+};
 use servo::{
-    ContextMenuAction, ContextMenuItem, DeviceIntRect, SelectElementOption,
-    SelectElementOptionOrOptgroup,
+    ContextMenuAction, ContextMenuItem, DeviceIntRect, FilterPattern, RgbColor,
+    SelectElementOption, SelectElementOptionOrOptgroup, SimpleDialog,
 };
 
 /// The most entries of a drop-down or menu passed on; the window limits
@@ -37,6 +41,59 @@ fn option(option: &SelectElementOption) -> SelectEntry {
         label: label(&option.label),
         enabled: !option.is_disabled,
     }
+}
+
+/// A page's dialog: its kind, message and a prompt's default, cut to the
+/// lengths the window takes.
+pub fn dialog(dialog: &SimpleDialog) -> (DialogKind, String, String) {
+    let (kind, text) = match dialog {
+        SimpleDialog::Alert(_) => (DialogKind::Alert, ""),
+        SimpleDialog::Confirm(_) => (DialogKind::Confirm, ""),
+        SimpleDialog::Prompt(prompt) => (DialogKind::Prompt, prompt.current_value()),
+    };
+    (
+        kind,
+        dialog.message().chars().take(MAX_DIALOG_MESSAGE).collect(),
+        text.chars().take(MAX_DIALOG_TEXT).collect(),
+    )
+}
+
+pub fn rgb(colour: RgbColor) -> Rgb {
+    Rgb {
+        red: colour.red,
+        green: colour.green,
+        blue: colour.blue,
+    }
+}
+
+pub fn servo_rgb(colour: Rgb) -> RgbColor {
+    RgbColor {
+        red: colour.red,
+        green: colour.green,
+        blue: colour.blue,
+    }
+}
+
+/// The file name extensions a file input accepts (Servo's patterns are
+/// extensions without the dot), in lower case: only letters, digits, `-`
+/// and `_`, at most [`MAX_FILE_FILTERS`].
+pub fn extensions(patterns: &[FilterPattern]) -> Vec<String> {
+    let mut extensions: Vec<String> = Vec::new();
+    for FilterPattern(pattern) in patterns {
+        let extension = pattern.trim().trim_start_matches('.').to_lowercase();
+        let valid = !extension.is_empty()
+            && extension.len() <= 20
+            && extension
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if valid && !extensions.contains(&extension) {
+            extensions.push(extension);
+        }
+        if extensions.len() == MAX_FILE_FILTERS {
+            break;
+        }
+    }
+    extensions
 }
 
 /// A drop-down's options, the options of a group after its heading.
@@ -203,6 +260,27 @@ mod tests {
         );
         assert_eq!(servo_action(MenuAction::CopyLink), None);
         assert_eq!(servo_action(MenuAction::OpenImage), None);
+    }
+
+    #[test]
+    fn file_filters() {
+        let patterns: Vec<FilterPattern> = ["pdf", ".PNG", "pdf", "", "a/b", "tar.gz", "x y"]
+            .into_iter()
+            .map(|p| FilterPattern(p.to_owned()))
+            .collect();
+        assert_eq!(extensions(&patterns), ["pdf", "png"]);
+        let many: Vec<FilterPattern> = (0..100).map(|i| FilterPattern(format!("e{i}"))).collect();
+        assert_eq!(extensions(&many).len(), MAX_FILE_FILTERS);
+    }
+
+    #[test]
+    fn colours() {
+        let colour = Rgb {
+            red: 1,
+            green: 2,
+            blue: 3,
+        };
+        assert_eq!(rgb(servo_rgb(colour)), colour);
     }
 
     #[test]

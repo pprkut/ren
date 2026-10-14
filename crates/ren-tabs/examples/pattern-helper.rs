@@ -19,6 +19,10 @@
 //! - `REN_PATTERN_ONE_FRAME`: paint the next frame only after the window
 //!   took the last, as the helper did before M10 (and does with
 //!   `REN_SERVO_ONE_FRAME`).
+//!
+//! Keys open what pages open, to try the window's controls: `a`, `c` and
+//! `p` an `alert`, `confirm` and `prompt`, `k` a colour picker, `f` a file
+//! picker; the window's answers go to stderr.
 
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
@@ -30,7 +34,7 @@ use ren_tabs::frames::FrameWriter;
 use ren_tabs::scroll::{SmoothScroll, Wheel};
 use ren_tabs::stats::StageStats;
 use ren_tabs::wire::{self, Receiver};
-use ren_tabs::{Command, Event, Input, Size, TabId};
+use ren_tabs::{Area, Command, DialogKind, Event, Input, Key, Rgb, Size, TabId};
 
 /// The synthetic page's height in physical pixels at scale 1.
 const PAGE_HEIGHT: f32 = 20_000.0;
@@ -82,6 +86,7 @@ fn main() -> io::Result<()> {
         one_frame,
         scroll: SmoothScroll::default(),
         stats: StageStats::new("helper"),
+        controls: 0,
     };
     loop {
         // A frame that is ready waits for the window's answer, not a time.
@@ -141,6 +146,8 @@ struct Pattern {
     one_frame: bool,
     scroll: SmoothScroll,
     stats: StageStats,
+    /// The number of the last control opened.
+    controls: u32,
 }
 
 impl Pattern {
@@ -197,9 +204,68 @@ impl Pattern {
             }
             Command::Dark(_) => self.dirty = true,
             Command::FrameTaken => self.taken = true,
+            Command::Input(Input::Key {
+                key: Key::Character(key),
+                down: true,
+                ..
+            }) => {
+                if let Some(event) = self.control(&key) {
+                    wire::send(out, &event, None)?;
+                }
+            }
+            Command::Dialog { control, answer } => {
+                eprintln!("pattern-helper: dialog {control}: {answer:?}");
+            }
+            Command::Colour { control, colour } => {
+                eprintln!("pattern-helper: colour {control}: {colour:?}");
+            }
+            Command::Files { control, paths } => {
+                eprintln!("pattern-helper: files {control}: {paths:?}");
+            }
             _ => {}
         }
         Ok(())
+    }
+
+    /// What a page opens for a key, in the active tab.
+    fn control(&mut self, key: &str) -> Option<Event> {
+        let tab = self.active?;
+        self.controls += 1;
+        let control = self.controls;
+        let dialog = |kind| Event::Dialog {
+            tab,
+            control,
+            kind,
+            message: format!("A {kind:?} of the synthetic page, number {control}."),
+            text: "the default".to_owned(),
+        };
+        Some(match key {
+            "a" => dialog(DialogKind::Alert),
+            "c" => dialog(DialogKind::Confirm),
+            "p" => dialog(DialogKind::Prompt),
+            "k" => Event::ColourPicker {
+                tab,
+                control,
+                area: Area {
+                    x: 40,
+                    y: 60,
+                    width: 50,
+                    height: 24,
+                },
+                current: Some(Rgb {
+                    red: 0x3d,
+                    green: 0xae,
+                    blue: 0xe9,
+                }),
+            },
+            "f" => Event::FilePicker {
+                tab,
+                control,
+                multiple: true,
+                extensions: vec!["pdf".to_owned()],
+            },
+            _ => return None,
+        })
     }
 
     fn wheel(&mut self, dy: f32) {

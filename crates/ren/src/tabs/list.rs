@@ -191,11 +191,14 @@ impl TabList {
                 update(tab, &mut |t| t.loading = false);
                 changes.crashed = Some(reason);
             }
-            // The cursor, frames, drop-downs and menus are the view's.
+            // The cursor, frames and controls are the view's.
             Event::Cursor(_)
             | Event::Frame { .. }
             | Event::Select { .. }
             | Event::ContextMenu { .. }
+            | Event::Dialog { .. }
+            | Event::ColourPicker { .. }
+            | Event::FilePicker { .. }
             | Event::ControlHidden { .. } => {}
         }
     }
