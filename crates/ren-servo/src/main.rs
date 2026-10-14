@@ -391,5 +391,8 @@ fn handle(
         Command::FrameTaken => frames.taken = true,
         Command::Select { control, selected } => browser.answer_select(control, selected),
         Command::ContextMenu { control, action } => browser.answer_menu(control, action),
+        Command::Dialog { control, answer } => browser.answer_dialog(control, answer),
+        Command::Colour { control, colour } => browser.answer_colour(control, colour),
+        Command::Files { control, paths } => browser.answer_files(control, paths),
     }
 }
