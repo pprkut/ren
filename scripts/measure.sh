@@ -230,7 +230,9 @@ for r in "${renderers[@]}"; do
 
     log "== $r: idle"
     ilog=$OUT_DIR/$r-idle.log
-    "${run[@]}" "${data[@]}" 2>"$ilog" &
+    # --measure: with a database, ren would sync it with the account of
+    # the settings file otherwise.
+    "${run[@]}" "${data[@]}" --measure 2>"$ilog" &
     pid=$!
     sleep "$SETTLE_SECS"
     read -r idle_cpu rss anon file shmem pss threads < <(sample "$pid" "$OUT_DIR/$r-idle.csv" 1 "$IDLE_SECS")
