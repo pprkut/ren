@@ -71,6 +71,10 @@ measure-articles dump *articles:
 measure-tabs dump *urls:
     scripts/measure-tabs.sh {{dump}} {{urls}}
 
+# Load one page again and again, each in a new Servo helper: frames, requests and the GPU's clock per load; BUSY=n keeps n cores busy in a first phase (needs a display)
+measure-page-loads dump url:
+    scripts/measure-page-loads.sh {{dump}} {{url}}
+
 # Measure memory with the window hidden in the tray, with the articles of a --dump-items directory and the given pages in tabs (needs a display)
 measure-hidden dump *urls:
     scripts/measure-hidden.sh {{dump}} {{urls}}

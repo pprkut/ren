@@ -264,7 +264,10 @@ Ars Technica's frames are heavy for the GPU, so they show it; heise's
 fit even at the lowest clock. The slow loads of 0012 and of the run
 above (in the middle of `just measure-all`) fit too. It is neither
 Servo's nor ren's, and nothing for a report. Page measurements need an
-idle machine (`measure-tabs.sh` says so now).
+idle machine (`measure-tabs.sh` says so now). `just measure-page-loads
+DUMP URL` repeats this: the page loaded `RUNS` times, each load's frames,
+requests (and whether they differ between loads) and the GPU's clock,
+with `BUSY=n` first with n cores kept busy.
 
 ### Elsewhere
 
