@@ -6,6 +6,7 @@ mod article;
 mod cli;
 mod demo;
 mod favicons;
+mod feed_edit;
 mod feed_tree;
 mod hash;
 mod http;

@@ -22,7 +22,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use nextcloud_news::{Client, Config, Credentials};
 use ren_settings::{Account, SecretService};
 use ren_store::Store;
-use ren_sync::{Kind, Progress, Report, SystemClock};
+use ren_sync::{Changed, FeedChange, Kind, Progress, Report, SystemClock};
 
 use crate::hash::fnv1a;
 use crate::procstat::trim_heap;
@@ -42,6 +42,9 @@ pub struct Job {
     /// The app password, if the UI has it from an earlier sync.
     pub password: Option<String>,
     pub options: ren_sync::Options,
+    /// Changes to the feeds and folders, sent before the sync, which then
+    /// brings them in.
+    pub changes: Vec<FeedChange>,
 }
 
 /// What the sync thread reports.
@@ -51,6 +54,8 @@ pub enum Event {
     /// where it came from.
     Password(String, ren_settings::Source),
     Progress(Progress),
+    /// A change to the feeds and folders was sent, or refused.
+    Changed(FeedChange, Result<Changed, ren_sync::Error>),
     Finished(Result<Report, Failure>),
 }
 
@@ -181,6 +186,20 @@ fn run(job: Job, cancel: &AtomicBool, send: &impl Fn(Event)) -> Result<Report, F
     if !claim_database(&mut store, &job.account).map_err(|err| Failure::Sync(err.into()))? {
         return Err(Failure::OtherAccount);
     }
+    for change in job.changes {
+        let result = ren_sync::change(&client, &change);
+        // The other changes would be refused too; the sync too.
+        let unauthorized = matches!(
+            result,
+            Err(ren_sync::Error::Api(nextcloud_news::Error::Unauthorized))
+        );
+        send(Event::Changed(change, result));
+        if unauthorized {
+            return Err(Failure::Sync(ren_sync::Error::Api(
+                nextcloud_news::Error::Unauthorized,
+            )));
+        }
+    }
     let result = ren_sync::sync(
         &client,
         &mut store,
@@ -273,6 +292,7 @@ mod tests {
             },
             password: password.map(str::to_owned),
             options: ren_sync::Options::default(),
+            changes: Vec::new(),
         }
     }
 
@@ -332,6 +352,62 @@ mod tests {
         let (events, _) = run_job(job(&dir, &server, Some(testing::PASSWORD)), false);
         assert!(matches!(events[0], Event::Progress(Progress::Pushed)));
         assert_eq!(result(events).unwrap().kind, Kind::Incremental);
+    }
+
+    #[test]
+    fn feed_changes_before_the_sync() {
+        let server = testing::recorded_server();
+        let dir = TempDir::new("sync-thread-changes");
+        let changes = vec![
+            FeedChange::AddFolder {
+                name: "New".to_owned(),
+            },
+            FeedChange::DeleteFeed { feed_id: 1 },
+        ];
+        let (events, _) = run_job(
+            Job {
+                changes: changes.clone(),
+                ..job(&dir, &server, Some(testing::PASSWORD))
+            },
+            false,
+        );
+        let changed: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Changed(change, Ok(changed)) => Some((change.clone(), changed.folder)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            changed,
+            [(changes[0].clone(), Some(99)), (changes[1].clone(), None)]
+        );
+        assert!(result(events).is_ok());
+        let requests: Vec<_> = server
+            .requests()
+            .into_iter()
+            .map(|r| format!("{} {}", r.method, r.api_path().unwrap_or_default()))
+            .collect();
+        assert_eq!(requests[..2], ["POST folders", "DELETE feeds/1"]);
+
+        // Refused: the sync goes on. (Another server's database.)
+        let dir = TempDir::new("sync-thread-refused-change");
+        let refusing = MockServer::start(|request| match request.method.as_str() {
+            "DELETE" => Response::status(404, r#"{"message": "Feed not found"}"#),
+            _ => testing::respond_recorded(request),
+        });
+        let (events, _) = run_job(
+            Job {
+                changes: vec![FeedChange::DeleteFeed { feed_id: 5 }],
+                ..job(&dir, &refusing, Some(testing::PASSWORD))
+            },
+            false,
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            Event::Changed(_, Err(err)) if err.to_string().contains("Feed not found")
+        )));
+        assert!(result(events).is_ok());
     }
 
     #[test]

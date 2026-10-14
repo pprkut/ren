@@ -161,6 +161,27 @@ impl Reader {
         self.tree.unread()
     }
 
+    /// The folders, sorted by name.
+    pub fn folders(&self) -> Result<Vec<ren_store::Folder>> {
+        self.store.folders()
+    }
+
+    /// The feeds in a folder.
+    pub fn feeds_in(&self, folder_id: u64) -> Result<Vec<u64>> {
+        Ok(self
+            .store
+            .feeds()?
+            .into_iter()
+            .filter(|feed| feed.folder_id == Some(folder_id))
+            .map(|feed| feed.id)
+            .collect())
+    }
+
+    /// A feed as stored; `None` if it's gone.
+    pub fn feed(&self, id: u64) -> Result<Option<ren_store::Feed>> {
+        Ok(self.store.feeds()?.into_iter().find(|feed| feed.id == id))
+    }
+
     /// The feeds the server can't update: id, title and why.
     pub fn broken_feeds(&self) -> Vec<(u64, &str, &str)> {
         self.tree.broken()

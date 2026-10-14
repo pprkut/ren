@@ -10,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use ren_settings::{Reload, Settings, SettingsFile};
 use ren_store::{Status, Store};
-use ren_sync::Progress;
+use ren_sync::{FeedChange, Progress};
 use slint::language::ColorScheme;
 use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, VecModel};
 
@@ -27,6 +27,7 @@ use crate::window_state::{self, Saved};
 mod about;
 mod account;
 mod article;
+mod feeds;
 #[cfg(test)]
 mod flows;
 mod geometry;
@@ -224,8 +225,18 @@ struct App {
     sync_failure: RefCell<Option<String>>,
     /// Help → About Ren, while it is open.
     about: RefCell<Option<AboutWindow>>,
-    /// The question before logging out, while it is open.
+    /// The question before logging out or deleting, while it is open.
     confirm: RefCell<Option<ConfirmWindow>>,
+    /// Changes to the feeds and folders for the next sync.
+    feed_changes: RefCell<Vec<FeedChange>>,
+    /// Adding or editing a feed or a folder, while it is open.
+    feed_dialog: RefCell<Option<feeds::Dialog>>,
+    /// The feed added, shown after the sync that brings it in.
+    select_after_sync: Cell<Option<Node>>,
+    /// A feed at a new address that shows full pages, as the old one did.
+    full_page_after_sync: Cell<Option<u64>>,
+    /// What the server refused of the changes sent with the running sync.
+    refused_changes: RefCell<Vec<String>>,
 }
 
 #[derive(Default)]
@@ -817,6 +828,7 @@ impl App {
             "configure" => self.open_settings(),
             "settings-saved" => self.settings_saved(),
             "login-event" => self.login_events(),
+            "add-feed" => self.add_feed(),
             "about" => self.open_about(),
             "about-close" => self.close_about(),
             _ => self.not_implemented(name),
@@ -829,6 +841,7 @@ impl App {
             ("toggle-full-page", Some(Node::Feed(id))) => self.toggle_full_page(row, id),
             // The server fetches the feeds; ren syncs everything.
             ("fetch-feed" | "fetch-all", _) => self.start_sync(),
+            (_, Some(node)) if self.manage_feeds(node, action) => {}
             _ => self.not_implemented(action),
         }
     }
@@ -1211,6 +1224,7 @@ impl App {
                 purge_after: settings.keep_read(),
                 ..ren_sync::Options::default()
             },
+            changes: std::mem::take(&mut self.feed_changes.borrow_mut()),
         };
         let weak = self.window.clone();
         let wake = move || {
@@ -1276,6 +1290,7 @@ impl App {
                         self.reload_view();
                     }
                 }
+                Event::Changed(change, result) => self.feed_changed(change, result),
                 Event::Finished(result) => {
                     match &result {
                         Ok(_) => *self.sync_failure.borrow_mut() = None,
@@ -1299,15 +1314,24 @@ impl App {
                     if result.is_ok() {
                         self.update_favicons();
                     }
-                    let text = sync_thread::result_text(&result);
+                    let mut text = sync_thread::result_text(&result);
                     if self.measure {
                         eprintln!("ren: sync result: {text}");
                     }
-                    if result.is_ok() {
+                    // What the server refused of the changes to the feeds
+                    // stays in the status bar.
+                    let refused = std::mem::take(&mut *self.refused_changes.borrow_mut());
+                    for refusal in &refused {
+                        text.push_str("; ");
+                        text.push_str(refusal);
+                    }
+                    if result.is_ok() && refused.is_empty() {
                         self.status(text);
                     } else {
                         self.status_until_next(text);
                     }
+                    let failure = result.as_ref().err().map(ToString::to_string);
+                    self.feeds_after_sync(failure);
                 }
             }
         }
@@ -2020,6 +2044,8 @@ fn run_window(
     app.dialog.borrow_mut().take();
     app.login.borrow_mut().take();
     app.about.borrow_mut().take();
+    app.feed_dialog.borrow_mut().take();
+    app.confirm.borrow_mut().take();
     *app.tray.borrow_mut() = None;
     if let Err(err) = app.saved.borrow_mut().save() {
         eprintln!("ren: saving the window's state: {err}");
@@ -2135,6 +2161,11 @@ fn build_window(
         sync_failure: RefCell::new(None),
         about: RefCell::new(None),
         confirm: RefCell::new(None),
+        feed_changes: RefCell::default(),
+        feed_dialog: RefCell::new(None),
+        select_after_sync: Cell::new(None),
+        full_page_after_sync: Cell::new(None),
+        refused_changes: RefCell::default(),
     });
     app.restore();
     match &settings {

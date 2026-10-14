@@ -1,0 +1,171 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Button, ComboBox, LineEdit, Palette } from "std-widgets.slint";
+import { Logo } from "logo.slint";
+import { Theme } from "theme.slint";
+
+// What the dialog edits.
+export enum FeedDialogKind {
+    // A new feed: its address and folder.
+    add-feed,
+    // A feed: its name, address and folder.
+    edit-feed,
+    // A folder's name, new or renamed.
+    folder,
+}
+
+// Adding or editing a feed, or naming a folder, in a window of its own.
+// The window stays open while the server works on it, and shows what it
+// refused.
+export component FeedDialog inherits Window {
+    in property <FeedDialogKind> kind;
+    in property <string> window-title;
+    in property <string> heading;
+    in property <string> confirm-label;
+    // The fields; `url` is a feed's address, `name` its name or the
+    // folder's.
+    in-out property <string> url;
+    in-out property <string> name;
+    // "No folder" first, then the folders.
+    in property <[string]> folders;
+    in-out property <int> folder-index;
+    // A note under the fields, e.g. what changing an address does.
+    in property <string> note;
+    in property <string> error;
+    // The server is asked: the fields wait.
+    in property <bool> busy;
+    in property <ColorScheme> forced-color-scheme: ColorScheme.unknown;
+    callback accepted();
+    callback cancelled();
+
+    changed forced-color-scheme => {
+        Palette.color-scheme = root.forced-color-scheme;
+    }
+
+    title: root.window-title;
+    icon: Logo.large;
+    preferred-width: 480px;
+    background: Palette.background;
+    forward-focus: keys;
+
+    // Puts the focus in the first field.
+    public function focus-field() {
+        if root.kind == FeedDialogKind.add-feed {
+            url-field.focus();
+        } else {
+            name-field.focus();
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.cancelled();
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            Text {
+                text: root.heading;
+                font-size: 1.15rem;
+                font-weight: 700;
+                color: Palette.foreground;
+            }
+
+            if root.kind != FeedDialogKind.add-feed: Text {
+                text: "Name";
+                color: Palette.foreground;
+            }
+
+            name-field := LineEdit {
+                visible: root.kind != FeedDialogKind.add-feed;
+                height: self.visible ? self.preferred-height : 0px;
+                text <=> root.name;
+                enabled: !root.busy;
+                placeholder-text: root.kind == FeedDialogKind.folder ? "The folder's name" : "The feed's own name, if empty";
+                accepted => {
+                    if !root.busy {
+                        root.accepted();
+                    }
+                }
+            }
+
+            if root.kind != FeedDialogKind.folder: Text {
+                text: "Address";
+                color: Palette.foreground;
+            }
+
+            url-field := LineEdit {
+                visible: root.kind != FeedDialogKind.folder;
+                height: self.visible ? self.preferred-height : 0px;
+                text <=> root.url;
+                enabled: !root.busy;
+                placeholder-text: "https://example.org/feed.xml, or the site's address";
+                accepted => {
+                    if !root.busy {
+                        root.accepted();
+                    }
+                }
+            }
+
+            if root.kind != FeedDialogKind.folder: Text {
+                text: "Folder";
+                color: Palette.foreground;
+            }
+
+            if root.kind != FeedDialogKind.folder: ComboBox {
+                model: root.folders;
+                current-index <=> root.folder-index;
+                enabled: !root.busy;
+            }
+
+            if root.note != "": Text {
+                text: root.note;
+                wrap: word-wrap;
+                color: Palette.foreground;
+                opacity: 0.8;
+            }
+
+            if root.error != "": Text {
+                text: root.error;
+                wrap: word-wrap;
+                color: Theme.negative;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+
+                if root.busy: Text {
+                    horizontal-stretch: 1;
+                    text: "Asking the server…";
+                    vertical-alignment: center;
+                    color: Palette.foreground;
+                    opacity: 0.8;
+                }
+
+                Button {
+                    text: "Cancel";
+                    clicked => {
+                        root.cancelled();
+                    }
+                }
+
+                Button {
+                    text: root.confirm-label;
+                    primary: true;
+                    enabled: !root.busy;
+                    clicked => {
+                        root.accepted();
+                    }
+                }
+            }
+        }
+    }
+}
