@@ -64,7 +64,7 @@ export component MainWindow inherits Window {
     callback article-scroll-to(y: length);
     // Scrolling by keyboard, smoothly; positive towards the top.
     callback article-key-scroll(dy: length);
-    // The next frame of a keyboard scroll (from a timer).
+    // The next frame of a keyboard or wheel scroll (from a timer).
     callback article-glide();
     callback article-key(text: string, mods: int) -> bool;
     callback article-resized();

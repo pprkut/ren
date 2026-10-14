@@ -73,6 +73,13 @@ impl SmoothScroll {
         if self.next_tick.is_none_or(|due| now < due) {
             return None;
         }
+        self.step(now)
+    }
+
+    /// The next part, if anything is left, whether or not it is due: for
+    /// callers with a timer of their own that fires every [`SMOOTH_TICK`]
+    /// (and may fire a little early).
+    pub fn step(&mut self, now: Instant) -> Option<Wheel> {
         let pending = self.pending?;
         let part = |d: f32| {
             if d.abs() * (1.0 - SMOOTH_PART) < SMOOTH_REST {
@@ -165,6 +172,20 @@ mod tests {
         let rest = scroll.add(wheel(5.0), now).unwrap();
         assert_eq!(rest.dy, 120.0 * (1.0 - SMOOTH_PART) + 5.0);
         assert_eq!(scroll.next_tick(), None);
+    }
+
+    #[test]
+    fn steps_without_waiting() {
+        let mut scroll = SmoothScroll::default();
+        let now = Instant::now();
+        assert_eq!(scroll.step(now), None);
+        scroll.add(wheel(-120.0), now);
+        let mut total = 0.0;
+        while scroll.next_tick().is_some() {
+            total += scroll.step(now).unwrap().dy;
+        }
+        assert!((total + 120.0).abs() < 0.01, "{total}");
+        assert_eq!(scroll.step(now), None);
     }
 
     #[test]
