@@ -165,9 +165,8 @@ fn feeds() -> Vec<Feed> {
             pinned: false,
             // One feed the server can't update.
             update_error_count: if *title == BROKEN_FEED { 12 } else { 0 },
-            last_update_error: (*title == BROKEN_FEED).then(|| {
-                "Could not find a valid feed at the given URL: 404 Not Found".to_owned()
-            }),
+            last_update_error: (*title == BROKEN_FEED)
+                .then(|| "Could not find a valid feed at the given URL: 404 Not Found".to_owned()),
         })
         .collect()
 }
