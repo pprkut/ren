@@ -30,12 +30,23 @@ pub struct Limits {
     pub max_pixels: u64,
 }
 
+/// An image scaled down for Blitz.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scaled {
+    pub png: Vec<u8>,
+    /// The width of the image as it came, when the pixel limit made it
+    /// narrower than the widest images are shown: Blitz shows an image at
+    /// its own size, so the article sets this width on it to show it as
+    /// wide as it would be without the limit.
+    pub width: Option<u32>,
+}
+
 /// Prepares the bytes of an image for Blitz. `Ok(None)` keeps them as they
 /// are: an image within the limits, or something that isn't a raster
 /// image the `image` crate knows (e.g. SVG, which Blitz draws as vectors).
-/// `Ok(Some(png))` replaces them with a scaled-down image. An error refuses
-/// the image.
-pub fn prepare(bytes: &[u8], limits: Limits) -> Result<Option<Vec<u8>>, String> {
+/// `Ok(Some(scaled))` replaces them with a scaled-down image. An error
+/// refuses the image.
+pub fn prepare(bytes: &[u8], limits: Limits) -> Result<Option<Scaled>, String> {
     let reader = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|err| err.to_string())?;
@@ -62,7 +73,11 @@ pub fn prepare(bytes: &[u8], limits: Limits) -> Result<Option<Vec<u8>>, String> 
     } else {
         image.thumbnail_exact(target.0, target.1)
     };
-    encode_png(image).map(Some)
+    let shown = width.min(limits.max_width);
+    Ok(Some(Scaled {
+        png: encode_png(image)?,
+        width: (target.0 < shown).then_some(width),
+    }))
 }
 
 /// The size of an image of `width`×`height` within `limits`, keeping its
@@ -182,15 +197,30 @@ mod tests {
     fn large_images_are_scaled_down() {
         let image = DynamicImage::from(RgbaImage::from_pixel(400, 200, Rgba([255, 0, 0, 128])));
         let scaled = prepare(&png(&image), LIMITS).unwrap().unwrap();
-        assert_eq!(dimensions(&scaled), (100, 50));
-        let decoded = image::load_from_memory(&scaled).unwrap().into_rgba8();
+        assert_eq!(dimensions(&scaled.png), (100, 50));
+        assert_eq!(scaled.width, None);
+        let decoded = image::load_from_memory(&scaled.png).unwrap().into_rgba8();
         assert_eq!(decoded.get_pixel(50, 25), &Rgba([255, 0, 0, 128]));
 
         // At 1/4 of the size by the JPEG decoder, then to the exact width.
         let scaled = prepare(&jpeg(800, 600), LIMITS).unwrap().unwrap();
-        assert_eq!(dimensions(&scaled), (100, 75));
+        assert_eq!(dimensions(&scaled.png), (100, 75));
         let scaled = prepare(&jpeg(130, 30), LIMITS).unwrap().unwrap();
-        assert_eq!(dimensions(&scaled), (100, 23));
+        assert_eq!(dimensions(&scaled.png), (100, 23));
+    }
+
+    #[test]
+    fn tall_images_keep_their_width_for_the_article() {
+        // Narrower than the widest images, by the pixel limit.
+        let image = DynamicImage::from(RgbImage::new(80, 2000));
+        let scaled = prepare(&png(&image), LIMITS).unwrap().unwrap();
+        assert_eq!(dimensions(&scaled.png), (40, 1000));
+        assert_eq!(scaled.width, Some(80));
+        // Wider than the widest images, and narrowed further by the limit.
+        let image = DynamicImage::from(RgbImage::new(200, 3200));
+        let scaled = prepare(&png(&image), LIMITS).unwrap().unwrap();
+        assert_eq!(dimensions(&scaled.png), (50, 800));
+        assert_eq!(scaled.width, Some(200));
     }
 
     #[test]
