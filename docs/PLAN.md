@@ -838,7 +838,9 @@ From here on every milestone ships with tests for what it adds.
   account page's login in the window (needs the Secret Service passed
   in), the window's geometry (winit only), the tray and the measurement
   modes.
-- **M10 — Performance.** Re-run the measurement scripts: idle, reading, with
+- **M10 — Performance.** *(for review; see `docs/decisions/0016-performance.md`;
+  the desktop measurements are still to be run)*
+  Re-run the measurement scripts: idle, reading, with
   tabs open and after closing them, during initial and incremental sync of a
   large account. Profile and fix hotspots. Compare the UI renderers again
   for scrolling web pages after M7's frame path work: GPU renderers halve
@@ -870,6 +872,25 @@ From here on every milestone ships with tests for what it adds.
     real articles show such peaks.
   - **Very tall images** (over 4 million pixels at the content's width)
     are shown narrower than the content.
+
+  *Result:* the article's frames and renderer go while a page is shown;
+  smooth wheel scrolling in the article view (the helper's, moved to
+  `ren-tabs`); very tall images keep their width; the helper paints the
+  next frame while the window copies the last (in the container 111
+  instead of 101 frames in 3 s; no second slot needed). Profiled: the
+  window's CPU while a page scrolls is Slint's software renderer (47 %
+  drawing the image pixel by pixel, 15 % filling the background under
+  it) and ren's copy of the frame (14 %); a fast path in Slint for
+  unscaled opaque images saves a quarter of it (tried on a copy, to be
+  decided: upstream or a patch). No hotspots in ren's own code for the
+  list, the articles or the store. New tools: `pattern-helper` (a
+  stand-in for Servo's helper), `REN_SERVO_ONE_FRAME`,
+  `REN_SERVO_WR_PROFILER` (WebRender's profiler, for Ars Technica), the
+  largest image decoded in `--cycle-articles`, and `just measure-all`,
+  which runs every measurement (with the GPU renderers and the synthetic
+  page in `measure-tabs`) into one report: still to be run on the
+  desktop, which decides the renderers, row-by-row PNG decoding and Ars
+  Technica.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
