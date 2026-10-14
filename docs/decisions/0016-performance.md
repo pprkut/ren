@@ -382,7 +382,10 @@ above).
 - **Which image Ars Technica's slow loads add:** the profiler shows
   large images and the renderer stalling on them; a list of the hosts
   (or resource types) a load requests, compared between a fast and a
-  slow load, would name it, for a report to Servo.
+  slow load, would name it, for a report to Servo. The article's images
+  still look corrupted in the tab (as in 0011), so the slow loads may be
+  a symptom of the same fault in Servo's image handling; servoshell 0.7
+  on the same page tells whether both are Servo's.
 - **WebRender's GPU memory** is a large part of a heavy page's cost
   (121 MB on Ars Technica, in system memory on Iris Xe): its texture
   cache and picture tiles could be bounded for background tabs or in
