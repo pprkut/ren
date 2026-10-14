@@ -17,6 +17,9 @@ pub enum Node {
     Starred,
     Folder(u64),
     Feed(u64),
+    /// The feeds the server can't update, after "Starred"; only while
+    /// there are any.
+    Broken,
 }
 
 impl Node {
@@ -27,6 +30,7 @@ impl Node {
             Node::Starred => Selection::Starred,
             Node::Folder(id) => Selection::Folder(id),
             Node::Feed(id) => Selection::Feed(id),
+            Node::Broken => Selection::Broken,
         }
     }
 }
@@ -39,7 +43,8 @@ pub struct Row {
     /// 0 for "All items", 1 for "Starred", folders and top-level feeds, 2
     /// for feeds in folders.
     pub depth: u8,
-    /// Unread items; for "Starred", the starred items.
+    /// Unread items; for "Starred", the starred items; for "Broken
+    /// feeds", the broken feeds.
     pub count: u64,
     /// `Some(expanded)` for folders, `None` for leaves.
     pub expanded: Option<bool>,
@@ -50,6 +55,8 @@ pub struct Row {
     /// whether a branch line passes through this row because that ancestor
     /// has further siblings below.
     pub guides: Vec<bool>,
+    /// Why the server can't update a broken feed.
+    pub error: Option<String>,
 }
 
 /// Keys that move the selection in the tree.
@@ -69,6 +76,8 @@ struct TreeFeed {
     id: u64,
     title: String,
     unread: u64,
+    /// Why the server can't update it, if it is broken.
+    error: Option<String>,
 }
 
 impl TreeFeed {
@@ -83,8 +92,27 @@ impl TreeFeed {
             id: feed.id,
             title,
             unread: 0,
+            error: broken_error(feed),
         }
     }
+}
+
+/// What the tree and the welcome page say about a broken feed; `None` for
+/// one that isn't.
+pub fn broken_error(feed: &Feed) -> Option<String> {
+    if !feed.is_broken() {
+        return None;
+    }
+    let error = feed
+        .last_update_error
+        .as_deref()
+        .map(str::trim)
+        .filter(|error| !error.is_empty())
+        .unwrap_or("the server gave no reason");
+    Some(format!(
+        "The server couldn't update this feed the last {} times: {error}",
+        feed.update_error_count
+    ))
 }
 
 struct FolderEntry {
@@ -177,10 +205,23 @@ impl FeedTree {
         self.feeds().map(|feed| feed.unread).sum()
     }
 
+    /// The broken feeds, with their titles and why the server can't
+    /// update them, in the tree's order.
+    pub fn broken(&self) -> Vec<(u64, &str, &str)> {
+        self.feeds()
+            .filter_map(|feed| Some((feed.id, feed.title.as_str(), feed.error.as_deref()?)))
+            .collect()
+    }
+
+    fn broken_count(&self) -> u64 {
+        self.feeds().filter(|feed| feed.error.is_some()).count() as u64
+    }
+
     /// Whether the tree has this node.
     pub fn contains(&self, node: Node) -> bool {
         match node {
             Node::All | Node::Starred => true,
+            Node::Broken => self.broken_count() > 0,
             Node::Folder(id) => self.folders.iter().any(|f| f.id == id),
             Node::Feed(id) => self.feeds().any(|f| f.id == id),
         }
@@ -205,8 +246,23 @@ impl FeedTree {
             expanded: None,
             last,
             guides,
+            error: None,
         };
-        let children = 1 + self.folders.len() + self.top_level.len();
+        let feed_leaf = |feed: &TreeFeed, depth, last, guides| Row {
+            error: feed.error.clone(),
+            ..leaf(
+                Node::Feed(feed.id),
+                &feed.title,
+                depth,
+                feed.unread,
+                last,
+                guides,
+            )
+        };
+        let broken = self.broken_count();
+        // "Starred", "Broken feeds" if there are any, folders, feeds.
+        let fixed = if broken > 0 { 2 } else { 1 };
+        let children = fixed + self.folders.len() + self.top_level.len();
         let mut rows = vec![
             leaf(Node::All, "All items", 0, self.unread(), true, Vec::new()),
             leaf(
@@ -218,9 +274,19 @@ impl FeedTree {
                 Vec::new(),
             ),
         ];
+        if broken > 0 {
+            rows.push(leaf(
+                Node::Broken,
+                "Broken feeds",
+                1,
+                broken,
+                children == 2,
+                Vec::new(),
+            ));
+        }
 
         for (i, entry) in self.folders.iter().enumerate() {
-            let last = i + 2 == children;
+            let last = i + fixed + 1 == children;
             rows.push(Row {
                 node: Node::Folder(entry.id),
                 title: entry.name.clone(),
@@ -229,32 +295,26 @@ impl FeedTree {
                 expanded: Some(entry.expanded),
                 last,
                 guides: Vec::new(),
+                error: None,
             });
             if entry.expanded {
                 let count = entry.feeds.len();
-                rows.extend(entry.feeds.iter().enumerate().map(|(j, feed)| {
-                    leaf(
-                        Node::Feed(feed.id),
-                        &feed.title,
-                        2,
-                        feed.unread,
-                        j + 1 == count,
-                        vec![!last],
-                    )
-                }));
+                rows.extend(
+                    entry
+                        .feeds
+                        .iter()
+                        .enumerate()
+                        .map(|(j, feed)| feed_leaf(feed, 2, j + 1 == count, vec![!last])),
+                );
             }
         }
-        let offset = 1 + self.folders.len();
-        rows.extend(self.top_level.iter().enumerate().map(|(i, feed)| {
-            leaf(
-                Node::Feed(feed.id),
-                &feed.title,
-                1,
-                feed.unread,
-                offset + i + 1 == children,
-                Vec::new(),
-            )
-        }));
+        let offset = fixed + self.folders.len();
+        rows.extend(
+            self.top_level
+                .iter()
+                .enumerate()
+                .map(|(i, feed)| feed_leaf(feed, 1, offset + i + 1 == children, Vec::new())),
+        );
         rows
     }
 
@@ -518,6 +578,74 @@ mod tests {
         }
         assert!(!tree.contains(Node::Folder(1)));
         assert!(!tree.contains(Node::Feed(7)));
+    }
+
+    #[test]
+    fn broken_feeds() {
+        let folders = [Folder {
+            id: 7,
+            name: "Tech".to_owned(),
+        }];
+        let broken = Feed {
+            update_error_count: 12,
+            last_update_error: Some(" 404 Not Found\n".to_owned()),
+            ..feed(3, Some(7))
+        };
+        let silent = Feed {
+            update_error_count: 9,
+            ..feed(4, None)
+        };
+        let failing = Feed {
+            update_error_count: 3,
+            last_update_error: Some("timed out".to_owned()),
+            ..feed(5, None)
+        };
+        let tree = FeedTree::new(
+            &folders,
+            &[feed(1, Some(7)), broken, silent, failing],
+            &HashSet::new(),
+        );
+        let rows = tree.rows();
+        assert_eq!(
+            nodes(&rows),
+            [
+                Node::All,
+                Node::Starred,
+                Node::Broken,
+                Node::Folder(7),
+                Node::Feed(1),
+                Node::Feed(3),
+                Node::Feed(4),
+                Node::Feed(5)
+            ]
+        );
+        assert_eq!(rows[2].count, 2);
+        assert!(!rows[2].last);
+        assert!(rows[7].last);
+        let error = "The server couldn't update this feed the last 12 times: 404 Not Found";
+        assert_eq!(rows[5].error.as_deref(), Some(error));
+        assert_eq!(
+            rows[6].error.as_deref(),
+            Some(
+                "The server couldn't update this feed the last 9 times: the server gave no reason"
+            )
+        );
+        // Not broken yet.
+        assert_eq!(rows[7].error, None);
+        assert!(tree.contains(Node::Broken));
+        assert_eq!(
+            tree.broken(),
+            [
+                (3, "Feed 3", error),
+                (
+                    4,
+                    "Feed 4",
+                    "The server couldn't update this feed the last 9 times: the server gave no reason"
+                )
+            ]
+        );
+        assert!(!self::tree().contains(Node::Broken));
+        assert!(self::tree().broken().is_empty());
     }
 
     #[test]

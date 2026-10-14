@@ -146,6 +146,8 @@ fn feed_row(row: &Row, full_page: bool, icon: slint::Image) -> FeedRow {
         guides: ModelRc::new(VecModel::from(row.guides.clone())),
         full_page,
         icon,
+        broken_list: row.node == Node::Broken,
+        error: row.error.as_deref().unwrap_or_default().into(),
     }
 }
 
@@ -430,6 +432,17 @@ impl App {
         let failure = self.sync_failure.borrow();
         window.set_welcome_sync(crate::welcome::sync_text(&overview, failure.as_deref()).into());
         window.set_logged_in(self.current_settings().account().is_ok());
+        let broken: Vec<BrokenFeed> = self
+            .reader
+            .borrow()
+            .broken_feeds()
+            .into_iter()
+            .map(|(_, title, error)| BrokenFeed {
+                title: title.into(),
+                error: error.into(),
+            })
+            .collect();
+        window.set_broken_feeds(ModelRc::new(VecModel::from(broken)));
     }
 
     /// Shows or removes the icon in the system tray.

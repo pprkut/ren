@@ -15,9 +15,9 @@ import { ConfirmWindow } from "confirm_window.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { Logo } from "logo.slint";
-import { WelcomePage } from "welcome.slint";
+import { BrokenFeed, WelcomePage } from "welcome.slint";
 
-export { AboutWindow, CategoryEntry, ConfirmWindow, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
+export { AboutWindow, BrokenFeed, CategoryEntry, ConfirmWindow, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
 
 // Where the item list goes relative to the article.
 export enum Arrangement {
@@ -85,6 +85,7 @@ export component MainWindow inherits Window {
     in property <string> welcome-articles;
     in property <string> welcome-sync;
     in property <bool> logged-in;
+    in property <[BrokenFeed]> broken-feeds;
 
     // Whether links can open in tabs (built with Servo).
     in property <bool> tabs-available;
@@ -1009,6 +1010,7 @@ export component MainWindow inherits Window {
                         articles: root.welcome-articles;
                         sync: root.welcome-sync;
                         logged-in: root.logged-in;
+                        broken: root.broken-feeds;
                         action(name) => {
                             root.action(name);
                         }

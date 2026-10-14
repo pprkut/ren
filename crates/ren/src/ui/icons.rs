@@ -93,6 +93,11 @@ const ICONS: &[Icon] = &[
         set: |icons, image| icons.set_feed(image),
     },
     Icon {
+        names: &["dialog-warning", "emblem-warning"],
+        fallback: bundled!("triangle-alert"),
+        set: |icons, image| icons.set_broken(image),
+    },
+    Icon {
         names: &["go-previous"],
         fallback: bundled!("arrow-left"),
         set: |icons, image| icons.set_back(image),

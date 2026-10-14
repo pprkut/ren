@@ -36,6 +36,8 @@ export global Theme {
     out property <brush> status-new: root.custom-new ? root.new-colour : root.default-new;
     out property <brush> status-unread: root.custom-unread ? root.unread-colour : root.default-unread;
     out property <brush> starred: root.dark ? #f6c342 : #c9a200;
+    // Breeze's negative text colour: feeds the server can't update.
+    out property <brush> negative: root.default-new;
 
     // Tree
     out property <length> tree-indent: 18px;
