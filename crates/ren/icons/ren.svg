@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!-- Ren's logo: a wire-frame lotus (蓮, ren), for 48 pixels and up. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="8" x2="0" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0609e"/>
+      <stop offset="1" stop-color="#8e4fd0"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#petal)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- The outer petals, then the inner ones, then the middle one. -->
+    <path d="M32 50C20 51 8 45 3.5 33C14 31.5 26 37 32 50Z"/>
+    <path d="M32 50C44 51 56 45 60.5 33C50 31.5 38 37 32 50Z"/>
+    <path d="M32 50C21 46 12.5 34 14.5 18.5C24 22.5 31 33 32 50Z"/>
+    <path d="M32 50C43 46 51.5 34 49.5 18.5C40 22.5 33 33 32 50Z"/>
+    <path d="M32 50C22.5 41 22.5 22 32 8C41.5 22 41.5 41 32 50Z"/>
+  </g>
+  <g fill="none" stroke="url(#petal)" stroke-width="1.3" stroke-linecap="round" opacity="0.8">
+    <!-- The wires: each petal's midrib and two cross lines. -->
+    <path d="M32 50L3.5 33M32 50L60.5 33M32 50L14.5 18.5M32 50L49.5 18.5M32 50V8"/>
+    <path d="M16.5 47.2Q19.6 42.6 20.9 37M8.9 41.6Q12.3 38 12.5 33.4M47.5 47.2Q44.4 42.6 43.1 37M55.1 41.6Q51.7 38 51.5 33.4"/>
+    <path d="M19.4 40.2Q24.9 36.1 27.3 31M15.1 30.6Q20.3 27.6 21.8 23.4M44.6 40.2Q39.1 36.1 36.7 31M48.9 30.6Q43.7 27.6 42.2 23.4"/>
+    <path d="M24.9 33.1Q32 29.1 39.1 33.1M26.3 20.6Q32 18.9 37.7 20.6"/>
+  </g>
+  <path d="M14 56.5Q32 60 50 56.5" fill="none" stroke="#3aa6b9" stroke-width="2.2" stroke-linecap="round"/>
+</svg>

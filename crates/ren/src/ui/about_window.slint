@@ -3,6 +3,7 @@
 
 import { AboutSlint, Button, ListView, Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
+import { Logo } from "logo.slint";
 
 // A block of the third-party notices: 0 heading, 1 paragraph, 2 a licence
 // text (preformatted).
@@ -30,6 +31,7 @@ export component AboutWindow inherits Window {
     }
 
     title: "About Ren";
+    icon: Logo.large;
     preferred-width: 560px;
     // Wrapped text counts as one line in the preferred height.
     preferred-height: 480px;
@@ -107,17 +109,33 @@ export component AboutWindow inherits Window {
         padding: 24px;
         spacing: 10px;
 
-        Text {
-            text: "Ren";
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: Palette.foreground;
-        }
+        HorizontalLayout {
+            spacing: 16px;
+            alignment: start;
 
-        Text {
-            text: "Version " + root.version + " · A native Nextcloud News reader";
-            color: Palette.foreground;
-            opacity: 0.8;
+            Image {
+                width: 64px;
+                height: 64px;
+                source: Logo.large;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+
+                Text {
+                    text: "Ren";
+                    font-size: 1.8rem;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+
+                Text {
+                    text: "Version " + root.version + " · A native Nextcloud News reader";
+                    color: Palette.foreground;
+                    opacity: 0.8;
+                }
+            }
         }
 
         Text {
@@ -155,7 +173,7 @@ export component AboutWindow inherits Window {
         }
 
         Text {
-            text: "Built with Slint (the window), Blitz (articles), Servo (web pages in tabs) and Brave's adblock-rust, for the Nextcloud News app. The bundled icons are Lucide's.";
+            text: "Built with Slint (the window), Blitz (articles), Servo (web pages in tabs) and Brave's adblock-rust, for the Nextcloud News app. The bundled icons are Lucide's; the logo, a wire-frame lotus, is Ren's own.";
             wrap: word-wrap;
             color: Palette.foreground;
         }

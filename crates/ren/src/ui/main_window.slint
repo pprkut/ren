@@ -14,6 +14,7 @@ import { AboutWindow, NoticeBlock } from "about_window.slint";
 import { ConfirmWindow } from "confirm_window.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
+import { Logo } from "logo.slint";
 
 export { AboutWindow, CategoryEntry, ConfirmWindow, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
 
@@ -236,6 +237,7 @@ export component MainWindow inherits Window {
     }
 
     title: "Ren";
+    icon: Logo.large;
     forward-focus: tree;
     preferred-width: 1280px;
     preferred-height: 800px;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Button, Palette } from "std-widgets.slint";
+import { Logo } from "logo.slint";
 
 // A question before something that can't be undone, in a window of its
 // own: the window manager decorates it, so it can be moved. Escape and
@@ -20,6 +21,7 @@ export component ConfirmWindow inherits Window {
     }
 
     title: root.window-title;
+    icon: Logo.large;
     preferred-width: 440px;
     // Wrapped text counts as one line in the preferred height.
     preferred-height: 190px;
