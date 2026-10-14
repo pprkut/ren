@@ -35,6 +35,7 @@ mod clock;
 mod error;
 #[cfg(test)]
 mod fake;
+mod manage;
 mod pull;
 mod push;
 #[cfg(test)]
@@ -49,6 +50,7 @@ use ren_store::{FeedChanges, Store};
 pub use api::NewsApi;
 pub use clock::{Clock, SystemClock};
 pub use error::Error;
+pub use manage::{Changed, FeedChange, change};
 
 /// Settings of a sync.
 #[derive(Debug, Clone, PartialEq, Eq)]

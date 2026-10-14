@@ -5,7 +5,7 @@
 //! app, a fake in the tests.
 
 use nextcloud_news::types::{Feeds, Folder, Item};
-use nextcloud_news::{Client, Error, ItemQuery, Selection, Update};
+use nextcloud_news::{Client, Edit, Edited, Error, ItemQuery, Selection, Update};
 
 /// The requests the sync makes.
 pub trait NewsApi {
@@ -34,6 +34,9 @@ pub trait NewsApi {
 
     /// A write request.
     fn update(&self, update: &Update<'_>) -> Result<(), Error>;
+
+    /// A change to the feeds or folders.
+    fn edit(&self, edit: &Edit<'_>) -> Result<Edited, Error>;
 
     /// The server's clock at its latest response, unix seconds, if known.
     fn server_time(&self) -> Option<i64>;
@@ -66,6 +69,10 @@ impl NewsApi for Client {
 
     fn update(&self, update: &Update<'_>) -> Result<(), Error> {
         Client::update(self, update)
+    }
+
+    fn edit(&self, edit: &Edit<'_>) -> Result<Edited, Error> {
+        Client::edit(self, edit)
     }
 
     fn server_time(&self) -> Option<i64> {

@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use nextcloud_news::types::{Feed, Feeds, Folder, Item};
-use nextcloud_news::{Error, ItemAction, ItemQuery, ReadScope, Selection, Update};
+use nextcloud_news::{Edit, Edited, Error, ItemAction, ItemQuery, ReadScope, Selection, Update};
 
 use crate::NewsApi;
 
@@ -22,6 +22,8 @@ pub enum Request {
     Updated(i64),
     Write(ItemAction, Vec<u64>),
     MarkRead(ReadScope, u64),
+    /// An [`Edit`], as its method and path.
+    Edit(String),
 }
 
 /// How a request fails.
@@ -378,6 +380,92 @@ impl NewsApi for FakeServer {
                         }
                     }
                     Ok(())
+                }
+            }
+        })
+    }
+
+    fn edit(&self, edit: &Edit<'_>) -> Result<Edited, Error> {
+        if let Some(fail) = self.receive(Request::Edit(format!(
+            "{:?} {}",
+            edit.method(),
+            edit.path()
+        ))) {
+            return Err(fail.error());
+        }
+        let not_found = || Error::Status {
+            code: 404,
+            message: Some("not found".into()),
+        };
+        let conflict = |what: &str| Error::Status {
+            code: 409,
+            message: Some(format!("{what} exists already")),
+        };
+        self.with(|s| {
+            let next_id = |ids: &mut dyn Iterator<Item = u64>| ids.max().unwrap_or(0) + 1;
+            match *edit {
+                Edit::AddFeed { url, folder_id } => {
+                    if s.feeds.iter().any(|feed| feed.url == url) {
+                        return Err(conflict("the feed"));
+                    }
+                    let folder_id = folder_id.filter(|&id| id != 0);
+                    if folder_id.is_some_and(|id| !s.folders.iter().any(|f| f.id == id)) {
+                        return Err(not_found());
+                    }
+                    let id = next_id(&mut s.feeds.iter().map(|feed| feed.id));
+                    let added = Feed {
+                        url: url.to_owned(),
+                        title: Some(format!("Feed at {url}")),
+                        ..feed(id, folder_id)
+                    };
+                    s.feeds.push(added.clone());
+                    Ok(Edited::Feed(added))
+                }
+                Edit::RenameFeed { id, title } => {
+                    let feed = s.feeds.iter_mut().find(|feed| feed.id == id);
+                    feed.ok_or_else(not_found)?.title = Some(title.to_owned());
+                    Ok(Edited::Done)
+                }
+                Edit::MoveFeed { id, folder_id } => {
+                    let feed = s.feeds.iter_mut().find(|feed| feed.id == id);
+                    feed.ok_or_else(not_found)?.folder_id = folder_id.filter(|&id| id != 0);
+                    Ok(Edited::Done)
+                }
+                Edit::DeleteFeed { id } => {
+                    let before = s.feeds.len();
+                    s.feeds.retain(|feed| feed.id != id);
+                    if s.feeds.len() == before {
+                        return Err(not_found());
+                    }
+                    s.items.retain(|_, item| item.feed_id != id);
+                    Ok(Edited::Done)
+                }
+                Edit::AddFolder { name } => {
+                    if s.folders.iter().any(|folder| folder.name == name) {
+                        return Err(conflict("the folder"));
+                    }
+                    let id = next_id(&mut s.folders.iter().map(|folder| folder.id));
+                    let folder = Folder {
+                        id,
+                        name: name.to_owned(),
+                    };
+                    s.folders.push(folder.clone());
+                    Ok(Edited::Folder(folder))
+                }
+                Edit::RenameFolder { id, name } => {
+                    let folder = s.folders.iter_mut().find(|folder| folder.id == id);
+                    folder.ok_or_else(not_found)?.name = name.to_owned();
+                    Ok(Edited::Done)
+                }
+                Edit::DeleteFolder { id } => {
+                    let before = s.folders.len();
+                    s.folders.retain(|folder| folder.id != id);
+                    if s.folders.len() == before {
+                        return Err(not_found());
+                    }
+                    // As News 28.7 does: its feeds stay, in a folder that's
+                    // gone.
+                    Ok(Edited::Done)
                 }
             }
         })

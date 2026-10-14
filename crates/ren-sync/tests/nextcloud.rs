@@ -31,7 +31,7 @@ use base64::engine::general_purpose::STANDARD;
 use nextcloud_news::types::Item;
 use nextcloud_news::{Client, Config, Credentials, Error, ItemQuery, LoginFlow, Pager};
 use ren_store::{ItemQuery as ListQuery, MarkReadScope, Selection, Sort, Status, Store};
-use ren_sync::{Kind, Options, Report, SystemClock, sync};
+use ren_sync::{FeedChange, Kind, Options, Report, SystemClock, change, sync};
 use serde_json::{Value, json};
 
 use mock::{MockServer, Response};
@@ -216,6 +216,88 @@ fn login_sync_and_log_out() {
     assert!(ids(&store, Selection::Feed(feed_b)).is_empty());
     assert_eq!(unread_counts(&store), []);
 
+    // Ren's own changes to the feeds and folders, brought into the store
+    // by the next sync: a folder and a feed in it added, the feed renamed,
+    // feed A moved out of its folder, the folder renamed.
+    feeds.set("c.xml", rss("Feed C", &[entry("c-1", "Sea")]));
+    feeds.set("d.xml", rss("Feed D", &[entry("d-1", "Dee")]));
+    let edit = |edit: FeedChange| change(&client, &edit).unwrap();
+    let second = edit(FeedChange::AddFolder {
+        name: format!("{FOLDER} 2"),
+    })
+    .folder
+    .unwrap();
+    let feed_c = edit(FeedChange::AddFeed {
+        url: feed_url("c.xml"),
+        folder_id: Some(second),
+    })
+    .feed
+    .unwrap();
+    edit(FeedChange::RenameFeed {
+        feed_id: feed_c,
+        title: "Sea feed".to_owned(),
+    });
+    edit(FeedChange::MoveFeed {
+        feed_id: feed_a,
+        folder_id: None,
+    });
+    edit(FeedChange::RenameFolder {
+        folder_id: second,
+        name: format!("{FOLDER} renamed"),
+    });
+    let report = run(&client, &mut store, &Options::default());
+    assert_eq!(report.feeds.added, [feed_c]);
+    assert_eq!(titles(&store, Selection::Feed(feed_c)), ["Sea"]);
+    let c = stored(&store, feed_c).unwrap();
+    assert_eq!((c.title.as_str(), c.folder_id), ("Sea feed", Some(second)));
+    assert_eq!(stored(&store, feed_a).unwrap().folder_id, None);
+    assert!(
+        store
+            .folders()
+            .unwrap()
+            .iter()
+            .any(|f| f.id == second && f.name == format!("{FOLDER} renamed"))
+    );
+
+    // A new address: feed D in C's place, named like C, and C gone.
+    let changed = edit(FeedChange::ChangeUrl {
+        feed_id: feed_c,
+        url: feed_url("d.xml"),
+        title: "Sea feed".to_owned(),
+        folder_id: Some(second),
+    });
+    assert_eq!(changed.warning, None);
+    let feed_d = changed.feed.unwrap();
+    let report = run(&client, &mut store, &Options::default());
+    assert_eq!(
+        (report.feeds.added, report.feeds.removed),
+        (vec![feed_d], vec![feed_c])
+    );
+    let d = stored(&store, feed_d).unwrap();
+    assert_eq!((d.title.as_str(), d.folder_id), ("Sea feed", Some(second)));
+    assert_eq!(titles(&store, Selection::Feed(feed_d)), ["Dee"]);
+    // Adding a feed that exists is refused.
+    let err = change(
+        &client,
+        &FeedChange::AddFeed {
+            url: feed_url("d.xml"),
+            folder_id: None,
+        },
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("409"), "{err}");
+
+    // Deleting a folder deletes its feeds; deleting a feed its articles.
+    edit(FeedChange::DeleteFolder {
+        folder_id: second,
+        feeds: vec![feed_d],
+    });
+    edit(FeedChange::DeleteFeed { feed_id: feed_a });
+    let report = run(&client, &mut store, &Options::default());
+    assert_eq!(sorted(report.feeds.removed), sorted(vec![feed_a, feed_d]));
+    assert!(store.folders().unwrap().iter().all(|f| f.id != second));
+    assert!(ids(&store, Selection::Feed(feed_d)).is_empty());
+
     // The account's own password isn't an app password: the server refuses
     // to revoke it (403, "no app password in use"), which ren's log out
     // tells apart, and it still works afterwards.
@@ -245,6 +327,10 @@ fn run(client: &Client, store: &mut Store, options: &Options) -> Report {
         ControlFlow::Continue(())
     })
     .unwrap()
+}
+
+fn stored(store: &Store, id: u64) -> Option<ren_store::Feed> {
+    store.feeds().unwrap().into_iter().find(|f| f.id == id)
 }
 
 fn sorted(mut ids: Vec<u64>) -> Vec<u64> {
@@ -399,7 +485,11 @@ impl Api {
             );
         }
         for folder in folders {
-            assert_eq!(folder["name"], FOLDER, "the account has folders of its own");
+            let name = folder["name"].as_str().unwrap_or_default();
+            assert!(
+                name.starts_with(FOLDER),
+                "the account has folders of its own ({name})"
+            );
         }
         for feed in feeds {
             self.delete(&format!("feeds/{}", feed["id"]));
