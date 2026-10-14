@@ -126,24 +126,35 @@ fn read_commands(socket: UnixStream, sender: mpsc::Sender<Message>) {
 }
 
 /// The frame path: Servo paints the active tab, the frame is read back
-/// from the GPU and written into ren's buffer. Only one frame is under
-/// way at a time, and the next one is painted only when ren took the
-/// last: frames ren couldn't show aren't read back at all.
+/// from the GPU and written into ren's buffer. Two frames are under way:
+/// while ren copies the last one out of the buffer, the next is painted
+/// and read back, but it is written into the buffer only once ren took
+/// the last. Frames ren couldn't show aren't painted at all.
 struct Frames {
     context: Rc<HeadlessContext>,
     buffer: Option<FrameWriter>,
     /// The frame being read back, and its tab.
     readback: Option<(Readback, TabId)>,
+    /// When the GPU finished the readback, which waits for ren then.
+    ready: Option<Instant>,
     /// ren took the last frame.
     taken: bool,
     /// The active tab must be painted again, e.g. into a new buffer.
     repaint: bool,
+    /// Paint only after ren took the last frame, as before M10
+    /// (`REN_SERVO_ONE_FRAME`, for `just measure-tabs`).
+    one_frame: bool,
 }
 
 impl Frames {
+    /// Whether the GPU is still working on a readback, which is polled.
+    fn reading_back(&self) -> bool {
+        self.readback.is_some() && self.ready.is_none()
+    }
+
     /// Paints a new frame and starts reading it back, if one is due.
     fn paint(&mut self, browser: &mut Browser, stats: &mut StageStats) {
-        if self.readback.is_some() || !self.taken || self.buffer.is_none() {
+        if self.readback.is_some() || self.buffer.is_none() || (self.one_frame && !self.taken) {
             return;
         }
         if self.repaint {
@@ -159,12 +170,26 @@ impl Frames {
         }
     }
 
-    /// Writes a finished readback into the buffer and tells ren; returns
-    /// whether one is still under way.
-    fn finish(&mut self, out: &UnixStream, stats: &mut StageStats) -> io::Result<bool> {
-        let Some((readback, tab)) = self.readback.take_if(|(r, _)| self.context.is_ready(r)) else {
-            return Ok(self.readback.is_some());
+    /// Writes a finished readback into the buffer and tells ren, once ren
+    /// took the last frame.
+    fn finish(&mut self, out: &UnixStream, stats: &mut StageStats) -> io::Result<()> {
+        if let Some((readback, _)) = &self.readback
+            && self.ready.is_none()
+            && self.context.is_ready(readback)
+        {
+            self.ready = Some(Instant::now());
+        }
+        if !self.taken {
+            return Ok(());
+        }
+        let Some(ready) = self.ready.take() else {
+            return Ok(());
         };
+        let Some((readback, tab)) = self.readback.take() else {
+            return Ok(());
+        };
+        let waited = ready.elapsed();
+        stats.time("wait", waited);
         let (width, height) = readback.size();
         let started = readback.started();
         let target = self
@@ -175,10 +200,11 @@ impl Frames {
             // The buffer is too small for this frame; ren sends a new one
             // with the new size, which is painted into then.
             self.context.finish_readback(readback, None);
-            return Ok(false);
+            return Ok(());
         };
         self.context.finish_readback(readback, Some(pixels));
-        let took = started.elapsed();
+        // Without the time it waited for ren.
+        let took = started.elapsed().saturating_sub(waited);
         stats.time("readback", took);
         stats.count("frames");
         let event = Event::Frame {
@@ -190,7 +216,7 @@ impl Frames {
         };
         wire::send(out, &event, None)?;
         self.taken = false;
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -238,8 +264,10 @@ fn run() -> Result<(), String> {
         context,
         buffer: None,
         readback: None,
+        ready: None,
         taken: true,
         repaint: false,
+        one_frame: std::env::var_os("REN_SERVO_ONE_FRAME").is_some(),
     };
     let mut scroll = SmoothScroll::default();
     let mut stats = StageStats::new("helper");
@@ -249,7 +277,7 @@ fn run() -> Result<(), String> {
         // a wheel step is due.
         let idle = Instant::now();
         let wait = [
-            frames.readback.as_ref().map(|_| idle + READBACK_POLL),
+            frames.reading_back().then_some(idle + READBACK_POLL),
             scroll.next_tick(),
         ]
         .into_iter()
