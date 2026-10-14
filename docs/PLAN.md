@@ -901,26 +901,26 @@ From here on every milestone ships with tests for what it adds.
   gives 14 % more frames in half the time to the window. Open: the
   article peak with images went above 100 MiB (101–104, M6: 88–90), and
   Ars Technica's corrupted images.
-- **M11 — Release and packaging.**
-  - **Third-party notices** generated with `cargo-about` (all features, so
-    one file covers every build) into a committed
-    `THIRD-PARTY-NOTICES.html`, regenerated with `just notices`; CI checks
-    that it matches `Cargo.lock`. Content that isn't a crate is added by
-    hand: the bundled Lucide icons, and libraries vendored inside crates
-    (SpiderMonkey's in `mozjs_sys`, e.g. ICU and zlib). The About dialog
-    (M8b) embeds the file; packages install it as documentation.
-  - A `.desktop` file, an app icon, AppStream metadata, the install layout
-    (binary, the Servo helper in `libexec/ren/`, notices, icons), and a
-    SlackBuild. The notices cover both workspaces (ren's and the helper's).
-
-### Phase 5 — Later
-
-- **M12 — Features after the first release.**
-  - **The rest of Servo's embedder controls** (M7, 0011): file pickers
-    (uploads, through the desktop's portal or a Slint dialog), colour
-    pickers, input methods (IME, for Chinese, Japanese or Korean text),
-    and the `alert`/`confirm`/`prompt` dialogs, which are dismissed now.
-    Drop-downs and the context menu come earlier, in M8.
+- **M10b — Features for the first release.** In this order: each item
+  uses what the ones before it made (the logo is also M11's app icon).
+  - **"Ren" in what users see:** window titles, menus, dialogs, About,
+    the tray's tooltip, status and settings texts, the welcome page, and
+    the `.desktop` file's name (M11). Not the executable, crate names,
+    paths (`$XDG_*/ren`), application and D-Bus ids, or the `ren:`
+    prefix of messages on stderr.
+  - **A logo:** a wire-frame lotus (蓮, *ren*) as an SVG of ren's own,
+    licensed like the code (or CC-BY-SA), at the sizes a desktop needs;
+    it becomes the app icon of the `.desktop` file and AppStream (M11).
+  - **The logo in the tray:** it replaces the feed icon on an orange
+    square (`icons/tray.svg`, M8), with a setting for a monochrome
+    version that fits Plasma's symbolic tray icons (drawn in the panel's
+    text colour, light or dark), next to the coloured one.
+  - **A welcome page** instead of "No article selected" at the start,
+    as KDE's applications have: ren's name and version, the unread
+    count and what the last sync did, a few shortcuts and links (log
+    in, add a feed, the settings), over the logo as a faint background.
+    Shown in the article view, so it costs nothing beyond what the
+    first article costs anyway.
   - **One instance:** starting ren while it runs brings the running
     one's window to the front (also from the tray) instead of a second
     window on the same database. A well-known name on the session bus
@@ -941,25 +941,23 @@ From here on every milestone ships with tests for what it adds.
     included) go with it: ren says so before, and keeps the name and the
     folder. Also renaming, moving and deleting feeds and folders (0009's
     "not implemented yet" list).
-  - **"Ren" in what users see:** window titles, menus, dialogs, About,
-    the tray's tooltip, status and settings texts, the welcome page, and
-    the `.desktop` file's name (M11). Not the executable, crate names,
-    paths (`$XDG_*/ren`), application and D-Bus ids, or the `ren:`
-    prefix of messages on stderr.
-  - **A logo:** a wire-frame lotus (蓮, *ren*) as an SVG of ren's own,
-    licensed like the code (or CC-BY-SA), at the sizes a desktop needs;
-    it becomes the app icon of the `.desktop` file and AppStream (M11
-    has a placeholder until then).
-  - **The logo in the tray:** it replaces the feed icon on an orange
-    square (`icons/tray.svg`, M8), with a setting for a monochrome
-    version that fits Plasma's symbolic tray icons (drawn in the panel's
-    text colour, light or dark), next to the coloured one.
-  - **A welcome page** instead of "No article selected" at the start,
-    as KDE's applications have: ren's name and version, the unread
-    count and what the last sync did, a few shortcuts and links (log
-    in, add a feed, the settings), over the logo as a faint background.
-    Shown in the article view, so it costs nothing beyond what the
-    first article costs anyway.
+  - **The rest of Servo's embedder controls** (M7, 0011): file pickers
+    (uploads, through the desktop's portal or a Slint dialog), colour
+    pickers, input methods (IME, for Chinese, Japanese or Korean text),
+    and the `alert`/`confirm`/`prompt` dialogs, which are dismissed now.
+    Drop-downs and the context menu came in M8. The largest item, and
+    Servo's: split off if it would hold up the release.
+- **M11 — Release and packaging.**
+  - **Third-party notices** generated with `cargo-about` (all features, so
+    one file covers every build) into a committed
+    `THIRD-PARTY-NOTICES.html`, regenerated with `just notices`; CI checks
+    that it matches `Cargo.lock`. Content that isn't a crate is added by
+    hand: the bundled Lucide icons, and libraries vendored inside crates
+    (SpiderMonkey's in `mozjs_sys`, e.g. ICU and zlib). The About dialog
+    (M8b) embeds the file; packages install it as documentation.
+  - A `.desktop` file, the app icon (M10b's logo), AppStream metadata,
+    the install layout (binary, the Servo helper in `libexec/ren/`,
+    notices, icons), and a SlackBuild. The notices cover both workspaces (ren's and the helper's).
 
 ### Backlog
 
