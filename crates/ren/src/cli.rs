@@ -42,6 +42,8 @@ Web page tabs (with the servo feature):
                        (pages.filter-lists; otherwise when a tab opens)
 
 Window options:
+  Starting Ren while it runs brings its window to the front, unless
+  --database, --items, --dump or a measurement is given.
   --database <FILE>  The database to show and sync (default:
                      $XDG_DATA_HOME/ren/ren.db). The window's state (sizes,
                      the selection) is kept only with the default one, in
@@ -185,6 +187,31 @@ impl Default for Options {
     }
 }
 
+impl Options {
+    /// A measurement runs: it starts alike every time, without syncs of
+    /// its own, a tray icon or another Ren.
+    pub fn measuring(&self) -> bool {
+        self.measure
+            || self.measure_sync
+            || self.measure_hidden
+            || self.measure_settings
+            || self.measure_tabs
+            || self.autoscroll
+            || self.cycle_articles.is_some()
+    }
+
+    /// The window shows the default database, so it is the one Ren: a
+    /// second start hands over to it. Demo data, another database and
+    /// measurements stay apart.
+    pub fn single_instance(&self) -> bool {
+        self.mode == Mode::Window
+            && self.database.is_none()
+            && self.dump.is_none()
+            && self.items.is_none()
+            && !self.measuring()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Run(Box<Options>),
@@ -283,6 +310,30 @@ mod tests {
 
     fn parse_args(args: &[&str]) -> Result<Command, String> {
         parse(args.iter().map(|s| s.to_string()))
+    }
+
+    #[test]
+    fn single_instance() {
+        let options = |args: &[&str]| {
+            let Ok(Command::Run(options)) = parse_args(args) else {
+                panic!("{args:?}");
+            };
+            options
+        };
+        assert!(options(&[]).single_instance());
+        assert!(options(&["--settings", "/etc/ren.toml"]).single_instance());
+        assert!(options(&["--color-scheme", "dark"]).single_instance());
+        for args in [
+            &["--database", "/tmp/ren.db"][..],
+            &["--items", "100"],
+            &["--measure"],
+            &["--measure-settings"],
+            &["--cycle-articles", "3"],
+            &["--sync", "/tmp/ren.db"],
+        ] {
+            assert!(!options(args).single_instance(), "{args:?}");
+        }
+        assert!(options(&["--autoscroll"]).measuring());
     }
 
     #[test]

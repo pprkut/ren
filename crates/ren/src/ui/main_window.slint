@@ -223,6 +223,9 @@ export component MainWindow inherits Window {
         Palette.color-scheme = root.forced-color-scheme;
     }
 
+    // Ren was started again; the token is the launcher's activation token,
+    // or "".
+    callback activate(token: string);
     // A menu, tool bar or shortcut action, by name.
     callback action(name: string);
     // An action from the context menu of a feed tree row or an item.

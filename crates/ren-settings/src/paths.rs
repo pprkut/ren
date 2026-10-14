@@ -48,6 +48,15 @@ pub fn filter_lists(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     Some(base(&var, "XDG_CACHE_HOME", ".cache")?.join("ren/filters"))
 }
 
+/// `$XDG_RUNTIME_DIR/ren/instance`: the socket of the running Ren, which
+/// a second start hands over to. Only in the runtime directory, which is
+/// the user's alone and goes with the session; `None` without one.
+pub fn instance_socket(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    var("XDG_RUNTIME_DIR")
+        .filter(|dir| Path::new(dir).is_absolute())
+        .map(|dir| Path::new(&dir).join("ren/instance"))
+}
+
 /// The directory in `variable`, else `fallback` in the home directory.
 /// Relative paths are invalid in the specification and ignored.
 fn base(var: &impl Fn(&str) -> Option<String>, variable: &str, fallback: &str) -> Option<PathBuf> {
@@ -93,6 +102,13 @@ mod tests {
         assert_eq!(filter_lists(&vars), Some("/xdg/cache/ren/filters".into()));
         assert_eq!(favicons(&vars), Some("/xdg/cache/ren/favicons".into()));
         assert_eq!(site_data(&vars), Some("/xdg/data/ren/servo".into()));
+        assert_eq!(instance_socket(&vars), None);
+        let runtime = env(&[("XDG_RUNTIME_DIR", "/run/user/1000")]);
+        assert_eq!(
+            instance_socket(&runtime),
+            Some("/run/user/1000/ren/instance".into())
+        );
+        assert_eq!(instance_socket(env(&[("XDG_RUNTIME_DIR", "run")])), None);
     }
 
     #[test]
