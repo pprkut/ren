@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use nextcloud_news::types::{Feeds, Folder, Item, Items};
 use nextcloud_news::{
-    Client, Config, Credentials, Endpoint, Error, ItemAction, ItemQuery, Pager, ReadScope,
-    Selection, Update,
+    Client, Config, Credentials, Edit, Edited, Endpoint, Error, ItemAction, ItemQuery, Pager,
+    ReadScope, Selection, Update,
 };
 use ren_settings::Settings;
 use ren_store::Store;
@@ -446,6 +446,11 @@ impl NewsApi for CountingApi<'_> {
     fn update(&self, update: &Update<'_>) -> Result<(), Error> {
         self.count();
         self.client.update(update)
+    }
+
+    fn edit(&self, edit: &Edit<'_>) -> Result<Edited, Error> {
+        self.count();
+        self.client.edit(edit)
     }
 
     fn server_time(&self) -> Option<i64> {
