@@ -42,6 +42,19 @@ pub struct Feed {
     pub last_update_error: Option<String>,
 }
 
+/// After how many failed updates in a row a feed counts as broken: as in
+/// the News web interface, which marks feeds after more than eight, so a
+/// site that is down for a while isn't one yet.
+pub const BROKEN_AFTER: u64 = 8;
+
+impl Feed {
+    /// The server can't update the feed: its last updates failed
+    /// ([`last_update_error`](Self::last_update_error) says why).
+    pub fn is_broken(&self) -> bool {
+        self.update_error_count > BROKEN_AFTER
+    }
+}
+
 /// Settings of ren's own for a feed, kept locally.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FeedSettings {

@@ -28,7 +28,7 @@ use rusqlite::{Connection, Transaction, TransactionBehavior};
 
 pub use changes::{MarkReadScope, PendingMarkRead};
 pub use error::Error;
-pub use feeds::{Feed, FeedChanges, FeedSettings, Folder};
+pub use feeds::{BROKEN_AFTER, Feed, FeedChanges, FeedSettings, Folder};
 pub use items::{ItemDetails, ItemQuery, ItemSummary, Listed, Selection, Sort, SortColumn, Status};
 pub use state::LAST_SYNC;
 
