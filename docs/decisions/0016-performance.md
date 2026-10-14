@@ -315,8 +315,8 @@ above).
   long. It stays: it costs nothing, and the container showed it helping
   where they are.
 - **The window with pages gives back more:** 74 MiB with the article and
-  two pages against 86 in M8, the article's frames going while a page is
-  shown (and the page's renderer data, M7's change, as before).
+  two pages against 86 in M8: the article's frames and renderer go while
+  a page is shown.
 - **The article peak is above 100 MiB** with images (101–104 against
   88–90 in M6), while the memory after the articles is as in M6 (+3).
   More images per article (thumbnails, enclosures) are the likely cause,
