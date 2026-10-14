@@ -7,8 +7,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 **Status:** for review (2026-10-14). Checked and measured in the
 container; measured on the desktop by the user at bd641b9 (`just
-measure-all`, see "On the desktop"); Ars Technica by hand is still to
-be done.
+measure-all` and Ars Technica with WebRender's profiler, see "On the
+desktop" and "Ars Technica").
 
 ## Context
 
@@ -179,6 +179,31 @@ names what on the page costs the time. To tell Servo's part from Mesa's,
 servoshell 0.7 on the same page with its own profiler (Ctrl+F12) is the
 comparison.
 
+On the desktop (the user, at bd641b9, the same car article as in 0011
+and 0012), the profiler showed a cheap page: 76 visible primitives, 51
+draw calls, 2 colour passes, no alpha passes, no blob rasterisation;
+WebRender's GPU time 5.8 ms per frame on average, at most 22 ms, and its
+CPU time 10.5 ms (spikes up to 11 ms in the texture cache update and
+the renderer, as images arrive); 52 frames per second while scrolling.
+Its GPU memory: 121 MB (at most 139), of which 40 MB standalone
+textures, 34 MB the texture atlas, 25 MB picture tiles and 17 MB render
+targets; on Iris Xe that is system memory. `just measure-tabs` with
+the article as the only page:
+
+| variant | 1 tab (UI + helper) | 3 tabs | frames in 3 s | CPU % window / helper | frame to UI ms mean / max | requests blocked / checked |
+|---|---|---|---|---|---|---|
+| new pacing | 325.1 (64.5 + 260.7) | 501.3 | 172 | 36 / 33 | 8.5 / 51.3 | 30 / 279 |
+| one frame under way | 331.1 (64.8 + 266.3) | 505.6 | 151 | 39 / 37 | 15.9 / 94.7 | 30 / 279 |
+| 0012, blocking | 324.7 (62.1 + 262.6) | 500.9 | 48 | 16 / 32 | 58.3 / 156.1 | 38 / 370 |
+
+**Ars Technica scrolls smoothly now:** 57 frames per second against 16
+in 0012, at the same memory. WebRender's own work is far below the
+45–74 ms per frame that the readback waited for then, and the page
+makes fewer requests than then (279 against 370), so the page itself
+has probably changed (what was slow was on it, not in Servo or Mesa);
+servoshell isn't needed to tell any more. Here the new pacing shows:
+14 % more frames, and frames reach the window in half the time.
+
 ### Elsewhere
 
 - **The item list** while it scrolls: Slint drawing text and rectangles;
@@ -308,12 +333,12 @@ above).
 - **No row-by-row PNG decoding.** The largest image decoded at full size
   before scaling took 5.9 MiB over 100 real articles; the 29 MiB case
   of M6's synthetic dump doesn't occur.
-- **The frame pacing changes nothing on heise here** (132 against 131
-  frames, 6.1 against 6.0 ms of the window per frame): with content
-  blocking, heise's frames reach the window in 9 ms on average, and the
-  overlap only helps when the GPU's and the window's parts are both
-  long. It stays: it costs nothing, and the container showed it helping
-  where they are.
+- **The frame pacing helps where frames are expensive:** on Ars
+  Technica 172 frames in 3 s against 151 and half the time to the
+  window (8.5 against 15.9 ms); on heise nothing (132 against 131),
+  whose frames reach the window in 9 ms with either.
+- **Ars Technica is no longer slow** (57 frames per second, 0012: 16);
+  see "Ars Technica" above.
 - **The window with pages gives back more:** 74 MiB with the article and
   two pages against 86 in M8: the article's frames and renderer go while
   a page is shown.
@@ -324,8 +349,10 @@ above).
 
 ## Open
 
-- **Ars Technica** by hand, with `REN_SERVO_WR_PROFILER=1` and against
-  servoshell 0.7.
+- **WebRender's GPU memory** is a large part of a heavy page's cost
+  (121 MB on Ars Technica, in system memory on Iris Xe): its texture
+  cache and picture tiles could be bounded for background tabs or in
+  general. A lead for a later milestone, not measured further here.
 - **The article peak above 100 MiB** with images: find which article
   and image make it (the run logs only every 100 articles), and whether
   thumbnails decoded at full size are the cause.
