@@ -20,8 +20,10 @@ mod login;
 mod request;
 pub mod types;
 
-pub use client::{Client, Config, Credentials, api_base};
+pub use client::{Client, Config, Credentials, Edited, api_base};
 pub use decode::{decode, decode_items};
 pub use error::Error;
 pub use login::{LOGIN_TIMEOUT, Login, LoginFlow, revoke_app_password};
-pub use request::{Endpoint, ItemAction, ItemQuery, PageInfo, Pager, ReadScope, Selection, Update};
+pub use request::{
+    Edit, Endpoint, ItemAction, ItemQuery, Method, PageInfo, Pager, ReadScope, Selection, Update,
+};
