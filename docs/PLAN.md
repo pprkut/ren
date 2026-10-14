@@ -901,7 +901,8 @@ From here on every milestone ships with tests for what it adds.
   gives 14 % more frames in half the time to the window. Open: the
   article peak with images went above 100 MiB (101–104, M6: 88–90), and
   Ars Technica's corrupted images.
-- **M10b — Features for the first release.** In this order: each item
+- **M10b — Features for the first release.** *(done; see
+  `docs/decisions/0017-release-features.md`)* In this order: each item
   uses what the ones before it made (the logo is also M11's app icon).
   - **"Ren" in what users see:** window titles, menus, dialogs, About,
     the tray's tooltip, status and settings texts, the welcome page, and
@@ -947,6 +948,30 @@ From here on every milestone ships with tests for what it adds.
     and the `alert`/`confirm`/`prompt` dialogs, which are dismissed now.
     Drop-downs and the context menu came in M8. The largest item, and
     Servo's: split off if it would hold up the release.
+
+  *Result:* "Ren" in titles, menus, dialogs and texts; the logo, a
+  wire-frame lotus (`icons/ren.svg`, a small and a one-colour version),
+  as the windows' icon and in About Ren; in the tray in colour or in one
+  colour (`window.tray-icon-style`: following the colour scheme, light or
+  dark). A welcome page while no article is shown, drawn by Slint rather
+  than Blitz so the start doesn't make the article view: version,
+  counts, the last sync, broken feeds, links, shortcuts. One instance
+  through a socket in `$XDG_RUNTIME_DIR` (a second start hands over; on
+  Wayland the window only asks for attention). Broken feeds (more than
+  eight failed updates, as News' web interface) with a mark and the
+  error as tooltip, "Broken feeds" in the tree; the API has no last
+  successful update. Add Feed, editing (name, address, folder) and
+  deleting feeds, adding, renaming and deleting folders, on the sync
+  thread before a sync; a new address adds the feed anew and deletes the
+  old one, saying so first. The end-to-end test covers them on both
+  server versions and found News answering a new feed with a null count
+  and leaving a deleted folder's feeds behind (Ren deletes them first).
+  Pages' `alert`/`confirm`/`prompt` over the page, headed by its site;
+  colour inputs with Ren's picker; uploads through the desktop's file
+  chooser (XDG portal). Input methods split off to the backlog (Slint
+  gives IME only to its own text inputs). 2.2–2.6 MiB more RSS at the
+  start in the container (0.6 of it the welcome page's faint logo).
+  Not yet checked on the desktop.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
@@ -962,6 +987,12 @@ From here on every milestone ships with tests for what it adds.
 ### Backlog
 
 Not planned into a milestone; picked up when articles or users need them.
+
+- **Input methods in pages** (0017): Servo asks for an input method
+  where an editable element is and takes the composition as `ImeEvent`s,
+  but Slint hands input methods only to its own `TextInput`. Try a
+  hidden `TextInput` at the element that passes on what is composed, on
+  a desktop with an input method (Chinese, Japanese, Korean text).
 
 - **Cosmetic filtering in the tabs** (0012): hiding elements and
   uBlock's scriptlets, through a user content manager per web view
