@@ -274,7 +274,7 @@ impl WebViewDelegate for Delegate {
 
     /// Drop-downs and context menus of the page shown go to the window.
     /// Colour and file pickers, input methods and the `alert`, `confirm`
-    /// and `prompt` dialogs are dismissed (M12), as are controls of
+    /// and `prompt` dialogs are dismissed (M10b), as are controls of
     /// hidden tabs.
     fn show_embedder_control(&self, webview: WebView, control: EmbedderControl) {
         if self.active.get() != Some(webview.id()) {

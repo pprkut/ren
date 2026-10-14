@@ -155,7 +155,7 @@ Controls of hidden tabs are dismissed, and a new one replaces the tab's
 older ones: Slint doesn't tell when a menu was closed without a choice.
 Labels (200 characters) and entries (2,000) are limited on both sides.
 Colour and file pickers, input methods and dialogs are still dismissed
-(M12). The window's side was checked under Xvfb with a stand-in for the
+(M10b). The window's side was checked under Xvfb with a stand-in for the
 helper (a script speaking `ren-tabs`' protocol, not in the repository);
 the helper's side compiles in CI's Servo job but hasn't run with Servo
 yet.
