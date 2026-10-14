@@ -48,9 +48,19 @@ const AUTOSCROLL_SPEED: f32 = 8_000.0;
 /// Time between startup and the start of `--autoscroll`.
 const AUTOSCROLL_DELAY: Duration = Duration::from_secs(3);
 
-/// The icon in the system tray: the feed icon on an orange square, which
-/// shows on light and dark panels.
-const TRAY_ICON: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/tray.svg"));
+/// The icon in the system tray: the logo for small sizes, in colour, which
+/// shows on light and dark panels, or in one colour.
+const TRAY_LOGO: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/ren-small.svg"));
+const TRAY_LOGO_MONO: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/ren-mono.svg"));
+
+/// The size the tray icon is drawn at, in pixels; panels scale it down.
+const TRAY_ICON_SIZE: u32 = 64;
+
+/// The colours of the monochrome tray icon: Breeze's text colours on a dark
+/// and a light panel.
+const TRAY_LIGHT: &str = "#fcfcfc";
+const TRAY_DARK: &str = "#232629";
 
 /// Time after the window was moved or resized until its size and position
 /// are kept: the window manager has updated its maximised state by then.
@@ -179,6 +189,8 @@ struct App {
     favicons: Option<Favicons>,
     /// The icon in the system tray, if `window.tray-icon` is on.
     tray: RefCell<Option<Tray>>,
+    /// How the tray icon is drawn (`window.tray-icon-style`).
+    tray_style: Cell<ren_settings::TrayIconStyle>,
     /// Closing the window hides it in the tray (`window.close-to-tray`).
     close_to_tray: Cell<bool>,
     /// The window is hidden in the tray.
@@ -425,9 +437,6 @@ impl App {
                 return;
             }
         };
-        if let Ok(icon) = slint::Image::load_from_svg_data(TRAY_ICON) {
-            created.set_image(icon);
-        }
         created.set_window_shown(!self.hidden.get());
         created.set_syncing(self.sync.borrow().running.is_some());
         let weak = self.window.clone();
@@ -444,7 +453,20 @@ impl App {
         });
         *tray = Some(created);
         drop(tray);
+        self.update_tray_icon();
         self.refresh_tree();
+    }
+
+    /// Draws the tray icon in its style; a monochrome one following the
+    /// colour scheme also after the scheme changed.
+    fn update_tray_icon(&self) {
+        if let Some(tray) = &*self.tray.borrow() {
+            let svg = tray_svg(self.tray_style.get(), self.window().get_dark());
+            match slint::Image::load_from_svg_data(svg.as_bytes()) {
+                Ok(icon) => tray.set_image(icon),
+                Err(err) => eprintln!("ren: the tray icon: {err:?}"),
+            }
+        }
     }
 
     /// The window was asked to close: it hides in the tray, or ren quits.
@@ -678,6 +700,7 @@ impl App {
                 let _ = slint::quit_event_loop();
             }
             "toggle-window" => self.toggle_window(),
+            "theme-changed" => self.update_tray_icon(),
             "window-moved" => self.remember_geometry(),
             "sort-title" => self.sort_by(Column::Title),
             "sort-feed" => self.sort_by(Column::Feed),
@@ -1043,7 +1066,12 @@ impl App {
             .set_image_cache_bytes(settings.image_cache_bytes());
         self.schedule_syncs(settings.sync_interval());
         self.close_to_tray.set(settings.close_to_tray());
+        let style = settings.tray_icon_style();
+        let restyled = self.tray_style.replace(style) != style;
         self.set_tray(settings.tray_icon() && self.tray_allowed);
+        if restyled {
+            self.update_tray_icon();
+        }
         self.article
             .borrow_mut()
             .set_load_images(settings.load_images() && !self.no_images);
@@ -1337,6 +1365,25 @@ fn layout_mut(
         Arrangement::Beside => &mut state.beside,
         Arrangement::Above => &mut state.above,
     }
+}
+
+/// The tray icon's SVG in a style, at `TRAY_ICON_SIZE`; `dark` is the
+/// colour scheme, for the monochrome style that follows it.
+fn tray_svg(style: ren_settings::TrayIconStyle, dark: bool) -> String {
+    use ren_settings::TrayIconStyle;
+    let colour = match style {
+        TrayIconStyle::Colour => None,
+        TrayIconStyle::Light => Some(TRAY_LIGHT),
+        TrayIconStyle::Dark => Some(TRAY_DARK),
+        TrayIconStyle::Monochrome if dark => Some(TRAY_LIGHT),
+        TrayIconStyle::Monochrome => Some(TRAY_DARK),
+    };
+    let size = format!("width=\"{TRAY_ICON_SIZE}\" height=\"{TRAY_ICON_SIZE}\"");
+    let svg = match colour {
+        Some(colour) => TRAY_LOGO_MONO.replace("#000000", colour),
+        None => TRAY_LOGO.to_owned(),
+    };
+    svg.replacen("width=\"16\" height=\"16\"", &size, 1)
 }
 
 /// Whether the desktop shows tray icons: a StatusNotifierWatcher with a
@@ -1967,6 +2014,7 @@ fn build_window(
         auto_sync,
         favicons: Favicons::default_dir().map(Favicons::new),
         tray: RefCell::new(None),
+        tray_style: Cell::new(ren_settings::TrayIconStyle::Colour),
         close_to_tray: Cell::new(false),
         hidden: Cell::new(false),
         tray_allowed: !measuring,
@@ -2133,6 +2181,26 @@ fn build_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tray_icons() {
+        use ren_settings::TrayIconStyle;
+        let colour = tray_svg(TrayIconStyle::Colour, true);
+        assert!(colour.contains("url(#petal)"));
+        assert!(colour.contains("width=\"64\" height=\"64\""));
+        for (style, dark, colour) in [
+            (TrayIconStyle::Light, false, TRAY_LIGHT),
+            (TrayIconStyle::Dark, true, TRAY_DARK),
+            (TrayIconStyle::Monochrome, true, TRAY_LIGHT),
+            (TrayIconStyle::Monochrome, false, TRAY_DARK),
+        ] {
+            let svg = tray_svg(style, dark);
+            assert!(svg.contains(&format!("stroke=\"{colour}\"")), "{style:?}");
+            assert!(!svg.contains("#000000"));
+            assert!(svg.contains("width=\"64\""));
+            assert!(slint::Image::load_from_svg_data(svg.as_bytes()).is_ok());
+        }
+    }
 
     #[test]
     fn link_kinds() {

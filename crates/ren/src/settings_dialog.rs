@@ -405,23 +405,35 @@ mod tests {
         let rows = dialog.rows(&Settings::default());
         assert_eq!(
             keys(&rows),
-            [schema::FEED_ICONS, schema::TRAY_ICON, schema::CLOSE_TO_TRAY]
+            [
+                schema::FEED_ICONS,
+                schema::TRAY_ICON,
+                schema::TRAY_ICON_STYLE,
+                schema::CLOSE_TO_TRAY
+            ]
         );
         let headings: Vec<_> = rows.iter().map(|row| row.heading).collect();
-        assert_eq!(headings, [Some("Sync"), Some("Window"), None]);
+        assert_eq!(headings, [Some("Sync"), Some("Window"), None, None]);
         // Searching finds the account's settings too.
         dialog.search("server");
         assert!(keys(&dialog.rows(&Settings::default())).contains(&schema::SERVER));
         dialog.search("icon");
         assert_eq!(dialog.current(), None);
-        assert_eq!(dialog.counts(), Some(vec![0, 1, 0, 0, 0, 2]));
+        assert_eq!(dialog.counts(), Some(vec![0, 1, 0, 0, 0, 3]));
         // A category narrows the results, without headings, and keeps the
         // search.
         dialog.select(Category::Window);
         assert!(dialog.searching());
         assert_eq!(dialog.current(), Some(Category::Window));
         let rows = dialog.rows(&Settings::default());
-        assert_eq!(keys(&rows), [schema::TRAY_ICON, schema::CLOSE_TO_TRAY]);
+        assert_eq!(
+            keys(&rows),
+            [
+                schema::TRAY_ICON,
+                schema::TRAY_ICON_STYLE,
+                schema::CLOSE_TO_TRAY
+            ]
+        );
         assert!(rows.iter().all(|row| row.heading.is_none()));
         // Typing on stays in it.
         dialog.search("icon tray");
@@ -429,7 +441,7 @@ mod tests {
         // Again: all categories.
         dialog.select(Category::Window);
         assert_eq!(dialog.current(), None);
-        assert_eq!(dialog.rows(&Settings::default()).len(), 2);
+        assert_eq!(dialog.rows(&Settings::default()).len(), 3);
         // The search ends: the category chosen last is shown.
         dialog.select(Category::Sync);
         dialog.search("  ");
