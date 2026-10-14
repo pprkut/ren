@@ -1,0 +1,187 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { Palette, ScrollView } from "std-widgets.slint";
+import { Logo } from "logo.slint";
+
+// A link on the welcome page: text in the accent colour that runs an
+// action.
+component Link inherits Text {
+    callback clicked();
+
+    color: Palette.accent-background;
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component Shortcut inherits HorizontalLayout {
+    in property <string> keys;
+    in property <string> does;
+
+    spacing: 12px;
+
+    Text {
+        width: 130px;
+        text: root.keys;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: root.does;
+        wrap: word-wrap;
+        color: Palette.foreground;
+    }
+}
+
+// Shown in the article pane while no article is, as in KDE's applications:
+// Ren's name and version, the counts and the last sync, links and the
+// shortcuts for reading, over the logo as a faint background. Drawn by
+// Slint, so it doesn't make the article view (Blitz) at the start.
+export component WelcomePage inherits Rectangle {
+    in property <string> version;
+    // The unread articles, and what the last sync did.
+    in property <string> articles;
+    in property <string> sync;
+    // An account is set up: "Log In" makes way for "Fetch All Feeds".
+    in property <bool> logged-in;
+    // "account", "fetch-all", "add-feed" or "configure".
+    callback action(name: string);
+
+    background: Palette.background;
+    clip: true;
+
+    Image {
+        property <length> side: min(parent.width, parent.height) * 0.8;
+        x: parent.width - self.side * 0.85;
+        y: parent.height - self.side * 0.9;
+        width: self.side;
+        height: self.side;
+        source: Logo.large;
+        opacity: 0.08;
+    }
+
+    ScrollView {
+        VerticalLayout {
+            padding: 32px;
+            spacing: 10px;
+            alignment: start;
+
+            Text {
+                text: "Welcome to Ren";
+                font-size: 2rem;
+                font-weight: 700;
+                color: Palette.foreground;
+            }
+
+            Text {
+                text: "Version " + root.version + " · A native Nextcloud News reader";
+                color: Palette.foreground;
+                opacity: 0.75;
+            }
+
+            Rectangle {
+                height: 6px;
+            }
+
+            Text {
+                text: root.articles;
+                wrap: word-wrap;
+                font-size: 1.1rem;
+                color: Palette.foreground;
+            }
+
+            Text {
+                text: root.sync;
+                wrap: word-wrap;
+                color: Palette.foreground;
+            }
+
+            Rectangle {
+                height: 6px;
+            }
+
+            HorizontalLayout {
+                spacing: 24px;
+                alignment: start;
+
+                if !root.logged-in: Link {
+                    text: "Log In to Your Nextcloud…";
+                    clicked => {
+                        root.action("account");
+                    }
+                }
+                if root.logged-in: Link {
+                    text: "Fetch All Feeds";
+                    clicked => {
+                        root.action("fetch-all");
+                    }
+                }
+                if root.logged-in: Link {
+                    text: "Add Feed…";
+                    clicked => {
+                        root.action("add-feed");
+                    }
+                }
+                Link {
+                    text: "Configure Ren…";
+                    clicked => {
+                        root.action("configure");
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 12px;
+            }
+
+            Text {
+                text: "Reading";
+                font-size: 1.1rem;
+                font-weight: 700;
+                color: Palette.foreground;
+            }
+
+            Shortcut {
+                keys: "J, K";
+                does: "Next and previous article";
+            }
+
+            Shortcut {
+                keys: "Ctrl+Shift+N";
+                does: "Next unread article";
+            }
+
+            Shortcut {
+                keys: "Space, Shift+Space";
+                does: "Scroll the article";
+            }
+
+            Shortcut {
+                keys: "M, S";
+                does: "Mark read or unread, star";
+            }
+
+            Shortcut {
+                keys: "O";
+                does: "Open the article's page in a tab";
+            }
+
+            Shortcut {
+                keys: "Ctrl+F";
+                does: "Find articles";
+            }
+
+            Shortcut {
+                keys: "Ctrl+L";
+                does: "Fetch all feeds";
+            }
+        }
+    }
+}

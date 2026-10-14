@@ -217,6 +217,8 @@ struct App {
     password_problem: RefCell<Option<String>>,
     /// A sync finished since the start.
     synced_once: Cell<bool>,
+    /// Why the last sync failed, if it did, for the welcome page.
+    sync_failure: RefCell<Option<String>>,
     /// Help → About Ren, while it is open.
     about: RefCell<Option<AboutWindow>>,
     /// The question before logging out, while it is open.
@@ -413,6 +415,20 @@ impl App {
         if let Some(tray) = &*self.tray.borrow() {
             tray.set_text(format!("Ren: {unread} unread articles").into());
         }
+        self.refresh_welcome();
+    }
+
+    /// Updates what the welcome page says: the counts, the last sync,
+    /// whether there is an account.
+    fn refresh_welcome(&self) {
+        let Some(overview) = self.with_reader(|reader| reader.overview()) else {
+            return;
+        };
+        let window = self.window();
+        window.set_welcome_articles(crate::welcome::articles_text(&overview).into());
+        let failure = self.sync_failure.borrow();
+        window.set_welcome_sync(crate::welcome::sync_text(&overview, failure.as_deref()).into());
+        window.set_logged_in(self.current_settings().account().is_ok());
     }
 
     /// Shows or removes the icon in the system tray.
@@ -1081,6 +1097,8 @@ impl App {
             pages.set_keep_site_data(settings.keep_site_data());
             pages.set_blocking(settings.filter_lists(), settings.unblocked_sites());
         }
+        // Logging in or out changes the welcome page's links.
+        self.refresh_welcome();
     }
 
     /// Starts the automatic syncs at `interval`, or stops them. A new
@@ -1221,6 +1239,11 @@ impl App {
                     }
                 }
                 Event::Finished(result) => {
+                    match &result {
+                        Ok(_) => *self.sync_failure.borrow_mut() = None,
+                        Err(sync_thread::Failure::Sync(ren_sync::Error::Cancelled)) => {}
+                        Err(err) => *self.sync_failure.borrow_mut() = Some(err.to_string()),
+                    }
                     {
                         let mut sync = self.sync.borrow_mut();
                         sync.running = None;
@@ -2028,6 +2051,7 @@ fn build_window(
         account_ui: RefCell::default(),
         password_problem: RefCell::new(None),
         synced_once: Cell::new(false),
+        sync_failure: RefCell::new(None),
         about: RefCell::new(None),
         confirm: RefCell::new(None),
     });
@@ -2058,6 +2082,7 @@ fn build_window(
             ),
         }
         *app.settings.borrow_mut() = Some(file);
+        app.refresh_welcome();
     }
     if let Some(problem) = state_problem {
         eprintln!("ren: the window's state: {problem}");
@@ -2159,6 +2184,7 @@ fn build_window(
             None => slint::CloseRequestResponse::HideWindow,
         });
     window.set_tabs_available(cfg!(feature = "servo"));
+    window.set_version(env!("CARGO_PKG_VERSION").into());
     let weak = Rc::downgrade(&app);
     window.on_search_edited(move |text| {
         if let Some(app) = weak.upgrade() {

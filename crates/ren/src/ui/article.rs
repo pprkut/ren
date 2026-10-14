@@ -24,8 +24,6 @@ use crate::article::{Rgb, Style};
 #[cfg(feature = "html-view")]
 use ren_tabs::scroll::{SmoothScroll, Wheel};
 
-const PLACEHOLDER: &str = "No article selected";
-
 /// Shows articles in the window's article pane.
 pub struct ArticlePane {
     window: slint::Weak<MainWindow>,
@@ -151,6 +149,7 @@ impl ArticlePane {
 
     pub fn show(&mut self, article: Article) {
         let window = self.window();
+        window.set_welcome(false);
         window.set_article_title(article.title.clone().into());
         window.set_article_meta(article.meta.clone().into());
         window.set_article_content_y(0.0);
@@ -255,11 +254,13 @@ impl ArticlePane {
         let _ = text;
     }
 
+    /// Shows the welcome page instead of an article.
     fn show_placeholder(&self) {
         let window = self.window();
-        window.set_article_title(PLACEHOLDER.into());
+        window.set_article_title(SharedString::new());
         window.set_article_meta(SharedString::new());
         window.set_article_body(SharedString::new());
+        window.set_welcome(true);
     }
 }
 
