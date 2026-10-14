@@ -103,3 +103,7 @@ measure-window-sync:
 # Measure fetching all unread items per batch size (needs the real server)
 measure-fetch *batch_sizes:
     scripts/measure-fetch.sh {{batch_sizes}}
+
+# Run all measurements one after another and collect them in one report (needs a display, network and the real server; about an hour)
+measure-all dump *urls:
+    scripts/measure-all.sh {{dump}} {{urls}}
