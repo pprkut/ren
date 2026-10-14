@@ -190,19 +190,25 @@ textures, 34 MB the texture atlas, 25 MB picture tiles and 17 MB render
 targets; on Iris Xe that is system memory. `just measure-tabs` with
 the article as the only page:
 
-| variant | 1 tab (UI + helper) | 3 tabs | frames in 3 s | CPU % window / helper | frame to UI ms mean / max | requests blocked / checked |
+| run | 1 tab (UI + helper) | 3 tabs | frames in 3 s | CPU % window / helper | frame to UI ms mean / max | requests blocked / checked |
 |---|---|---|---|---|---|---|
-| new pacing | 325.1 (64.5 + 260.7) | 501.3 | 172 | 36 / 33 | 8.5 / 51.3 | 30 / 279 |
-| one frame under way | 331.1 (64.8 + 266.3) | 505.6 | 151 | 39 / 37 | 15.9 / 94.7 | 30 / 279 |
+| 15:46, blocking | 325.1 (64.5 + 260.7) | 501.3 | 172 | 36 / 33 | 8.5 / 51.3 | 30 / 279 |
+| 15:46, blocking, one frame under way | 331.1 (64.8 + 266.3) | 505.6 | 151 | 39 / 37 | 15.9 / 94.7 | 30 / 279 |
+| 15:49, blocking | 325.7 (64.3 + 261.4) | 501.9 | 53 | 19 / 39 | 47.3 / 144.0 | 39 / 371 |
+| 15:49, without blocking | 417.1 (64.9 + 352.1) | 735.2 | 88 | 27 / 43 | 37.1 / 129.9 | - |
 | 0012, blocking | 324.7 (62.1 + 262.6) | 500.9 | 48 | 16 / 32 | 58.3 / 156.1 | 38 / 370 |
 
-**Ars Technica scrolls smoothly now:** 57 frames per second against 16
-in 0012, at the same memory. WebRender's own work is far below the
-45–74 ms per frame that the readback waited for then, and the page
-makes fewer requests than then (279 against 370), so the page itself
-has probably changed (what was slow was on it, not in Servo or Mesa);
-servoshell isn't needed to tell any more. Here the new pacing shows:
-14 % more frames, and frames reach the window in half the time.
+**The page loads differently from one visit to the next,** and that
+decides whether it scrolls: loads with about 280 requests scroll at 57
+frames per second, loads with about 370 (as in 0012) at 16–18, with or
+without content blocking, the GPU then taking 35–50 ms per frame. So
+what is slow is something the page only loads on some visits (an ad
+rotation, a video, an embed), not the page as such, not the blocking,
+and not the frame path. The profiler capture above most likely came from
+a fast load: WebRender's own work in it is far below what the slow
+loads cost. What the slow loads contain is still to be found (see
+"Open"). Between the two fast runs the new pacing shows: 14 % more
+frames, and frames reach the window in half the time.
 
 ### Elsewhere
 
@@ -337,8 +343,9 @@ above).
   Technica 172 frames in 3 s against 151 and half the time to the
   window (8.5 against 15.9 ms); on heise nothing (132 against 131),
   whose frames reach the window in 9 ms with either.
-- **Ars Technica is no longer slow** (57 frames per second, 0012: 16);
-  see "Ars Technica" above.
+- **Ars Technica is slow only on some loads** (57 frames per second
+  with ~280 requests, 16–18 with ~370, as in 0012); see "Ars Technica"
+  above.
 - **The window with pages gives back more:** 74 MiB with the article and
   two pages against 86 in M8: the article's frames and renderer go while
   a page is shown.
@@ -349,6 +356,10 @@ above).
 
 ## Open
 
+- **What Ars Technica's slow loads contain:** WebRender's profiler on a
+  slow load (until the frame rate drops) names the costly passes, and a
+  list of the hosts a load requests, compared between a fast and a slow
+  load, names what the slow one adds.
 - **WebRender's GPU memory** is a large part of a heavy page's cost
   (121 MB on Ars Technica, in system memory on Iris Xe): its texture
   cache and picture tiles could be bounded for background tabs or in
