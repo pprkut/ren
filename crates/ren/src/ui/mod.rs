@@ -205,7 +205,7 @@ struct App {
     password_problem: RefCell<Option<String>>,
     /// A sync finished since the start.
     synced_once: Cell<bool>,
-    /// Help → About ren, while it is open.
+    /// Help → About Ren, while it is open.
     about: RefCell<Option<AboutWindow>>,
     /// The question before logging out, while it is open.
     confirm: RefCell<Option<ConfirmWindow>>,
@@ -399,7 +399,7 @@ impl App {
         window.set_current_feed(current.map_or(-1, |i| i as i32));
         window.set_unread_text(format!("{unread} unread articles").into());
         if let Some(tray) = &*self.tray.borrow() {
-            tray.set_text(format!("ren: {unread} unread articles").into());
+            tray.set_text(format!("Ren: {unread} unread articles").into());
         }
     }
 
@@ -1595,7 +1595,7 @@ fn start_hidden_measurement(app: std::rc::Weak<App>, urls: Vec<String>) -> slint
 }
 
 /// Opens the settings dialog, shows its web page settings (the category
-/// with the most rows), closes it, opens About ren, shows its licenses and
+/// with the most rows), closes it, opens About Ren, shows its licenses and
 /// closes it, logging
 /// memory use at each step, then quits. After `CYCLE_DELAY`, steps
 /// `HIDDEN_STEP` apart; freed memory is given back before each step.

@@ -109,19 +109,19 @@ impl App {
         }
         let (text, label) = if login::revokes(self.password_source(&account)) {
             (
-                "ren's app password will be revoked on the server and removed from this \
-                 computer. This can't be undone; ren needs a new login afterwards. The \
+                "Ren's app password will be revoked on the server and removed from this \
+                 computer. This can't be undone; Ren needs a new login afterwards. The \
                  articles stored here stay.",
                 "Revoke and Log Out",
             )
         } else {
             (
-                "ren forgets the account here. The app password comes from outside ren, so \
+                "Ren forgets the account here. The app password comes from outside Ren, so \
                  it isn't revoked on the server. The articles stored here stay.",
                 "Log Out",
             )
         };
-        confirm.set_window_title("Log Out – ren".into());
+        confirm.set_window_title("Log Out – Ren".into());
         confirm.set_heading(format!("Log out {} on {}?", account.user, account.server).into());
         confirm.set_text(text.into());
         confirm.set_confirm_label(label.into());

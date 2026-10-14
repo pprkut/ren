@@ -11,7 +11,7 @@ export struct NoticeBlock {
     text: string,
 }
 
-// Help → About ren, and on a second page the third-party notices.
+// Help → About Ren, and on a second page the third-party notices.
 export component AboutWindow inherits Window {
     in property <string> version;
     in property <string> source-url;
@@ -29,7 +29,7 @@ export component AboutWindow inherits Window {
         Palette.color-scheme = root.forced-color-scheme;
     }
 
-    title: "About ren";
+    title: "About Ren";
     preferred-width: 560px;
     // Wrapped text counts as one line in the preferred height.
     preferred-height: 480px;
@@ -108,7 +108,7 @@ export component AboutWindow inherits Window {
         spacing: 10px;
 
         Text {
-            text: "ren";
+            text: "Ren";
             font-size: 1.8rem;
             font-weight: 700;
             color: Palette.foreground;
@@ -126,7 +126,7 @@ export component AboutWindow inherits Window {
         }
 
         Text {
-            text: "ren is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.";
+            text: "Ren is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.";
             wrap: word-wrap;
             font-size: 0.9rem;
             color: Palette.foreground;

@@ -22,8 +22,8 @@ pub(super) const RELOAD_DELAY: Duration = Duration::from_millis(100);
 
 /// What a new settings file starts with, when the dialog opens it.
 const NEW_FILE: &str = "\
-# Settings of ren. Only the settings changed from their defaults are kept
-# here; Settings → Configure ren… lists them all. Changes apply when the
+# Settings of Ren. Only the settings changed from their defaults are kept
+# here; Settings → Configure Ren… lists them all. Changes apply when the
 # file is saved.
 ";
 

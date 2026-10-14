@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Help → About ren, and on its second page the third-party notices.
+//! Help → About Ren, and on its second page the third-party notices.
 
 use std::time::Duration;
 
@@ -30,7 +30,7 @@ impl App {
         let about = match AboutWindow::new() {
             Ok(about) => about,
             Err(err) => {
-                self.status(format!("Opening About ren failed: {err}"));
+                self.status(format!("Opening About Ren failed: {err}"));
                 return;
             }
         };
@@ -80,7 +80,7 @@ impl App {
             slint::CloseRequestResponse::HideWindow
         });
         if let Err(err) = about.show() {
-            eprintln!("ren: showing About ren: {err}");
+            eprintln!("ren: showing About Ren: {err}");
         }
         *self.about.borrow_mut() = Some(about);
     }

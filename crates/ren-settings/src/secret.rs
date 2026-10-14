@@ -80,7 +80,7 @@ impl SecretService {
 
     fn entry(&self, account: &Account) -> Result<Entry, SecretError> {
         let label = format!(
-            "ren: Nextcloud News app password for {} on {}",
+            "Ren: Nextcloud News app password for {} on {}",
             account.user, account.server
         );
         let modifiers = HashMap::from([("label", label.as_str())]);
@@ -210,7 +210,7 @@ impl fmt::Display for PasswordError {
         match self {
             PasswordError::NotStored => write!(
                 f,
-                "no app password in the Secret Service: log in in Settings → Configure ren… → \
+                "no app password in the Secret Service: log in in Settings → Configure Ren… → \
                  Account (or with ren --set-password), or set password-command in [account]"
             ),
             PasswordError::Command(err) => write!(f, "password-command: {err}"),

@@ -103,7 +103,7 @@ pub enum List {
 }
 
 const HEADER: &str = "\
-# The window's state, written by ren when its window closes. Settings are
+# The window's state, written by Ren when its window closes. Settings are
 # in settings.toml.
 
 ";
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(
             text,
             "\
-# The window's state, written by ren when its window closes. Settings are
+# The window's state, written by Ren when its window closes. Settings are
 # in settings.toml.
 
 collapsed-folders = [3, 7]

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// ren's icon in the desktop's system tray (a StatusNotifierItem on
+// Ren's icon in the desktop's system tray (a StatusNotifierItem on
 // Linux): the unread count as its tooltip, and a menu.
 export component Tray inherits SystemTrayIcon {
     // The icon, and the tooltip and title (the unread count).
     in property <image> image;
-    in property <string> text: "ren";
+    in property <string> text: "Ren";
     // The main window is shown (not hidden in the tray).
     in property <bool> window-shown: true;
     in property <bool> syncing;
@@ -25,7 +25,7 @@ export component Tray inherits SystemTrayIcon {
 
     Menu {
         MenuItem {
-            title: root.window-shown ? "Hide ren" : "Show ren";
+            title: root.window-shown ? "Hide Ren" : "Show Ren";
             activated => {
                 root.toggle-window();
             }

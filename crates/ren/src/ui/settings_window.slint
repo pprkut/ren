@@ -381,8 +381,8 @@ component AccountPage inherits VerticalLayout {
 
         Text {
             text: root.revokes
-                ? "Logging out revokes ren's app password on the server and removes it from this computer. The articles stored here stay."
-                : "Logging out forgets the account here. The app password comes from outside ren, so it isn't revoked on the server. The articles stored here stay.";
+                ? "Logging out revokes Ren's app password on the server and removes it from this computer. The articles stored here stay."
+                : "Logging out forgets the account here. The app password comes from outside Ren, so it isn't revoked on the server. The articles stored here stay.";
             wrap: word-wrap;
             color: Palette.foreground;
             opacity: 0.75;
@@ -393,7 +393,7 @@ component AccountPage inherits VerticalLayout {
         spacing: 10px;
 
         Text {
-            text: "Waiting for the browser… Log in to your Nextcloud in the page that opened, and grant ren access.";
+            text: "Waiting for the browser… Log in to your Nextcloud in the page that opened, and grant Ren access.";
             wrap: word-wrap;
             color: Palette.foreground;
         }
@@ -430,7 +430,7 @@ component AccountPage inherits VerticalLayout {
         spacing: 8px;
 
         Text {
-            text: "Log in to your Nextcloud with the News app. Your browser opens its login page, where you can also use two-factor authentication or single sign-on; ren gets an app password of its own, which your Nextcloud lists under Security.";
+            text: "Log in to your Nextcloud with the News app. Your browser opens its login page, where you can also use two-factor authentication or single sign-on; Ren gets an app password of its own, which your Nextcloud lists under Security.";
             wrap: word-wrap;
             color: Palette.foreground;
             opacity: 0.75;
@@ -558,7 +558,7 @@ export component SettingsWindow inherits Window {
         Palette.color-scheme = root.forced-color-scheme;
     }
 
-    title: "Settings – ren";
+    title: "Settings – Ren";
     preferred-width: 920px;
     preferred-height: 660px;
     min-width: 640px;
