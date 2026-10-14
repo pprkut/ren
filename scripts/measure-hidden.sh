@@ -74,7 +74,7 @@ summary=$OUT_DIR/summary.md
     echo "## ren with the window hidden, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
     echo "- ren: $(git describe --always --dirty), release build, default features"
-    echo "- pages in tabs: ${#urls[@]}"
+    echo "- pages in tabs: $((${#urls[@]} / 2))"
     echo "- session: ${XDG_SESSION_TYPE:-unknown}, ${XDG_CURRENT_DESKTOP:-unknown}"
     echo
     echo "RSS in MiB, total (UI + Servo's helper):"
