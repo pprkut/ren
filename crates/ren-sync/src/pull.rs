@@ -28,7 +28,7 @@ use ren_store::{Listed, Store};
 use crate::{Clock, Error, Kind, NewsApi, Progress, Run};
 
 /// The local time when the last sync was completed.
-pub(crate) const LAST_SYNC: &str = "last_sync";
+pub(crate) const LAST_SYNC: &str = ren_store::LAST_SYNC;
 
 /// The progress of a full sync, see [`FullSync`].
 const FULL_SINCE: &str = "full_sync.since";
