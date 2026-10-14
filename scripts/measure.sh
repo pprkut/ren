@@ -19,7 +19,10 @@
 #   IDLE_SECS     length of the idle measurement (default 30)
 #   SCROLL_SECS   longest scroll through the item list (default 900); ren
 #                 is stopped then, so a stuck scroll doesn't stop the run
-#   ITEMS         number of generated items (default 10000)
+#   ITEMS         number of generated items, or the most items of DUMP
+#                 (default 10000)
+#   DUMP          measure with the items of this `ren --dump-items`
+#                 directory instead of generated items
 #   DATABASE      measure with a copy of this database (e.g. ren's own,
 #                 ~/.local/share/ren/ren.db, with ren closed) instead of
 #                 generated items; the copy goes to a temporary directory
@@ -51,6 +54,9 @@ if [[ -n ${DATABASE:-} ]]; then
     fi
     data=(--database "$db_dir/ren.db")
     data_note="a copy of a database ($(du -m "$DATABASE" | cut -f1) MiB)"
+elif [[ -n ${DUMP:-} ]]; then
+    data=(--dump "$DUMP" --items "$ITEMS")
+    data_note="at most $ITEMS items of a dump"
 else
     data=(--items "$ITEMS")
     data_note="$ITEMS generated items"

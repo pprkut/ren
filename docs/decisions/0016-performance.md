@@ -224,7 +224,7 @@ just measure-all ~/ren-dump <heise article URL> <Ars Technica article URL>
 ```
 
 It runs, one after another and each with its own logs, `measure.sh`
-(idle and the item list per renderer, with a copy of ren's own database),
+(idle and the item list per renderer, with the dump's items),
 `measure-articles.sh` (100 articles of the dump), `measure-tabs.sh` (the
 pages: blocking, without, one frame under way, FemtoVG, Skia, and the
 synthetic page per renderer), `measure-hidden.sh`, `measure-settings.sh`,

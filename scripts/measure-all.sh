@@ -13,17 +13,17 @@
 # runs.
 #
 # Usage: scripts/measure-all.sh DUMP_DIR [URL...]
-#   DUMP_DIR: a `ren --dump-items` directory, for the articles and the
-#             pages (the links of its first three items, unless URLs are
-#             given)
+#   DUMP_DIR: a `ren --dump-items` directory: the items of the idle
+#             window, the articles, and the pages (the links of its first
+#             three items, unless URLs are given)
 #
 # Environment:
 #   OUT_DIR   logs and the report (default target/measure/all-<timestamp>)
 #   SKIP      measurements to leave out, comma-separated: idle, articles,
 #             tabs, hidden, settings, sync, window-sync
-#   DATABASE  the database for the idle measurement (default: ren's own,
-#             $XDG_DATA_HOME/ren/ren.db, if it exists; ren must not run);
-#             measure.sh works on a copy of it
+#   DATABASE  a database for the idle measurement instead of the dump's
+#             items (e.g. ren's own, $XDG_DATA_HOME/ren/ren.db, with ren
+#             closed); measure.sh works on a copy of it
 #
 # Writes the report to $OUT_DIR/report.md and prints it. Like the
 # summaries it is made of, it contains no URLs, titles or content.
@@ -45,10 +45,6 @@ export -n OUT_DIR
 if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
     echo "no graphical session (neither DISPLAY nor WAYLAND_DISPLAY is set)" >&2
     exit 1
-fi
-if [[ -z ${DATABASE:-} ]]; then
-    DATABASE=${XDG_DATA_HOME:-$HOME/.local/share}/ren/ren.db
-    [[ -e $DATABASE ]] || DATABASE=
 fi
 
 mkdir -p "$OUT_DIR"
@@ -83,8 +79,8 @@ run() {
     echo >>"$report"
 }
 
-export DATABASE
-run idle scripts/measure.sh software femtovg skia
+# The dump's items, so that every measurement shows the same data.
+DUMP=$DUMP run idle scripts/measure.sh software femtovg skia
 run articles scripts/measure-articles.sh "$DUMP" 100
 run tabs scripts/measure-tabs.sh "$DUMP" "$@"
 run hidden scripts/measure-hidden.sh "$DUMP" "$@"
