@@ -893,11 +893,12 @@ From here on every milestone ships with tests for what it adds.
   more, so there is no renderer setting; the largest image decoded
   before scaling over 100 real articles took 5.9 MiB, so no row-by-row
   PNG decoding; the window with the article and two pages takes 74
-  instead of 86 MiB; Ars Technica scrolls at 57 frames per second (0012:
-  16; WebRender's GPU work is 6 ms per frame, the page has changed), and
-  the new pacing gives it 14 % more frames in half the time to the
-  window. Open: the article peak with images went above 100 MiB
-  (101–104, M6: 88–90).
+  instead of 86 MiB; Ars Technica scrolls at 57 frames per second on
+  some loads and at 16–18 on others (more requests: something the page
+  loads only sometimes, with or without blocking), and on the fast ones
+  the new pacing gives 14 % more frames in half the time to the window.
+  Open: the article peak with images went above 100 MiB (101–104, M6:
+  88–90), and what Ars Technica's slow loads contain.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
