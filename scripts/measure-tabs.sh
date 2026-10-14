@@ -13,7 +13,9 @@
 # synthetic variants replace Servo with a stand-in that paints a simple
 # page (pattern-helper), so the window's cost per frame shows on its own,
 # per renderer. Needs a graphical session and network access; don't touch
-# the window while it runs. The logs have per-second statistics of the
+# the window while it runs. Run it on an idle machine: on a laptop's
+# integrated GPU, a busy CPU keeps the GPU at its lowest clock, and heavy
+# pages then scroll at a fraction of their frame rate (0016). The logs have per-second statistics of the
 # frame path and of the requests blocked (REN_TAB_STATS).
 #
 # Usage: scripts/measure-tabs.sh DUMP_DIR [URL...]
