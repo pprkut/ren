@@ -17,6 +17,8 @@
 #   STARTUP_RUNS  number of startup measurements per renderer (default 5)
 #   SETTLE_SECS   wait after startup before idle sampling starts (default 5)
 #   IDLE_SECS     length of the idle measurement (default 30)
+#   SCROLL_SECS   longest scroll through the item list (default 900); ren
+#                 is stopped then, so a stuck scroll doesn't stop the run
 #   ITEMS         number of generated items (default 10000)
 #   DATABASE      measure with a copy of this database (e.g. ren's own,
 #                 ~/.local/share/ren/ren.db, with ren closed) instead of
@@ -31,6 +33,7 @@ cd "$(dirname "$0")/.."
 STARTUP_RUNS=${STARTUP_RUNS:-5}
 SETTLE_SECS=${SETTLE_SECS:-5}
 IDLE_SECS=${IDLE_SECS:-30}
+SCROLL_SECS=${SCROLL_SECS:-900}
 ITEMS=${ITEMS:-10000}
 OUT_DIR=${OUT_DIR:-target/measure/$(date +%Y%m%d-%H%M%S)}
 # Not passed on to cargo: ring's build script runs again when OUT_DIR
@@ -158,7 +161,9 @@ sample() {
     echo "time_s,rss_kb,anon_kb,file_kb,shmem_kb,pss_kb,threads,cpu_ticks" >"$csv"
     t0=$(now)
     c0=$(cpu_ticks "$pid")
-    end=$(awk -v t="$t0" -v l="$limit" 'BEGIN { print (l > 0) ? t + l : 1e18 }')
+    # printf: awk prints numbers with 6 significant digits, which rounds
+    # the time (about 1.8e9 s) to 10,000 s.
+    end=$(awk -v t="$t0" -v l="$limit" 'BEGIN { printf "%.3f", (l > 0) ? t + l : 1e18 }')
     while kill -0 "$pid" 2>/dev/null; do
         sleep "$interval"
         # The process may exit between the check and the reads.
@@ -238,8 +243,11 @@ for r in "${renderers[@]}"; do
         "${run[@]}" "${data[@]}" --autoscroll 2>"$clog" &
     pid=$!
     wait_for_line "$clog" "autoscroll started" || log "autoscroll did not start, see $clog"
-    read -r scroll_cpu scroll_rss _ < <(sample "$pid" "$OUT_DIR/$r-scroll.csv" 0.5 0)
-    wait "$pid" 2>/dev/null || true
+    read -r scroll_cpu scroll_rss _ < <(sample "$pid" "$OUT_DIR/$r-scroll.csv" 0.5 "$SCROLL_SECS")
+    if kill -0 "$pid" 2>/dev/null; then
+        log "the scroll took more than $SCROLL_SECS s, see $clog"
+    fi
+    stop "$pid"
     # Frame rate reports between start and end of the scroll, without the
     # first one (partial second).
     mapfile -t fps < <(awk '/autoscroll started/ { on = 1; next } /autoscroll over/ { on = 0 }
