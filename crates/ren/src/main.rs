@@ -9,6 +9,7 @@ mod favicons;
 mod feed_tree;
 mod hash;
 mod http;
+mod instance;
 mod item_list;
 mod login;
 mod notices;

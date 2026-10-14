@@ -18,6 +18,7 @@ use crate::cli::{self, Options};
 use crate::demo::DemoDb;
 use crate::favicons::Favicons;
 use crate::feed_tree::{self, Node, Row, changed_rows};
+use crate::instance::{Activate, Claim, Instance};
 use crate::item_list::{self, Column, format_date};
 use crate::reader::{Changes, Reader};
 use crate::sync_thread::{self, Event, Running};
@@ -548,6 +549,30 @@ impl App {
         if let Some(tray) = &*self.tray.borrow() {
             tray.set_syncing(syncing);
         }
+    }
+
+    /// Ren was started again: the window comes to the front, also from the
+    /// tray. X11 raises and focuses it; Wayland lets only the launcher's
+    /// activation token (`token`) do that, which winit can't pass on, so
+    /// there the window asks for attention (the task bar highlights it),
+    /// unless it was hidden: a window shown again gets the focus.
+    fn activate(&self, token: &str) {
+        if self.hidden.get() {
+            self.show_window();
+            return;
+        }
+        let _ = token;
+        let window = self.window();
+        if window.window().is_minimized() {
+            window.window().set_minimized(false);
+        }
+        use slint::winit_030::WinitWindowAccessor;
+        window.window().with_winit_window(|winit_window| {
+            winit_window.focus_window();
+            winit_window.request_user_attention(Some(
+                slint::winit_030::winit::window::UserAttentionType::Informational,
+            ));
+        });
     }
 
     fn toggle_window(&self) {
@@ -1842,6 +1867,15 @@ fn demo_data(options: &Options) -> Result<Option<DemoDb>, String> {
 }
 
 pub fn run(options: &Options, started: Instant) -> Result<(), String> {
+    // Before the database is opened: a Ren that runs already shows it.
+    let instance = match claim_instance(options) {
+        Some(Claim::Running) => {
+            eprintln!("ren: Ren is running already; its window comes to the front");
+            return Ok(());
+        }
+        Some(Claim::First(instance)) => Some(instance),
+        None => None,
+    };
     // Demo data is written before the window is made; the startup times
     // are measured from when it is ready.
     let demo = demo_data(options)?;
@@ -1875,7 +1909,30 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
             Some(path),
         ),
     };
-    run_window(options, started, reader, settings, database, saved).map_err(|err| err.to_string())
+    run_window(
+        options, started, reader, settings, database, saved, instance,
+    )
+    .map_err(|err| err.to_string())
+}
+
+/// Hands over to a Ren that runs already, or claims the socket for this
+/// one; `None` where it doesn't take part (`Options::single_instance`)
+/// or the socket can't be used.
+fn claim_instance(options: &Options) -> Option<Claim> {
+    if !options.single_instance() {
+        return None;
+    }
+    let path = ren_settings::paths::instance_socket(|name| std::env::var(name).ok())?;
+    match crate::instance::claim(&path, &Activate::from_env()) {
+        Ok(claim) => Some(claim),
+        Err(err) => {
+            eprintln!(
+                "ren: {}: {err}; a second start opens a second window",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 fn run_window(
@@ -1885,9 +1942,24 @@ fn run_window(
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
     saved: (Saved, Option<String>),
+    mut instance: Option<Instance>,
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
     let (window, app) = build_window(options, started, reader, settings, database, saved)?;
+    if let Some(instance) = &mut instance {
+        let weak = window.as_weak();
+        let serving = instance.serve(move |activate| {
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(window) = weak.upgrade() {
+                    window.invoke_activate(activate.token.unwrap_or_default().into());
+                }
+            });
+        });
+        if let Err(err) = serving {
+            eprintln!("ren: a second start opens a second window: {err}");
+        }
+    }
 
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
     let _measure_sync = options
@@ -1929,6 +2001,8 @@ fn run_window(
     });
     // Until quit: the window may be hidden in the tray.
     let result = slint::run_event_loop_until_quit();
+    // A start from now on opens a new window.
+    drop(instance);
     window.hide()?;
     app.dialog.borrow_mut().take();
     app.login.borrow_mut().take();
@@ -2005,13 +2079,7 @@ fn build_window(
 
     // Measurements start alike, without syncs of their own, and without a
     // tray icon.
-    let measuring = options.measure
-        || options.measure_sync
-        || options.measure_hidden
-        || options.measure_settings
-        || options.measure_tabs
-        || options.autoscroll
-        || options.cycle_articles.is_some();
+    let measuring = options.measuring();
     let auto_sync = database.is_some() && !measuring;
     let app = Rc::new_cyclic(|this| App {
         this: this.clone(),
@@ -2168,6 +2236,12 @@ fn build_window(
     window.on_sync_event(move || {
         if let Some(app) = weak.upgrade() {
             app.sync_events();
+        }
+    });
+    let weak = Rc::downgrade(&app);
+    window.on_activate(move |token| {
+        if let Some(app) = weak.upgrade() {
+            app.activate(&token);
         }
     });
     let weak = Rc::downgrade(&app);
