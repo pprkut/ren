@@ -1,0 +1,167 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// What pages ask for that the window shows over them: the `alert`,
+// `confirm` and `prompt` dialogs of their scripts, and colour pickers.
+
+import { Button, LineEdit, Palette, ScrollView } from "std-widgets.slint";
+import { ColourPicker } from "setting_controls.slint";
+import { Theme } from "theme.slint";
+
+// A page's `alert` (kind 1), `confirm` (2) or `prompt` (3), over the page
+// and inside it, headed by the page's site, so that it isn't taken for
+// one of Ren's own: the message is the page's.
+export component PageDialog inherits Rectangle {
+    in property <int> kind;
+    in property <string> site;
+    in property <string> message;
+    in-out property <string> text;
+    callback answered(ok: bool);
+
+    // Grabs the focus for the keys: Escape cancels, Enter confirms.
+    public function focus-dialog() {
+        if root.kind == 3 {
+            // As in browsers: typing replaces the default.
+            field.focus();
+            field.select-all();
+        } else {
+            keys.focus();
+        }
+    }
+
+    background: #00000040;
+
+    // The page below takes no clicks while the dialog is shown.
+    TouchArea { }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.answered(false);
+                return accept;
+            }
+            if event.text == Key.Return {
+                root.answered(true);
+                return accept;
+            }
+            reject
+        }
+
+        card := Rectangle {
+            x: (root.width - self.width) / 2;
+            y: max(16px, (root.height - self.height) / 3);
+            width: min(root.width - 32px, 460px);
+            height: min(root.height - 32px, layout.preferred-height);
+            background: Palette.background;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Theme.separator;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000060;
+
+            layout := VerticalLayout {
+                padding: 16px;
+                spacing: 12px;
+
+                Text {
+                    text: root.site + " says";
+                    font-weight: 700;
+                    overflow: elide;
+                    color: Palette.foreground;
+                }
+
+                ScrollView {
+                    height: min(message-text.preferred-height, 300px);
+
+                    message-text := Text {
+                        width: parent.visible-width;
+                        text: root.message;
+                        wrap: word-wrap;
+                        color: Palette.foreground;
+                    }
+                }
+
+                field := LineEdit {
+                    visible: root.kind == 3;
+                    height: self.visible ? self.preferred-height : 0px;
+                    text <=> root.text;
+                    accepted => {
+                        root.answered(true);
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    if root.kind != 1: Button {
+                        text: "Cancel";
+                        clicked => {
+                            root.answered(false);
+                        }
+                    }
+
+                    Button {
+                        text: "OK";
+                        primary: true;
+                        clicked => {
+                            root.answered(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The colour picker of a page's colour input, below the element at
+// `element-x`, `element-y` (logical pixels, relative to the page), kept
+// inside the page.
+export component PageColourPicker inherits Rectangle {
+    in property <length> element-x;
+    in property <length> element-y;
+    in property <length> element-height;
+    in property <color> initial;
+    in property <string> hex;
+    callback picked(colour: color);
+    callback typed(text: string);
+    callback cancelled();
+
+    // Clicks beside it close it.
+    TouchArea {
+        clicked => {
+            root.cancelled();
+        }
+    }
+
+    Rectangle {
+        x: max(0, min(root.element-x, root.width - self.width));
+        y: root.element-y + root.element-height + self.height + 4px <= root.height ? root.element-y + root.element-height + 4px : max(0, root.element-y - self.height - 4px);
+        width: 280px;
+        height: picker.preferred-height;
+        background: Palette.background;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.separator;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: #00000040;
+
+        // Takes the clicks inside it.
+        TouchArea { }
+
+        picker := ColourPicker {
+            initial: root.initial;
+            hex: root.hex;
+            theme-button: false;
+            picked(colour) => {
+                root.picked(colour);
+            }
+            typed(text) => {
+                root.typed(text);
+            }
+            cancel => {
+                root.cancelled();
+            }
+        }
+    }
+}

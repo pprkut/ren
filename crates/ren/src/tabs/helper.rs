@@ -240,6 +240,21 @@ impl Helper {
         self.send(&Command::ContextMenu { control, action });
     }
 
+    /// Answers a page's `alert`, `confirm` or `prompt`.
+    pub fn answer_dialog(&mut self, control: u32, answer: ren_tabs::DialogAnswer) {
+        self.send(&Command::Dialog { control, answer });
+    }
+
+    /// Answers a colour picker: the colour chosen, none to keep the page's.
+    pub fn answer_colour(&mut self, control: u32, colour: Option<ren_tabs::Rgb>) {
+        self.send(&Command::Colour { control, colour });
+    }
+
+    /// Answers a file picker: the files chosen, none to dismiss it.
+    pub fn answer_files(&mut self, control: u32, paths: Option<Vec<std::path::PathBuf>>) {
+        self.send(&Command::Files { control, paths });
+    }
+
     pub fn input(&mut self, input: Input) {
         self.send(&Command::Input(input));
     }
