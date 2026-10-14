@@ -354,6 +354,7 @@ pub const BLOCK_CONTENT: &str = "pages.block-content";
 pub const FILTER_LISTS: &str = "pages.filter-lists";
 pub const UNBLOCKED_SITES: &str = "pages.unblocked-sites";
 pub const TRAY_ICON: &str = "window.tray-icon";
+pub const TRAY_ICON_STYLE: &str = "window.tray-icon-style";
 pub const CLOSE_TO_TRAY: &str = "window.close-to-tray";
 
 /// A filter list for content blocking that `pages.filter-lists` can name.
@@ -614,6 +615,36 @@ pub static SETTINGS: &[Setting] = &[
         category: Category::Window,
         requires: None,
         kind: Kind::Switch { default: true },
+    },
+    Setting {
+        key: TRAY_ICON_STYLE,
+        title: "Tray icon style",
+        description: "The logo in colour, or in one colour like the desktop's symbolic tray \
+                      icons: light for a dark panel, dark for a light one, or following the \
+                      colour scheme.",
+        category: Category::Window,
+        requires: Some(TRAY_ICON),
+        kind: Kind::Choice {
+            options: &[
+                Choice {
+                    value: "colour",
+                    title: "In colour",
+                },
+                Choice {
+                    value: "monochrome",
+                    title: "Monochrome, as the colour scheme",
+                },
+                Choice {
+                    value: "light",
+                    title: "Monochrome, light",
+                },
+                Choice {
+                    value: "dark",
+                    title: "Monochrome, dark",
+                },
+            ],
+            default: "colour",
+        },
     },
     Setting {
         key: CLOSE_TO_TRAY,

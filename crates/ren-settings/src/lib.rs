@@ -35,6 +35,8 @@ pub use secret::{
     MemoryStore, PasswordError, SecretError, SecretService, SecretStore, Source, app_password,
     run_password_command,
 };
-pub use settings::{Account, Loaded, Position, Problem, Problems, Settings, Severity};
+pub use settings::{
+    Account, Loaded, Position, Problem, Problems, Settings, Severity, TrayIconStyle,
+};
 pub use state::{Columns, Layout, List, Selection, Sort, SortColumn, State, Window};
 pub use watch::{Watch, watch};

@@ -44,6 +44,20 @@ pub enum Severity {
     Warning,
 }
 
+/// How the icon in the system tray is drawn (`window.tray-icon-style`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayIconStyle {
+    /// The logo in its colours.
+    Colour,
+    /// In one colour: light with a dark colour scheme, dark with a light
+    /// one.
+    Monochrome,
+    /// In one light colour, for a dark panel.
+    Light,
+    /// In one dark colour, for a light panel.
+    Dark,
+}
+
 /// A position in the file, both counted from 1. The column counts
 /// characters, not bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -348,6 +362,16 @@ impl Settings {
     /// Whether ren shows an icon in the system tray.
     pub fn tray_icon(&self) -> bool {
         self.bool(schema::TRAY_ICON)
+    }
+
+    /// How the icon in the system tray is drawn.
+    pub fn tray_icon_style(&self) -> TrayIconStyle {
+        match self.text(schema::TRAY_ICON_STYLE).as_deref() {
+            Some("monochrome") => TrayIconStyle::Monochrome,
+            Some("light") => TrayIconStyle::Light,
+            Some("dark") => TrayIconStyle::Dark,
+            _ => TrayIconStyle::Colour,
+        }
     }
 
     /// Whether closing the window hides it in the tray; only with the
@@ -732,6 +756,20 @@ pub(crate) mod tests {
         assert!(defaults.feed_icons());
         assert!(defaults.tray_icon());
         assert!(!defaults.close_to_tray());
+        assert_eq!(defaults.tray_icon_style(), TrayIconStyle::Colour);
+        let tray_style = |text: &str| Settings::parse(text).unwrap().settings.tray_icon_style();
+        assert_eq!(
+            tray_style("[window]\ntray-icon-style = \"light\"\n"),
+            TrayIconStyle::Light
+        );
+        assert_eq!(
+            tray_style("[window]\ntray-icon-style = \"monochrome\"\n"),
+            TrayIconStyle::Monochrome
+        );
+        assert_eq!(
+            tray_style("[window]\ntray-icon-style = \"dark\"\n"),
+            TrayIconStyle::Dark
+        );
         let tray = |text: &str| Settings::parse(text).unwrap().settings;
         assert!(tray("[window]\nclose-to-tray = true\n").close_to_tray());
         assert!(!tray("[window]\nclose-to-tray = true\ntray-icon = false\n").close_to_tray());

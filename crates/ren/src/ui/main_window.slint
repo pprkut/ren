@@ -85,6 +85,7 @@ export component MainWindow inherits Window {
     changed dark => {
         root.article-theme-changed();
         root.page-theme-changed();
+        root.action("theme-changed");
     }
 
     // Web pages in tabs next to the article (Servo); current-tab -1 shows
