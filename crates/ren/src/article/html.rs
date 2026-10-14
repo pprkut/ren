@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use anyrender::ImageRenderer;
 use anyrender_vello_cpu::{ImageCacheConfig, VelloCpuImageRenderer};
 use atomic_refcell::AtomicRefCell;
-use blitz_dom::{Document, DocumentConfig, FontContext, StyleThreading, local_name};
+use blitz_dom::{Document, DocumentConfig, FontContext, QualName, StyleThreading, local_name, ns};
 use blitz_html::{HtmlDocument, HtmlProvider};
 use blitz_traits::events::{
     BlitzKeyEvent, BlitzPointerEvent, BlitzPointerId, BlitzWheelDelta, BlitzWheelEvent, KeyState,
@@ -46,7 +46,7 @@ const FETCH_THREADS: usize = 2;
 
 /// Most pixels of an image as shown, e.g. 690×5,800 or, at a scale factor
 /// of 2, 1,380×2,900: 16 MiB as RGBA, which Blitz holds twice while
-/// decoding it. Taller images are shown narrower.
+/// decoding it. Taller images get fewer pixels than they are shown at.
 const MAX_IMAGE_PIXELS: u64 = 4_000_000;
 
 /// Mouse buttons, as far as the article cares.
@@ -197,6 +197,9 @@ struct NetShared {
     /// Requests sent to the workers and not done yet. When the last one is
     /// done, the memory freed while decoding is given back to the system.
     queued: AtomicUsize,
+    /// Images that the pixel limit made narrower, with the width they come
+    /// with, for the view to set on them: (document id, URL, width).
+    widths: Mutex<Vec<(usize, String, u32)>>,
     stats: ImageStats,
 }
 
@@ -288,7 +291,12 @@ impl NetShared {
             Ok(None) => Ok(bytes),
             Ok(Some(scaled)) => {
                 count(&self.stats.scaled);
-                Ok(scaled)
+                if let Some(width) = scaled.width
+                    && let Ok(mut widths) = self.widths.lock()
+                {
+                    widths.push((job.doc_id, url.clone(), width));
+                }
+                Ok(scaled.png)
             }
             Err(err) => Err(err),
         });
@@ -315,6 +323,7 @@ impl Net {
                 shell,
                 decoding: Mutex::new(()),
                 queued: AtomicUsize::new(0),
+                widths: Mutex::new(Vec::new()),
                 stats: ImageStats::default(),
             }),
         }
@@ -392,6 +401,44 @@ fn decode_data_url(url: &str) -> Result<Vec<u8>, String> {
             .map_err(|err| err.to_string())
     } else {
         Ok(data)
+    }
+}
+
+/// Sets the width they came with on images of `doc` that the pixel limit
+/// made narrower ([`images::Scaled::width`]), unless they have one: shown
+/// at their own size, they would be narrower than the content.
+fn set_image_widths(doc: &mut HtmlDocument, widths: &Mutex<Vec<(usize, String, u32)>>) {
+    let widths = match widths.lock() {
+        Ok(mut widths) if !widths.is_empty() => std::mem::take(&mut *widths),
+        _ => return,
+    };
+    let id = doc.id();
+    let Ok(images) = doc.query_selector_all("img") else {
+        return;
+    };
+    let base = doc.base_url().clone();
+    let mut set = Vec::new();
+    for (_, url, width) in widths.iter().filter(|(doc_id, ..)| *doc_id == id) {
+        for &node in &images {
+            let Some(element) = doc.get_node(node).and_then(|n| n.element_data()) else {
+                continue;
+            };
+            let same = element
+                .attr(local_name!("src"))
+                .and_then(|src| base.join(src).ok())
+                .is_some_and(|src| src.as_str() == url);
+            if same && element.attr(local_name!("width")).is_none() {
+                set.push((node, *width));
+            }
+        }
+    }
+    let mut mutator = doc.mutate();
+    for (node, width) in set {
+        mutator.set_attribute(
+            node,
+            QualName::new(None, ns!(), local_name!("width")),
+            &width.to_string(),
+        );
     }
 }
 
@@ -609,6 +656,7 @@ impl HtmlView {
             return Default::default();
         };
         let started = Instant::now();
+        set_image_widths(doc, &self.net.shared.widths);
         doc.resolve(self.started.elapsed().as_secs_f64());
         let resolved = started.elapsed();
         let renderer = self
@@ -1055,6 +1103,37 @@ mod tests {
         assert!(wait_for(&mut view, |view| width(view) > 0.0));
         assert_eq!(width(&view), CONTENT_WIDTH as f32);
         assert_eq!(view.image_stats().scaled.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn tall_images_keep_their_width() {
+        use base64::Engine;
+        // 4.9 million pixels, more than MAX_IMAGE_PIXELS: scaled down to
+        // 632×6,325.
+        let image = image::RgbImage::new(700, 7000);
+        let mut png = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let data = base64::engine::general_purpose::STANDARD.encode(&png);
+        let mut view = view(
+            &format!(
+                r#"<img id="i" src="data:image/png;base64,{data}"><img id="j" width="300" src="data:image/png;base64,{data}">"#
+            ),
+            false,
+        );
+        let size = |view: &HtmlView, id| {
+            let doc = view.doc.as_ref().unwrap();
+            let id = doc.get_element_by_id(id).unwrap();
+            doc.get_node(id).unwrap().final_layout().size
+        };
+        assert!(wait_for(&mut view, |view| size(view, "i").height > 0.0
+            && size(view, "j").height > 0.0));
+        assert_eq!(size(&view, "i").width, 700.0);
+        // By the aspect ratio of the scaled image.
+        assert!((size(&view, "i").height - 7000.0).abs() < 10.0);
+        // Its own width stays.
+        assert_eq!(size(&view, "j").width, 300.0);
     }
 
     #[test]
