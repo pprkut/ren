@@ -152,7 +152,7 @@ impl App {
     }
 
     /// Hides the question, and drops it: not from its own callback.
-    fn close_confirm(&self) {
+    pub(super) fn close_confirm(&self) {
         if let Some(confirm) = &*self.confirm.borrow() {
             let _ = confirm.hide();
         }

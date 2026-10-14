@@ -20,6 +20,7 @@ use slint::{ComponentHandle, LogicalSize, Model, SharedString};
 
 use super::{App, MainWindow, build_window};
 use crate::cli::Options;
+use crate::feed_tree::Node;
 use crate::reader::Reader;
 use crate::testing::TempDir;
 use crate::window_state::Saved;
@@ -121,11 +122,30 @@ impl Ui {
 
     /// With `more` settings after [`SETTINGS`].
     fn with_settings(more: &str) -> Self {
+        Self::with_settings_file(&format!("{SETTINGS}{more}"))
+    }
+
+    /// With an account on `server`, whose password comes from a command.
+    fn with_server(server: &str) -> Self {
+        let settings = SETTINGS
+            .replace("https://cloud.example.org", server)
+            .replace(
+                "user = \"reader\"",
+                &format!(
+                    "user = \"{}\"\npassword-command = \"echo {}\"",
+                    crate::testing::USER,
+                    crate::testing::PASSWORD
+                ),
+            );
+        Self::with_settings_file(&settings)
+    }
+
+    fn with_settings_file(text: &str) -> Self {
         init_backend();
         let dir = TempDir::new("ui");
         let database = dir.join("ren.db");
         fill(&mut Store::open(&database).unwrap());
-        let settings = dir.write("settings.toml", format!("{SETTINGS}{more}"));
+        let settings = dir.write("settings.toml", text);
         let reader = Reader::new(Store::open(&database).unwrap()).unwrap();
         let options = Options {
             plain_text: true,
@@ -152,6 +172,18 @@ impl Ui {
             database,
             _dir: dir,
         }
+    }
+
+    /// Handles what the sync thread reports until the sync ended, as the
+    /// event loop does when the thread wakes it.
+    fn finish_sync(&self) {
+        let started = Instant::now();
+        while self.app.sync.borrow().running.is_some() {
+            assert!(started.elapsed().as_secs() < 10, "the sync doesn't end");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            self.app.sync_events();
+        }
+        mock_elapsed_time(16);
     }
 
     /// The elements of a component of the window, in order.
@@ -431,4 +463,68 @@ fn about_ren() {
     ui.window.invoke_action("about-close".into());
     mock_elapsed_time(16);
     assert!(ui.app.about.borrow().is_none());
+}
+
+#[test]
+fn adding_and_deleting_feeds() {
+    let server = crate::testing::recorded_server();
+    let ui = Ui::with_server(&server.url());
+    // Add Feed in the folder selected.
+    ui.click("FeedTreeRow", 2);
+    ui.window.invoke_action("add-feed".into());
+    let dialog = match &*ui.app.feed_dialog.borrow() {
+        Some(dialog) => dialog.window.clone_strong(),
+        None => panic!("the feed dialog isn't open"),
+    };
+    assert_eq!(dialog.get_folder_index(), 1);
+    // Without an address, nothing is sent.
+    dialog.invoke_accepted();
+    assert!(!dialog.get_error().is_empty());
+    assert!(ui.app.sync.borrow().running.is_none());
+    dialog.set_url("https://example.org/new.xml".into());
+    dialog.invoke_accepted();
+    assert!(dialog.get_busy());
+    ui.finish_sync();
+    // The dialog closed, and the sync brought the server's feeds; the one
+    // the server answered with is shown.
+    assert!(ui.app.feed_dialog.borrow().is_none());
+    let requests: Vec<String> = server
+        .requests()
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.api_path().unwrap_or_default()))
+        .collect();
+    assert_eq!(requests[0], "POST feeds");
+    let added: serde_json::Value =
+        serde_json::from_slice(&crate::testing::recorded("feeds")).unwrap();
+    let added = added["feeds"][0]["id"].as_u64().unwrap();
+    assert_eq!(ui.app.reader.borrow().selected(), Node::Feed(added));
+    let request = &server.requests()[0];
+    assert_eq!(
+        String::from_utf8_lossy(&request.body),
+        r#"{"url":"https://example.org/new.xml","folderId":1}"#
+    );
+
+    // Deleting it asks first.
+    let row = ui
+        .app
+        .reader
+        .borrow()
+        .tree_rows()
+        .iter()
+        .position(|row| row.node == Node::Feed(added))
+        .unwrap();
+    ui.app.feed_menu(row, "delete-feed");
+    let confirm = match &*ui.app.confirm.borrow() {
+        Some(confirm) => confirm.clone_strong(),
+        None => panic!("no question before deleting"),
+    };
+    confirm.invoke_confirmed();
+    ui.finish_sync();
+    let deleted = format!("feeds/{added}");
+    assert!(
+        server
+            .requests()
+            .iter()
+            .any(|r| r.method == "DELETE" && r.api_path() == Some(deleted.as_str()))
+    );
 }

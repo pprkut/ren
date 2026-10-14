@@ -74,7 +74,11 @@ pub fn respond_recorded(request: &Request) -> Response {
             _ => br#"{"items": []}"#.to_vec(),
         },
         ("GET", Some("items/updated")) => recorded("updated"),
-        ("POST", Some(_)) => Vec::new(),
+        // Adding a feed answers with the feeds' first, a folder with a new
+        // one.
+        ("POST", Some("feeds")) => recorded("feeds"),
+        ("POST", Some("folders")) => br#"{"folders": [{"id": 99, "name": "New"}]}"#.to_vec(),
+        ("POST" | "PUT" | "DELETE", Some(_)) => Vec::new(),
         _ => return Response::status(404, r#"{"message": "no route"}"#),
     };
     Response {
