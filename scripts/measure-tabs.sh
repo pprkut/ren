@@ -7,10 +7,14 @@
 # closing it; frames while
 # scrolling and the time from a painted frame to the UI. Servo runs in its
 # helper process (ren-servo), with content blocking (the filter lists of
-# the settings, downloaded first if they are old) and without. Needs a
-# graphical session and network access; don't touch the window while it
-# runs. The logs have per-second statistics of the frame path and of the
-# requests blocked (REN_TAB_STATS).
+# the settings, downloaded first if they are old) and without, with the
+# frame pacing from before M10 (one frame under way), and with the GPU
+# renderers (FemtoVG, Skia) instead of the software renderer. The
+# synthetic variants replace Servo with a stand-in that paints a simple
+# page (pattern-helper), so the window's cost per frame shows on its own,
+# per renderer. Needs a graphical session and network access; don't touch
+# the window while it runs. The logs have per-second statistics of the
+# frame path and of the requests blocked (REN_TAB_STATS).
 #
 # Usage: scripts/measure-tabs.sh DUMP_DIR [URL...]
 #   DUMP_DIR: a `ren --dump-items` directory; the pages are the links of
@@ -18,6 +22,9 @@
 #
 # Environment:
 #   OUT_DIR   logs (default target/measure/tabs-<timestamp>)
+#   VARIANTS  the variants to run, comma-separated (default: all): blocking,
+#             no-blocking, one-frame, femtovg, skia, synthetic,
+#             synthetic-femtovg, synthetic-skia
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md. It contains
 # no URLs, titles or page content.
@@ -26,7 +33,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,19p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,27p' >&2
     exit 1
 fi
 DUMP=$1
@@ -48,21 +55,40 @@ fi
 mkdir -p "$OUT_DIR"
 log() { echo "$*" >&2; }
 
+# key|name|environment|binary|arguments
+synthetic="REN_SERVO=$OUT_DIR/pattern-helper"
+all_variants=(
+    "blocking|blocking||ren|"
+    "no-blocking|without blocking|REN_SERVO_NO_BLOCKING=1|ren|"
+    "one-frame|one frame under way (before M10)|REN_SERVO_ONE_FRAME=1|ren|"
+    "femtovg|FemtoVG renderer||ren-gpu|--renderer femtovg"
+    "skia|Skia renderer||ren-gpu|--renderer skia"
+    "synthetic|synthetic page|$synthetic|ren|"
+    "synthetic-femtovg|synthetic page, FemtoVG|$synthetic|ren-gpu|--renderer femtovg"
+    "synthetic-skia|synthetic page, Skia|$synthetic|ren-gpu|--renderer skia"
+)
+variants=()
+for variant in "${all_variants[@]}"; do
+    if [[ -z ${VARIANTS:-} || ,$VARIANTS, == *,${variant%%|*},* ]]; then
+        variants+=("$variant")
+    fi
+done
+
 log "== building"
 cargo build --release --locked --no-default-features --features renderer-software,html-view
 cp target/release/ren "$OUT_DIR/ren-without-tabs"
+if [[ " ${variants[*]} " == *"|ren-gpu|"* ]]; then
+    cargo build --release --locked --features renderer-femtovg,renderer-skia
+    cp target/release/ren "$OUT_DIR/ren-gpu"
+fi
+cargo build --release --locked -p ren-tabs --example pattern-helper
+cp target/release/examples/pattern-helper "$OUT_DIR/"
 cargo build --release --locked
 (cd crates/ren-servo && cargo build --release --locked)
 cp target/release/ren target/release/ren-servo "$OUT_DIR/"
 
 log "== filter lists"
 "$OUT_DIR/ren" --update-filters >&2 || log "not all filter lists could be downloaded"
-
-# name|environment
-variants=(
-    "blocking|"
-    "without blocking|REN_SERVO_NO_BLOCKING=1"
-)
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
 
@@ -132,31 +158,35 @@ summary=$OUT_DIR/summary.md
     fi
     echo "- binary size: ren $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB (without the tabs $(mib $(($(stat -c %s "$OUT_DIR/ren-without-tabs") / 1024))) MiB), ren-servo $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB"
     echo
-    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | frame to UI ms (mean / max) | Servo start / stop ms | requests blocked / checked |"
-    echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | window CPU ms per frame | frame to UI ms (mean / max) | Servo start / stop ms | requests blocked / checked |"
+    echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 } >"$summary"
 
 for variant in "${variants[@]}"; do
-    IFS='|' read -r name environment <<<"$variant"
+    IFS='|' read -r key name environment binary arguments <<<"$variant"
     log "== $name"
-    vlog=$OUT_DIR/${name//[^a-z]/-}.log
+    vlog=$OUT_DIR/$key.log
     # shellcheck disable=SC2086
-    env REN_TAB_STATS=1 $environment "$OUT_DIR/ren" --dump "$DUMP" --items 5000 --measure-tabs "${urls[@]}" 2>"$vlog" || {
+    env REN_TAB_STATS=1 $environment "$OUT_DIR/$binary" $arguments --dump "$DUMP" --items 5000 \
+        --measure-tabs "${urls[@]}" 2>"$vlog" || {
         log "failed, see $vlog"
         continue
     }
     frames=$(sed -n 's/^ren: scrolling: \([0-9]*\) frames.*/\1/p' "$vlog" | head -n 1)
     cpu=$(sed -n 's/^ren: scrolling CPU: window \([0-9?]*\) %, helper \([0-9?]*\) %/\1 \/ \2/p' "$vlog" | head -n 1)
+    # The window's CPU time per frame while scrolling (3 s).
+    per_frame=$(awk -v cpu="${cpu%% *}" -v n="${frames:-0}" \
+        'BEGIN { if (n > 0 && cpu ~ /^[0-9]+$/) printf "%.1f", cpu / 100 * 3000 / n; else print "-" }')
     frame_ms=$(sed -n 's/^ren: page frames: [0-9]*, to the UI in \([0-9.]*\) ms on average, \([0-9.]*\) ms at most/\1 \/ \2/p' "$vlog" | head -n 1)
     start_ms=$(sed -n 's/^ren: Servo started in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
     stop_ms=$(sed -n 's/^ren: Servo stopped in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s / %s | %s / %s |\n' \
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s | %s / %s | %s / %s |\n' \
         "$name" "$(memory "$vlog" "before tabs")" "$(memory "$vlog" "with 1 tab")" \
         "$(memory "$vlog" "with 3 tabs")" "$(memory "$vlog" "after closing all tabs")" \
         "$(memory "$vlog" "with 1 tab again")" "$(memory "$vlog" "after closing again")" \
         "$(mib "$(kib "$vlog" rss anon "before tabs")")" \
         "$(mib "$(kib "$vlog" rss anon "after closing all tabs")")" \
-        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" \
+        "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "$per_frame" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" \
         "$(blocked "$vlog")" "$(requests "$vlog")" >>"$summary"
 done
 
@@ -166,7 +196,9 @@ done
     echo "process's anonymous memory, which shows what stays behind after the helper exits."
     echo "Frame buffer: the shared memory frames go through, in the helper's RSS with one tab"
     echo "(also counted in the UI process). CPU: percent of one core during the 3 s of"
-    echo "scrolling. Frame to UI: reading a painted frame back from the GPU into the shared"
+    echo "scrolling; per frame: the window's CPU time divided by its frames (the synthetic"
+    echo "page costs the helper almost nothing, so there it is what the window's drawing costs)."
+    echo "Frame to UI: reading a painted frame back from the GPU into the shared"
     echo "buffer, plus copying it out in the UI. Servo start: until the first tab can be opened"
     echo "(starting the process; Servo itself then starts in the helper). Requests: of all"
     echo "the pages' requests the helper checked (none without blocking), those it blocked."
