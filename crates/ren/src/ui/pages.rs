@@ -8,12 +8,14 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ren_tabs::stats::StageStats;
-use ren_tabs::{Button, Cursor, Event, Input, Key, Mods, NamedKey, Size, TabId};
+use ren_tabs::{
+    Button, Cursor, DialogAnswer, DialogKind, Event, Input, Key, Mods, NamedKey, Rgb, Size, TabId,
+};
 use slint::{ComponentHandle, Model, SharedString, VecModel};
 
 use super::{MainWindow, PageMenu, PageOption, TabRow};
@@ -48,6 +50,12 @@ pub struct Pages {
     /// The drop-down and the context menu shown, if they are.
     select: Option<controls::Select>,
     menu: Option<controls::Menu>,
+    /// The page's dialog and colour picker shown, by their tab and
+    /// control.
+    dialog: Option<(TabId, u32)>,
+    colour: Option<(TabId, u32)>,
+    /// Files chosen in the desktop's file chooser, for the helper.
+    chosen: Arc<Mutex<Vec<(u32, crate::tabs::portal::Chosen)>>>,
     /// A pump is already queued on the event loop.
     pump_queued: Arc<AtomicBool>,
     stats: StageStats,
@@ -82,6 +90,9 @@ impl Pages {
             last_press: None,
             select: None,
             menu: None,
+            dialog: None,
+            colour: None,
+            chosen: Arc::default(),
             stats: StageStats::new("ui"),
             pump_queued: Arc::default(),
         }));
@@ -259,6 +270,20 @@ impl Pages {
         if self.select.take().is_some() {
             self.window().invoke_close_page_select();
         }
+        self.close_dialog();
+        self.close_colour();
+    }
+
+    fn close_dialog(&mut self) {
+        if self.dialog.take().is_some() {
+            self.window().set_page_dialog_kind(0);
+        }
+    }
+
+    fn close_colour(&mut self) {
+        if self.colour.take().is_some() {
+            self.window().set_page_colour_shown(false);
+        }
     }
 
     /// Shows the article instead of a page; the tabs stay open.
@@ -426,6 +451,22 @@ impl Pages {
         if let Some(blocking) = blocking {
             helper.set_blocking(blocking);
         }
+        let chosen = std::mem::take(&mut *self.chosen.lock().unwrap_or_else(|e| e.into_inner()));
+        let mut failed = None;
+        for (control, result) in chosen {
+            let paths = result.unwrap_or_else(|err| {
+                failed = Some(err);
+                None
+            });
+            helper.answer_files(control, paths);
+        }
+        if let Some(err) = failed {
+            self.window()
+                .set_status_text(format!("No files for the page: {err}").into());
+        }
+        let Some(helper) = &mut self.helper else {
+            return;
+        };
         let events = helper.pump();
         let frame = helper.take_frame();
         let window = self.window();
@@ -476,6 +517,25 @@ impl Pages {
                     controls::Menu::new(tab, control, entries, link, image),
                     area,
                 ),
+                Event::Dialog {
+                    tab,
+                    control,
+                    kind,
+                    message,
+                    text,
+                } => self.show_dialog(tab, control, kind, &message, &text),
+                Event::ColourPicker {
+                    tab,
+                    control,
+                    area,
+                    current,
+                } => self.show_colour(tab, control, area, current),
+                Event::FilePicker {
+                    tab,
+                    control,
+                    multiple,
+                    extensions,
+                } => self.choose_files(tab, control, multiple, extensions),
                 Event::ControlHidden { control } => {
                     if self.select.as_ref().is_some_and(|s| s.control == control) {
                         self.select = None;
@@ -483,6 +543,12 @@ impl Pages {
                     }
                     if self.menu.as_ref().is_some_and(|m| m.control == control) {
                         self.menu = None;
+                    }
+                    if self.dialog.is_some_and(|(_, shown)| shown == control) {
+                        self.close_dialog();
+                    }
+                    if self.colour.is_some_and(|(_, shown)| shown == control) {
+                        self.close_colour();
                     }
                 }
                 event => self.list.apply(event, &mut changes),
@@ -516,6 +582,135 @@ impl Pages {
         window.set_page_select_height(area.height as f32 / scale);
         self.select = Some(select);
         window.invoke_show_page_select();
+    }
+
+    /// Shows a page's `alert`, `confirm` or `prompt` over it.
+    fn show_dialog(
+        &mut self,
+        tab: TabId,
+        control: u32,
+        kind: DialogKind,
+        message: &str,
+        text: &str,
+    ) {
+        if Some(tab) != self.current_id() {
+            if let Some(helper) = &mut self.helper {
+                helper.answer_dialog(control, DialogAnswer::Cancel);
+            }
+            return;
+        }
+        let window = self.window();
+        let site = self
+            .current_url()
+            .as_deref()
+            .and_then(ren_tabs::host_of)
+            .map_or_else(|| "The page".to_owned(), str::to_owned);
+        window.set_page_dialog_site(site.into());
+        window.set_page_dialog_message(message.into());
+        window.set_page_dialog_text(text.into());
+        window.set_page_dialog_kind(match kind {
+            DialogKind::Alert => 1,
+            DialogKind::Confirm => 2,
+            DialogKind::Prompt => 3,
+        });
+        self.dialog = Some((tab, control));
+        window.invoke_focus_page_dialog();
+    }
+
+    /// The reader answered the page's dialog.
+    fn dialog_answered(&mut self, ok: bool) {
+        let Some((_, control)) = self.dialog.take() else {
+            return;
+        };
+        let window = self.window();
+        let answer = match (ok, window.get_page_dialog_kind()) {
+            (false, _) => DialogAnswer::Cancel,
+            (true, 3) => DialogAnswer::Ok(Some(window.get_page_dialog_text().into())),
+            (true, _) => DialogAnswer::Ok(None),
+        };
+        window.set_page_dialog_kind(0);
+        if let Some(helper) = &mut self.helper {
+            helper.answer_dialog(control, answer);
+        }
+    }
+
+    /// Shows a colour picker below the page's colour input.
+    fn show_colour(
+        &mut self,
+        tab: TabId,
+        control: u32,
+        area: ren_tabs::Area,
+        current: Option<Rgb>,
+    ) {
+        if Some(tab) != self.current_id() {
+            return;
+        }
+        let window = self.window();
+        let scale = self.scale();
+        let area = controls::select_area(area, self.last_press, scale);
+        let current = current.unwrap_or(Rgb {
+            red: 0,
+            green: 0,
+            blue: 0,
+        });
+        window.set_page_colour_initial(slint::Color::from_rgb_u8(
+            current.red,
+            current.green,
+            current.blue,
+        ));
+        window.set_page_colour_hex(
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                current.red, current.green, current.blue
+            )
+            .into(),
+        );
+        window.set_page_colour_x(area.x as f32 / scale);
+        window.set_page_colour_y(area.y as f32 / scale);
+        window.set_page_colour_height(area.height as f32 / scale);
+        window.set_page_colour_shown(true);
+        self.colour = Some((tab, control));
+    }
+
+    /// The reader chose a colour, or none (`None`) to keep the page's.
+    fn colour_chosen(&mut self, colour: Option<Rgb>) {
+        let Some((_, control)) = self.colour.take() else {
+            return;
+        };
+        self.window().set_page_colour_shown(false);
+        if let Some(helper) = &mut self.helper {
+            helper.answer_colour(control, colour);
+        }
+    }
+
+    /// Asks the desktop's file chooser for the page's file input; the
+    /// files go to the helper with the next pump.
+    fn choose_files(&mut self, tab: TabId, control: u32, multiple: bool, extensions: Vec<String>) {
+        if Some(tab) != self.current_id() {
+            if let Some(helper) = &mut self.helper {
+                helper.answer_files(control, None);
+            }
+            return;
+        }
+        let site = self
+            .current_url()
+            .as_deref()
+            .and_then(ren_tabs::host_of)
+            .map_or_else(|| "the page".to_owned(), str::to_owned);
+        let title = if multiple {
+            format!("Files for {site} – Ren")
+        } else {
+            format!("A file for {site} – Ren")
+        };
+        let chosen = self.chosen.clone();
+        let wake = self.waker();
+        crate::tabs::portal::choose_files(title, multiple, extensions, move |result| {
+            chosen
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push((control, result));
+            wake();
+        });
     }
 
     /// The reader chose the option in `row` of the drop-down.
@@ -812,6 +1007,30 @@ fn connect(window: &MainWindow, pages: &Rc<RefCell<Pages>>) {
     window.on_page_select_chosen(move |row| w(&|p| p.select_chosen(row as usize)));
     let w = with.clone();
     window.on_page_menu_action(move |action| w(&|p| p.menu_chosen(&action)));
+    let w = with.clone();
+    window.on_page_dialog_answered(move |ok| w(&|p| p.dialog_answered(ok)));
+    let w = with.clone();
+    window.on_page_colour_picked(move |colour| {
+        let rgb = Rgb {
+            red: colour.red(),
+            green: colour.green(),
+            blue: colour.blue(),
+        };
+        w(&|p| p.colour_chosen(Some(rgb)));
+    });
+    let w = with.clone();
+    window.on_page_colour_typed(move |text| {
+        let hex = text.trim().trim_start_matches('#').to_owned();
+        let rgb = ren_settings::Colour::parse(&format!("#{hex}")).map(|c| Rgb {
+            red: c.red,
+            green: c.green,
+            blue: c.blue,
+        });
+        // Text that isn't a colour keeps the page's.
+        w(&|p| p.colour_chosen(rgb));
+    });
+    let w = with.clone();
+    window.on_page_colour_cancelled(move || w(&|p| p.colour_chosen(None)));
     window.on_page_pump(move || with(&|p| p.pump()));
 }
 

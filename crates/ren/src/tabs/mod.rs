@@ -13,6 +13,7 @@ pub mod controls;
 pub mod filters;
 pub mod helper;
 pub mod list;
+pub mod portal;
 
 /// Called from any thread when the helper has sent something, which the
 /// UI thread then takes with [`helper::Helper::pump`].

@@ -8,6 +8,7 @@ import { Splitter } from "splitter.slint";
 import { StatusBar, ToolBar, ToolButton } from "toolbar.slint";
 import { TabBar, TabRow } from "tab_bar.slint";
 import { PageMenu, PageOption, SelectPopup } from "page_controls.slint";
+import { PageColourPicker, PageDialog } from "page_dialogs.slint";
 import { Tray } from "tray.slint";
 import { CategoryEntry, SettingsWindow, SettingRow } from "settings_window.slint";
 import { AboutWindow, NoticeBlock } from "about_window.slint";
@@ -148,6 +149,30 @@ export component MainWindow inherits Window {
     in property <length> page-select-width;
     in property <length> page-select-height;
     callback page-select-chosen(index: int);
+
+    // A dialog of the page shown: 0 none, 1 `alert`, 2 `confirm`, 3
+    // `prompt`; the page's site, its message and the prompt's text.
+    in property <int> page-dialog-kind;
+    in property <string> page-dialog-site;
+    in property <string> page-dialog-message;
+    in-out property <string> page-dialog-text;
+    callback page-dialog-answered(ok: bool);
+    // A colour picker of the page shown, below the element (relative to
+    // the page).
+    in property <bool> page-colour-shown;
+    in property <length> page-colour-x;
+    in property <length> page-colour-y;
+    in property <length> page-colour-height;
+    in property <color> page-colour-initial;
+    in property <string> page-colour-hex;
+    callback page-colour-picked(colour: color);
+    callback page-colour-typed(text: string);
+    callback page-colour-cancelled();
+
+    // Puts the focus into the page's dialog.
+    public function focus-page-dialog() {
+        page-dialog.focus-dialog();
+    }
 
     // Opens the page's context menu at a position relative to the page.
     public function show-page-menu(x: length, y: length) {
@@ -1277,6 +1302,39 @@ export component MainWindow inherits Window {
                                 scroll-event(event) => {
                                     root.page-scroll(event.delta-x, event.delta-y, self.mouse-x, self.mouse-y);
                                     accept
+                                }
+                            }
+
+                            page-dialog := PageDialog {
+                                visible: root.page-dialog-kind > 0;
+                                width: parent.width;
+                                height: parent.height;
+                                kind: root.page-dialog-kind;
+                                site: root.page-dialog-site;
+                                message: root.page-dialog-message;
+                                text <=> root.page-dialog-text;
+                                answered(ok) => {
+                                    root.page-dialog-answered(ok);
+                                    page-focus.focus();
+                                }
+                            }
+
+                            if root.page-colour-shown: PageColourPicker {
+                                width: parent.width;
+                                height: parent.height;
+                                element-x: root.page-colour-x;
+                                element-y: root.page-colour-y;
+                                element-height: root.page-colour-height;
+                                initial: root.page-colour-initial;
+                                hex: root.page-colour-hex;
+                                picked(colour) => {
+                                    root.page-colour-picked(colour);
+                                }
+                                typed(text) => {
+                                    root.page-colour-typed(text);
+                                }
+                                cancelled => {
+                                    root.page-colour-cancelled();
                                 }
                             }
                         }

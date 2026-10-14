@@ -10,10 +10,12 @@ import { Theme } from "theme.slint";
 // Hue, saturation and value of a colour, picked on a square of saturation
 // and value and a bar of hues; with a few colours to start from, the
 // colour as #rrggbb, and the theme's colour.
-component ColourPicker inherits VerticalLayout {
+export component ColourPicker inherits VerticalLayout {
     // The colour to start from, and as #rrggbb, for the field.
     in property <color> initial;
     in property <string> hex;
+    // "Theme's Colour" is offered (settings, not pages).
+    in property <bool> theme-button: true;
     callback picked(colour: color);
     callback typed(text: string);
     callback theme-colour();
@@ -157,7 +159,7 @@ component ColourPicker inherits VerticalLayout {
     HorizontalLayout {
         spacing: 6px;
 
-        Button {
+        if root.theme-button: Button {
             text: "Theme's Colour";
             clicked => {
                 root.theme-colour();
