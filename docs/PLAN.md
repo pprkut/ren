@@ -839,7 +839,7 @@ From here on every milestone ships with tests for what it adds.
   in), the window's geometry (winit only), the tray and the measurement
   modes.
 - **M10 — Performance.** *(for review; see `docs/decisions/0016-performance.md`;
-  the desktop measurements are still to be run)*
+  measured on the desktop, Ars Technica by hand still to do)*
   Re-run the measurement scripts: idle, reading, with
   tabs open and after closing them, during initial and incremental sync of a
   large account. Profile and fix hotspots. Compare the UI renderers again
@@ -888,9 +888,13 @@ From here on every milestone ships with tests for what it adds.
   `REN_SERVO_WR_PROFILER` (WebRender's profiler, for Ars Technica), the
   largest image decoded in `--cycle-articles`, and `just measure-all`,
   which runs every measurement (with the GPU renderers and the synthetic
-  page in `measure-tabs`) into one report: still to be run on the
-  desktop, which decides the renderers, row-by-row PNG decoding and Ars
-  Technica.
+  page in `measure-tabs`) into one report. On the desktop: the GPU
+  renderers take 2–5 times the window's CPU per page frame and 50 MiB
+  more, so there is no renderer setting; the largest image decoded
+  before scaling over 100 real articles took 5.9 MiB, so no row-by-row
+  PNG decoding; the window with the article and two pages takes 74
+  instead of 86 MiB. Open: the article peak with images went above 100
+  MiB (101–104, M6: 88–90), and Ars Technica by hand.
 - **M11 — Release and packaging.**
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
