@@ -73,7 +73,7 @@ Window options:
                      it again (and the article instead of the page), print
                      memory use at each step, and quit
   --measure-settings After 2 s, open the settings dialog, show its web page
-                     settings, close it, open About ren, show its
+                     settings, close it, open About Ren, show its
                      licenses and close it, print memory use at each
                      step, and quit
   --measure-sync     After 2 s, sync twice (into a new database, a full

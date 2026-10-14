@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Measures what the settings dialog and About ren cost (M8b): ren with a
+# Measures what the settings dialog and About Ren cost (M8b): ren with a
 # new, empty home (no account, no database) opens the settings dialog,
-# shows its web page settings, closes it, then opens About ren, shows its
+# shows its web page settings, closes it, then opens About Ren, shows its
 # third-party licenses and closes it; RSS at each step. Twice, release
 # builds with the default features. Needs a graphical session; don't
 # touch the windows while it runs.

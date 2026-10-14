@@ -418,7 +418,7 @@ fn about_ren() {
         .borrow()
         .as_ref()
         .map(ComponentHandle::clone_strong);
-    let about = about.expect("About ren isn't open");
+    let about = about.expect("About Ren isn't open");
     assert!(about.get_version().contains(env!("CARGO_PKG_VERSION")));
     ui.window.invoke_action("about-close".into());
     mock_elapsed_time(16);

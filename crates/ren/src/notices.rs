@@ -149,7 +149,7 @@ mod tests {
             <html><head><title>Licenses</title><style>h1 { color: red }</style></head>
             <body><main>
               <h1>Third Party Licenses</h1>
-              <p>This page lists the licenses of the projects used in ren.</p>
+              <p>This page lists the licenses of the projects used in Ren.</p>
               <h2>Overview of licenses:</h2>
               <ul class="licenses-overview">
                 <li><a href="#Apache-2.0">Apache License 2.0</a> (310)</li>
@@ -174,7 +174,7 @@ Permission is hereby granted, free of charge,
             blocks(html),
             [
                 heading("Third Party Licenses"),
-                paragraph("This page lists the licenses of the projects used in ren."),
+                paragraph("This page lists the licenses of the projects used in Ren."),
                 heading("Overview of licenses:"),
                 paragraph("Apache License 2.0 (310)"),
                 paragraph("MIT License (290)"),

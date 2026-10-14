@@ -368,7 +368,7 @@ pub fn login_message(account: &Account, stored: &Result<(), String>) -> (String,
         ),
         Err(err) => (
             format!(
-                "Logged in, but the app password couldn't be stored ({err}). ren keeps it \
+                "Logged in, but the app password couldn't be stored ({err}). Ren keeps it \
                  until it quits; without a Secret Service, set a password command below."
             ),
             true,
@@ -376,7 +376,7 @@ pub fn login_message(account: &Account, stored: &Result<(), String>) -> (String,
     };
     if source(account) == Source::Command {
         text.push_str(
-            " The password command is set: ren uses the new app password until it quits, \
+            " The password command is set: Ren uses the new app password until it quits, \
              and the command's again after a restart; remove it to keep the new one.",
         );
         error = true;
@@ -393,7 +393,7 @@ pub fn logout_message(revoked: &Revoked, removed: &Result<(), String>) -> (Strin
             false,
         ),
         Revoked::NotOurs => (
-            "Logged out here. The app password comes from the password command, so ren \
+            "Logged out here. The app password comes from the password command, so Ren \
              didn't revoke it; remove it in your Nextcloud's security settings if nothing \
              else needs it."
                 .to_owned(),
@@ -401,7 +401,7 @@ pub fn logout_message(revoked: &Revoked, removed: &Result<(), String>) -> (Strin
         ),
         Revoked::AccountPassword => (
             "Logged out here. The server says the password was your account's own, not an \
-             app password, so nothing was revoked. Log in through the browser to give ren \
+             app password, so nothing was revoked. Log in through the browser to give Ren \
              an app password of its own."
                 .to_owned(),
             true,
