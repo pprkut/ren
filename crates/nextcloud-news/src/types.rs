@@ -70,16 +70,17 @@ pub struct Feed {
     pub added: Option<i64>,
     /// `None` (or 0 in older versions) for feeds outside of folders.
     pub folder_id: Option<u64>,
-    #[serde(default)]
+    /// `null` in the answer to adding the feed.
+    #[serde(default, deserialize_with = "null_as_default")]
     pub unread_count: u64,
     /// 0: default, 1: oldest first, 2: newest first.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub ordering: u8,
     /// The web site. Not sanitised.
     pub link: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub pinned: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub update_error_count: u64,
     pub last_update_error: Option<String>,
 }
@@ -133,6 +134,13 @@ pub struct Item {
     pub content_hash: Option<String>,
 }
 
+/// A value that may be `null`, which counts as its default.
+fn null_as_default<'de, D: Deserializer<'de>, T: Default + Deserialize<'de>>(
+    deserializer: D,
+) -> Result<T, D::Error> {
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// A timestamp sent as a number or as a string of digits.
 fn seconds<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i64>, D::Error> {
     #[derive(Deserialize)]
@@ -155,6 +163,21 @@ fn seconds<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<i64>, D:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// News 28.7's answer to adding a feed: `unreadCount` is `null`.
+    #[test]
+    fn added_feed() {
+        let feeds: Feeds = serde_json::from_str(
+            r#"{"feeds":[{"id":4,"url":"http:\/\/example.org\/x.xml","title":"X feed",
+            "faviconLink":null,"added":1792010630,"folderId":null,"unreadCount":null,
+            "ordering":0,"link":"http:\/\/example.org","pinned":false,"updateErrorCount":0,
+            "lastUpdateError":"","items":[],"nextUpdateTime":null}],"newestItemId":8}"#,
+        )
+        .unwrap();
+        let feed = &feeds.feeds[0];
+        assert_eq!((feed.id, feed.unread_count, feed.folder_id), (4, 0, None));
+        assert_eq!(feeds.newest_item_id, Some(8));
+    }
 
     #[test]
     fn minimal_item() {
