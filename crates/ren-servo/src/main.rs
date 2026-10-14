@@ -24,6 +24,7 @@ use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use ren_tabs::frames::FrameWriter;
+use ren_tabs::scroll::{SmoothScroll, Wheel};
 use ren_tabs::stats::StageStats;
 use ren_tabs::wire::{self, Receiver};
 use ren_tabs::{Command, Event, Input, TabId};
@@ -31,7 +32,6 @@ use rustix::process::{Pid, Signal};
 
 use browser::{Browser, Waker};
 use headless::{HeadlessContext, Readback};
-use input::{SmoothScroll, Wheel};
 
 /// How long Servo may take to shut down before the helper ends itself:
 /// Servo's shutdown can hang once ren is gone.

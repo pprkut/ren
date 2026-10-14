@@ -23,6 +23,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod frames;
+pub mod scroll;
 pub mod stats;
 pub mod wire;
 
