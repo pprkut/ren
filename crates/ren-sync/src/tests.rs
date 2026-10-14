@@ -591,3 +591,16 @@ fn the_local_clock_without_the_servers() {
     setup.sync().unwrap();
     assert_eq!(setup.store.sync_cursor().unwrap(), Some(NOW - 5 - 60));
 }
+
+#[test]
+fn the_last_sync_is_kept() {
+    let mut setup = Setup::new();
+    assert_eq!(setup.store.last_sync().unwrap(), None);
+    setup.sync().unwrap();
+    assert_eq!(setup.store.last_sync().unwrap(), Some(NOW));
+    setup.clock.0.set(NOW + DAY);
+    setup.server.fail_when(|_| Some(Fail::Unauthorized));
+    assert!(setup.sync().is_err());
+    // A failed sync doesn't count.
+    assert_eq!(setup.store.last_sync().unwrap(), Some(NOW));
+}

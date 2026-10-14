@@ -10,6 +10,10 @@ use crate::{Result, Store};
 /// The `lastModified` up to which the server's changes are stored.
 const CURSOR: &str = "cursor";
 
+/// When the last sync that finished ended, by the local clock (unix
+/// seconds); written by the sync.
+pub const LAST_SYNC: &str = "last_sync";
+
 impl Store {
     /// The sync cursor: the `lastModified` (unix seconds) up to which the
     /// server's changes are stored. `None` before the first sync.
@@ -23,6 +27,12 @@ impl Store {
 
     pub fn set_sync_cursor(&mut self, last_modified: i64) -> Result<()> {
         self.set_sync_values(&[(CURSOR, Some(last_modified))])
+    }
+
+    /// When the last sync that finished ended, by the local clock (unix
+    /// seconds); `None` before the first one.
+    pub fn last_sync(&self) -> Result<Option<i64>> {
+        self.sync_value(LAST_SYNC)
     }
 
     /// A number the sync keeps between runs, e.g. the progress of a resync.

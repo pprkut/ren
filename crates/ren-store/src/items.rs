@@ -467,6 +467,15 @@ impl Store {
         ))
     }
 
+    /// The number of items that arrived in the latest sync, read or not;
+    /// filtered items aren't counted, as they aren't shown.
+    pub fn new_count(&self) -> Result<u64> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT count(*) FROM items WHERE is_new = 1 AND filtered = 0")?
+            .query_row([], |row| row.get(0))?)
+    }
+
     /// Clears the "new" marker of all items, when a sync starts. Returns
     /// the number of items that had it.
     pub fn clear_new(&mut self) -> Result<usize> {
@@ -618,13 +627,16 @@ mod tests {
             Status::Unread
         );
         assert_eq!(store.item(2).unwrap().unwrap().summary.status, Status::New);
+        assert_eq!(store.new_count().unwrap(), 1);
         // Read items are read, new or not.
         store.set_unread(&[2], false).unwrap();
         assert_eq!(store.item(2).unwrap().unwrap().summary.status, Status::Read);
         store.set_unread(&[2], true).unwrap();
         assert_eq!(store.item(2).unwrap().unwrap().summary.status, Status::New);
 
+        assert_eq!(store.new_count().unwrap(), 1);
         assert_eq!(store.clear_new().unwrap(), 1);
+        assert_eq!(store.new_count().unwrap(), 0);
         assert_eq!(
             store.item(2).unwrap().unwrap().summary.status,
             Status::Unread

@@ -30,6 +30,7 @@ pub use changes::{MarkReadScope, PendingMarkRead};
 pub use error::Error;
 pub use feeds::{Feed, FeedChanges, FeedSettings, Folder};
 pub use items::{ItemDetails, ItemQuery, ItemSummary, Listed, Selection, Sort, SortColumn, Status};
+pub use state::LAST_SYNC;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
