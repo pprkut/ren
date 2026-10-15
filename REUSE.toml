@@ -49,6 +49,13 @@ SPDX-FileCopyrightText = [
 ]
 SPDX-License-Identifier = "ISC AND MIT"
 
+# ICU's licence and the notices of its third-party parts, for the
+# third-party notices (ICU is in SpiderMonkey's source in mozjs_sys).
+[[annotations]]
+path = "notices/icu-78.txt"
+SPDX-FileCopyrightText = "Copyright 2016-2025 Unicode, Inc."
+SPDX-License-Identifier = "Unicode-3.0"
+
 # The logo's PNGs for the icon theme, rendered by scripts/icons.sh.
 [[annotations]]
 path = "data/icons/**"

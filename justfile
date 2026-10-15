@@ -59,6 +59,10 @@ build profile="release":
     cargo build --locked --profile {{profile}}
     cd crates/ren-servo && cargo build --locked --profile {{profile}}
 
+# Generate THIRD-PARTY-NOTICES.html from both workspaces' crates (cargo-about) and notices/; --check compares instead
+notices *args:
+    scripts/notices.py {{args}}
+
 # Render the logo's PNGs for the icon theme into data/icons (needs rsvg-convert)
 icons:
     scripts/icons.sh
