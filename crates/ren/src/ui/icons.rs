@@ -117,6 +117,21 @@ const ICONS: &[Icon] = &[
         fallback: bundled!("external-link"),
         set: |icons, image| icons.set_browser(image),
     },
+    Icon {
+        names: &["dialog-close", "window-close"],
+        fallback: bundled!("x"),
+        set: |icons, image| icons.set_find_close(image),
+    },
+    Icon {
+        names: &["go-down-search", "go-down"],
+        fallback: bundled!("chevron-down"),
+        set: |icons, image| icons.set_find_next(image),
+    },
+    Icon {
+        names: &["go-up-search", "go-up"],
+        fallback: bundled!("chevron-up"),
+        set: |icons, image| icons.set_find_previous(image),
+    },
 ];
 
 /// The configured icon theme: KDE's from `kdeglobals`, else GTK's.
