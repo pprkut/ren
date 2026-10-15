@@ -85,7 +85,7 @@ export component FeedDialog inherits Window {
 
             name-field := LineEdit {
                 visible: root.kind != FeedDialogKind.add-feed;
-                height: self.visible ? self.preferred-height : 0px;
+                height: self.visible ? max(self.min-height, self.preferred-height) : 0px;
                 text <=> root.name;
                 enabled: !root.busy;
                 placeholder-text: root.kind == FeedDialogKind.folder ? "The folder's name" : "The feed's own name, if empty";
@@ -103,7 +103,7 @@ export component FeedDialog inherits Window {
 
             url-field := LineEdit {
                 visible: root.kind != FeedDialogKind.folder;
-                height: self.visible ? self.preferred-height : 0px;
+                height: self.visible ? max(self.min-height, self.preferred-height) : 0px;
                 text <=> root.url;
                 enabled: !root.busy;
                 placeholder-text: "https://example.org/feed.xml, or the site's address";

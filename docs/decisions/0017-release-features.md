@@ -38,10 +38,11 @@ A lotus of five petals drawn as outlines, each with its midrib and two
 cross lines (the "wires"), in a gradient from pink to violet:
 `crates/ren/icons/ren.svg`, for 48 pixels and up. At 16–32 pixels the
 wires blur, so `ren-small.svg` is the lotus without them, its petals
-still overlapping, drawn on Breeze's 22-pixel grid with one-pixel lines
-like Breeze's icons, and with the petals' bases a little apart, so that
-their lines don't run together where they meet. `ren-mono.svg` is that
-in one colour. Under the GPL, like the code, with SPDX headers in the files.
+still overlapping and meeting at one base, drawn on Breeze's 22-pixel
+grid with one-pixel lines like Breeze's icons. Near the base the petals'
+edges leave in three directions on each side, where there were ten
+directions in all, so that they don't fan out into a blot.
+`ren-mono.svg` is that in one colour. Under the GPL, like the code, with SPDX headers in the files.
 The windows take the small one as their icon (X11; Wayland takes the
 icon from the `.desktop` file, M11): window managers show it at title
 bar size, where the wires ran together. About Ren shows the large one,
@@ -55,7 +56,8 @@ which ran together into a blot where the five petals met, and was drawn
 at 64 pixels for a panel showing 44 (see "The tray"). Both are fixed
 above. A first fix left out the parts of petals that others hide, which
 was clear but lost the overlapping lines; the second review brought them
-back, with the bases apart instead.
+back, with the petals' bases apart, which made the base uneven, unlike
+the large logo; the third keeps one base and merges the edges near it.
 
 ### The tray
 
