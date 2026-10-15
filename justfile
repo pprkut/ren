@@ -59,6 +59,10 @@ build profile="release":
     cargo build --locked --profile {{profile}}
     cd crates/ren-servo && cargo build --locked --profile {{profile}}
 
+# Render the logo's PNGs for the icon theme into data/icons (needs rsvg-convert)
+icons:
+    scripts/icons.sh
+
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
     scripts/measure.sh {{variants}}

@@ -38,6 +38,11 @@ mod settings;
 
 slint::include_modules!();
 
+/// The application's id: of its `.desktop` file, icon and AppStream
+/// metadata (`data/`), and of its windows, by which Wayland compositors
+/// find the icon.
+const APP_ID: &str = "io.github.pprkut.ren";
+
 /// The renderer with the smallest footprint, see
 /// `docs/decisions/0001-ui-toolkit.md`.
 const DEFAULT_RENDERER: &str = "software";
@@ -1982,6 +1987,7 @@ fn run_window(
     mut instance: Option<Instance>,
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
+    slint::set_xdg_app_id(APP_ID)?;
     let (window, app) = build_window(options, started, reader, settings, database, saved)?;
     if let Some(instance) = &mut instance {
         let weak = window.as_weak();
