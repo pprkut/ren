@@ -6,6 +6,7 @@ name = "ren-settings"
 description = "Settings, UI state and the app password of ren"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

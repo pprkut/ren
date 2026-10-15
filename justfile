@@ -63,6 +63,14 @@ build profile="release":
 notices *args:
     scripts/notices.py {{args}}
 
+# Install what `just build` built: the binary, the Servo helper in libexec/ren, the .desktop file, AppStream, icons, docs
+install prefix="/usr/local" destdir="":
+    scripts/install.sh {{prefix}} {{destdir}}
+
+# The release tarballs in target/dist: the source, and both workspaces' crates for building offline
+dist:
+    scripts/dist.sh
+
 # Render the logo's PNGs for the icon theme into data/icons (needs rsvg-convert)
 icons:
     scripts/icons.sh
