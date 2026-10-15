@@ -6,6 +6,7 @@ name = "ren-tabs"
 description = "Web page tabs of ren: the protocol between the window and its Servo helper"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
