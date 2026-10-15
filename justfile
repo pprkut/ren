@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 # SPDX-License-Identifier: CC0-1.0
 
+appid := 'io.github.pprkut.ren'
+
 # List the recipes
 default:
     @just --list
@@ -58,6 +60,17 @@ check-servo:
 build profile="release":
     cargo build --locked --profile {{profile}}
     cd crates/ren-servo && cargo build --locked --profile {{profile}}
+
+# Render the logo's PNGs for the icon theme into data/icons (needs rsvg-convert)
+icons:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The small logo up to 32 pixels, the logo with its wires from 48.
+    for size in 16 22 24 32 48 64 128 256 512; do
+        if ((size < 48)); then svg=ren-small.svg; else svg=ren.svg; fi
+        mkdir -p data/icons/${size}x$size
+        rsvg-convert -w $size -h $size crates/ren/icons/$svg -o data/icons/${size}x$size/{{appid}}.png
+    done
 
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
