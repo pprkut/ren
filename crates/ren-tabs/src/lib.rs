@@ -239,6 +239,18 @@ pub enum DialogKind {
     Prompt,
 }
 
+/// Where the find bar goes ([`Command::Find`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FindStep {
+    /// The text or the options changed: the first match.
+    First,
+    Next,
+    Previous,
+}
+
+/// The longest text the find bar sends, in characters.
+pub const MAX_FIND_TEXT: usize = 1_000;
+
 /// The answer to a page's dialog ([`Event::Dialog`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DialogAnswer {
@@ -357,6 +369,15 @@ pub enum Command {
         control: u32,
         paths: Option<Vec<std::path::PathBuf>>,
     },
+    /// Finds `text` (at most [`MAX_FIND_TEXT`] characters) in a tab's
+    /// page: selects a match and scrolls it into view. An empty text takes
+    /// the selection away. Answered with [`Event::Found`].
+    Find {
+        tab: TabId,
+        text: String,
+        match_case: bool,
+        step: FindStep,
+    },
 }
 
 /// From the helper to the window.
@@ -469,6 +490,13 @@ pub enum Event {
     ControlHidden {
         control: u32,
     },
+    /// What [`Command::Find`] found: which match is selected (from 1; 0
+    /// for none) of how many.
+    Found {
+        tab: TabId,
+        current: u32,
+        total: u32,
+    },
 }
 
 #[cfg(test)]
@@ -564,6 +592,12 @@ mod tests {
             Command::Files {
                 control: 7,
                 paths: Some(vec!["/home/u/a b.pdf".into()]),
+            },
+            Command::Find {
+                tab: 8,
+                text: "a \"cat\"\n".to_owned(),
+                match_case: true,
+                step: FindStep::Previous,
             },
         ];
         for command in commands {

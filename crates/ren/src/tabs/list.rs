@@ -199,7 +199,8 @@ impl TabList {
             | Event::Dialog { .. }
             | Event::ColourPicker { .. }
             | Event::FilePicker { .. }
-            | Event::ControlHidden { .. } => {}
+            | Event::ControlHidden { .. }
+            | Event::Found { .. } => {}
         }
     }
 }
