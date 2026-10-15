@@ -368,6 +368,12 @@ fn read_events(socket: UnixStream, inbox: &Mutex<Inbox>, waker: &Waker) -> Strin
                 waker();
             }
             Ok(None) => return "the Servo helper exited".to_owned(),
+            Err(err) if err.kind() == std::io::ErrorKind::Unsupported => {
+                eprintln!(
+                    "ren: a message from the Servo helper this ren doesn't know, skipped (is the \
+                     helper newer? `just build` builds both): {err}"
+                );
+            }
             Err(err) => return format!("reading from the Servo helper failed: {err}"),
         }
     }
