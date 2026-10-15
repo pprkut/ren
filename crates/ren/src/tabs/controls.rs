@@ -7,6 +7,8 @@
 //! window. The helper runs web content, so what it sends is limited
 //! again here.
 
+use std::collections::HashMap;
+
 use ren_tabs::{Area, MenuAction, MenuEntry, SelectEntry, TabId};
 
 /// The most entries shown of a drop-down.
@@ -209,6 +211,57 @@ impl Menu {
     }
 }
 
+/// How a page's `alert`, `confirm` or `prompt` is handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogTurn {
+    /// The page's first: shown.
+    First,
+    /// Another from the same page: shown, with a way to stop them.
+    Again,
+    /// The reader stopped the page's dialogs: cancelled without showing.
+    Stopped,
+}
+
+/// The page of each tab that showed a dialog last, and whether the reader
+/// stopped its dialogs, as browsers let them: a script that opens one
+/// after another can't keep the reader from the page. A tab that loads
+/// another page starts anew.
+#[derive(Debug, Default)]
+pub struct PageDialogs {
+    pages: HashMap<TabId, (String, bool)>,
+}
+
+impl PageDialogs {
+    /// How the dialog the page at `url` in `tab` opens now is handled.
+    pub fn turn(&mut self, tab: TabId, url: &str) -> DialogTurn {
+        let page = without_fragment(url);
+        match self.pages.get(&tab) {
+            Some((shown, true)) if shown == page => DialogTurn::Stopped,
+            Some((shown, false)) if shown == page => DialogTurn::Again,
+            _ => {
+                self.pages.insert(tab, (page.to_owned(), false));
+                DialogTurn::First
+            }
+        }
+    }
+
+    /// The reader stopped the dialogs of the page in `tab`.
+    pub fn stop(&mut self, tab: TabId) {
+        if let Some((_, stopped)) = self.pages.get_mut(&tab) {
+            *stopped = true;
+        }
+    }
+
+    pub fn closed(&mut self, tab: TabId) {
+        self.pages.remove(&tab);
+    }
+}
+
+/// The page itself: a jump within it is the same page.
+fn without_fragment(url: &str) -> &str {
+    url.split_once('#').map_or(url, |(page, _)| page)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,5 +423,27 @@ mod tests {
         assert_eq!(menu.choose("copy"), None);
         assert_eq!(menu.choose("open-image"), None);
         assert_eq!(menu.choose("format-disk"), None);
+    }
+
+    #[test]
+    fn page_dialogs() {
+        let mut dialogs = PageDialogs::default();
+        let page = "https://example.org/a";
+        assert_eq!(dialogs.turn(1, page), DialogTurn::First);
+        assert_eq!(
+            dialogs.turn(1, "https://example.org/a#b"),
+            DialogTurn::Again
+        );
+        // Not stopped yet: shown again.
+        assert_eq!(dialogs.turn(1, page), DialogTurn::Again);
+        dialogs.stop(1);
+        assert_eq!(dialogs.turn(1, page), DialogTurn::Stopped);
+        // Other tabs, and another page in the tab, start anew.
+        assert_eq!(dialogs.turn(2, page), DialogTurn::First);
+        assert_eq!(dialogs.turn(1, "https://example.org/c"), DialogTurn::First);
+        assert_eq!(dialogs.turn(1, "https://example.org/c"), DialogTurn::Again);
+        dialogs.stop(1);
+        dialogs.closed(1);
+        assert_eq!(dialogs.turn(1, "https://example.org/c"), DialogTurn::First);
     }
 }

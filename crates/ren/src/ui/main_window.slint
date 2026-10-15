@@ -156,6 +156,9 @@ export component MainWindow inherits Window {
     in property <string> page-dialog-site;
     in property <string> page-dialog-message;
     in-out property <string> page-dialog-text;
+    // Another dialog of the same page: it offers to stop them.
+    in property <bool> page-dialog-again;
+    in-out property <bool> page-dialog-stop;
     callback page-dialog-answered(ok: bool);
     // A colour picker of the page shown, below the element (relative to
     // the page).
@@ -1313,6 +1316,8 @@ export component MainWindow inherits Window {
                                 site: root.page-dialog-site;
                                 message: root.page-dialog-message;
                                 text <=> root.page-dialog-text;
+                                again: root.page-dialog-again;
+                                stop <=> root.page-dialog-stop;
                                 answered(ok) => {
                                     root.page-dialog-answered(ok);
                                     page-focus.focus();
