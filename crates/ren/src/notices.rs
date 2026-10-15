@@ -209,13 +209,23 @@ Permission is hereby granted, free of charge,
             env!("CARGO_MANIFEST_DIR"),
             "/../../THIRD-PARTY-NOTICES.html"
         )));
-        assert!(blocks.contains(&heading("Lucide icons")));
-        assert_eq!(
-            blocks
-                .iter()
-                .filter(|block| matches!(block, Block::Pre(_)))
-                .count(),
-            2
-        );
+        for heading_text in [
+            "Lucide icons",
+            "Libraries inside crates",
+            "ICU",
+            "Rust crates",
+        ] {
+            assert!(blocks.contains(&heading(heading_text)), "{heading_text}");
+        }
+        // A licence text per crate licence and library, each after a
+        // heading and the crates using it.
+        let texts = blocks
+            .iter()
+            .filter(|block| matches!(block, Block::Pre(_)))
+            .count();
+        assert!(texts > 100, "{texts} licence texts");
+        assert!(blocks.iter().any(
+            |block| matches!(block, Block::Paragraph(text) if text.starts_with("Used by") && text.contains("slint"))
+        ));
     }
 }
