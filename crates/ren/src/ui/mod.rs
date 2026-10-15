@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use ren_settings::{Reload, Settings, SettingsFile};
@@ -1913,6 +1914,27 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
         Some(Claim::First(instance)) => Some(instance),
         None => None,
     };
+    // Answered from now on, not only once the window is made: a start
+    // that hands over meanwhile would otherwise wait in vain and open a
+    // second window.
+    let activations = Arc::new(Mutex::new(Activations::default()));
+    let socket = instance.map(|mut instance| {
+        let target = activations.clone();
+        let serving = instance.serve(move |activate| {
+            target
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .activate(activate);
+        });
+        if let Err(err) = serving {
+            eprintln!("ren: a second start opens a second window: {err}");
+        }
+        instance
+    });
+    let instance = OneInstance {
+        socket,
+        activations,
+    };
     // Demo data is written before the window is made; the startup times
     // are measured from when it is ready.
     let demo = demo_data(options)?;
@@ -1952,6 +1974,48 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
     .map_err(|err| err.to_string())
 }
 
+/// The socket of this Ren, if it has one, and where the starts that hand
+/// over to it go.
+struct OneInstance {
+    // Dropped when the event loop ends: the socket goes with it.
+    socket: Option<Instance>,
+    activations: Arc<Mutex<Activations>>,
+}
+
+/// Where the starts that hand over go: the window once it is made; until
+/// then they wait.
+#[derive(Default)]
+struct Activations {
+    window: Option<slint::Weak<MainWindow>>,
+    waiting: Vec<Activate>,
+}
+
+impl Activations {
+    fn activate(&mut self, activate: Activate) {
+        match &self.window {
+            Some(window) => Self::send(window.clone(), activate),
+            None => self.waiting.push(activate),
+        }
+    }
+
+    /// Sends the starts that waited to `window`, and the next ones.
+    fn window_made(&mut self, window: slint::Weak<MainWindow>) {
+        for activate in self.waiting.drain(..) {
+            Self::send(window.clone(), activate);
+        }
+        self.window = Some(window);
+    }
+
+    /// The window comes to the front once the event loop runs.
+    fn send(window: slint::Weak<MainWindow>, activate: Activate) {
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = window.upgrade() {
+                window.invoke_activate(activate.token.unwrap_or_default().into());
+            }
+        });
+    }
+}
+
 /// Hands over to a Ren that runs already, or claims the socket for this
 /// one; `None` where it doesn't take part (`Options::single_instance`)
 /// or the socket can't be used.
@@ -1979,24 +2043,15 @@ fn run_window(
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
     saved: (Saved, Option<String>),
-    mut instance: Option<Instance>,
+    instance: OneInstance,
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
     let (window, app) = build_window(options, started, reader, settings, database, saved)?;
-    if let Some(instance) = &mut instance {
-        let weak = window.as_weak();
-        let serving = instance.serve(move |activate| {
-            let weak = weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(window) = weak.upgrade() {
-                    window.invoke_activate(activate.token.unwrap_or_default().into());
-                }
-            });
-        });
-        if let Err(err) = serving {
-            eprintln!("ren: a second start opens a second window: {err}");
-        }
-    }
+    instance
+        .activations
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .window_made(window.as_weak());
 
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
     let _measure_sync = options
@@ -2039,7 +2094,7 @@ fn run_window(
     // Until quit: the window may be hidden in the tray.
     let result = slint::run_event_loop_until_quit();
     // A start from now on opens a new window.
-    drop(instance);
+    drop(instance.socket);
     window.hide()?;
     app.dialog.borrow_mut().take();
     app.login.borrow_mut().take();
