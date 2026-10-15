@@ -6,12 +6,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 <!-- Ren's logo in one colour, for the tray: ren-small.svg in black, which Ren replaces with the panel's text colour. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
   <g fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-    <!-- The outer petals, then the inner ones, then the middle one; their
-         bases a little apart, so that their lines don't run together. -->
-    <path d="M9.2 19.1C4.73 19.45 2.06 17 0.86 12.53C4.47 11.84 7.14 13.95 9.2 19.1Z"/>
-    <path d="M12.8 19.1C17.27 19.45 19.94 17 21.14 12.53C17.53 11.84 14.86 13.95 12.8 19.1Z"/>
-    <path d="M10.2 18.5C6.08 16.78 3.78 12.53 4.47 6.69C8.08 8.23 9.86 11.97 10.2 18.5Z"/>
-    <path d="M11.8 18.5C15.92 16.78 18.22 12.53 17.53 6.69C13.92 8.23 12.14 11.97 11.8 18.5Z"/>
-    <path d="M11 19.06C7.39 15.62 7.39 8.41 11 2.56C14.61 8.41 14.61 15.62 11 19.06Z"/>
+    <!-- The outer petals, then the inner ones, then the middle one. Near the
+         base, their edges leave in three directions on each side, so that
+         they don't fan out into a blot where they meet. -->
+    <path d="M11 19C6.52 18.53 2.06 17 0.86 12.53C4.47 11.84 9.58 13.69 11 19Z"/>
+    <path d="M11 19C15.48 18.53 19.94 17 21.14 12.53C17.53 11.84 12.42 13.69 11 19Z"/>
+    <path d="M11 19C7.45 16.23 3.78 12.53 4.47 6.69C8.08 8.23 9.58 13.69 11 19Z"/>
+    <path d="M11 19C14.55 16.23 18.22 12.53 17.53 6.69C13.92 8.23 12.42 13.69 11 19Z"/>
+    <path d="M11 19C7.45 16.23 7.39 8.41 11 2.56C14.61 8.41 14.55 16.23 11 19Z"/>
   </g>
 </svg>
