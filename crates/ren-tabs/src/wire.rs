@@ -74,7 +74,10 @@ impl Decoder {
     }
 
     /// The next complete message, if there is one. A message longer than
-    /// [`MAX_MESSAGE_BYTES`] or one that doesn't decode is an error.
+    /// [`MAX_MESSAGE_BYTES`] or one that doesn't decode is an error. A
+    /// message that is JSON but not one this side knows (from a helper or
+    /// window of another version) is skipped with an
+    /// [`io::ErrorKind::Unsupported`] error: the next one can be decoded.
     pub fn decode<T: DeserializeOwned>(&mut self) -> io::Result<Option<T>> {
         let pending = &self.buffer[self.start..];
         let Some(len) = pending.first_chunk::<4>() else {
@@ -90,8 +93,12 @@ impl Decoder {
         let Some(json) = pending.get(4..4 + len) else {
             return Ok(None);
         };
-        let message = serde_json::from_slice(json)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let message = serde_json::from_slice(json);
+        if let Err(err) = &message
+            && !err.is_data()
+        {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string()));
+        }
         self.start += 4 + len;
         if self.start == self.buffer.len() {
             self.buffer.clear();
@@ -100,7 +107,10 @@ impl Decoder {
             self.buffer.drain(..self.start);
             self.start = 0;
         }
-        Ok(Some(message))
+        match message {
+            Ok(message) => Ok(Some(message)),
+            Err(err) => Err(io::Error::new(io::ErrorKind::Unsupported, err)),
+        }
     }
 }
 
@@ -213,7 +223,25 @@ mod tests {
         let mut decoder = Decoder::default();
         decoder.push(&3u32.to_le_bytes());
         decoder.push(b"{x}");
-        assert!(decoder.decode::<Event>().is_err());
+        let err = decoder.decode::<Event>().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn skips_unknown_messages() {
+        // A command from a newer window, then one this side knows.
+        let unknown = br#"{"Teleport":{"tab":1}}"#;
+        let mut decoder = Decoder::default();
+        decoder.push(&(unknown.len() as u32).to_le_bytes());
+        decoder.push(unknown);
+        decoder.push(&encode(&Command::Close { tab: 2 }));
+        let err = decoder.decode::<Command>().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+        assert!(err.to_string().contains("Teleport"), "{err}");
+        assert_eq!(
+            decoder.decode::<Command>().unwrap(),
+            Some(Command::Close { tab: 2 })
+        );
     }
 
     #[test]
