@@ -19,6 +19,7 @@ use ren_tabs::{
 use slint::{ComponentHandle, Model, SharedString, VecModel};
 
 use super::{MainWindow, PageMenu, PageOption, TabRow};
+use crate::article::find;
 use crate::tabs::Waker;
 use crate::tabs::controls::{self, Choice};
 use crate::tabs::filters::Filters;
@@ -540,6 +541,18 @@ impl Pages {
                     multiple,
                     extensions,
                 } => self.choose_files(tab, control, multiple, extensions),
+                Event::Found {
+                    tab,
+                    current,
+                    total,
+                } => {
+                    if self.current_id() == Some(tab) {
+                        let text = window.get_find_text();
+                        window.set_find_status(
+                            find::status(&text, current as usize, total as usize).into(),
+                        );
+                    }
+                }
                 Event::ControlHidden { control } => {
                     if self.select.as_ref().is_some_and(|s| s.control == control) {
                         self.select = None;
@@ -885,6 +898,22 @@ impl Pages {
         }
     }
 
+    /// Finds `text` in the page shown for the find bar (`step` as in
+    /// [`find::step_from`]); the helper answers with what it found.
+    fn find(&mut self, text: &str, match_case: bool, step: i32) {
+        let (Some(tab), Some(helper)) = (self.current_id(), self.helper.as_mut()) else {
+            self.window()
+                .set_find_status(find::status(text, 0, 0).into());
+            return;
+        };
+        let step = match find::step_from(step) {
+            find::Step::First => ren_tabs::FindStep::First,
+            find::Step::Next => ren_tabs::FindStep::Next,
+            find::Step::Previous => ren_tabs::FindStep::Previous,
+        };
+        helper.find(tab, text, match_case, step);
+    }
+
     fn current_id(&self) -> Option<TabId> {
         self.list.current_tab().map(|t| t.id)
     }
@@ -1012,6 +1041,8 @@ fn connect(window: &MainWindow, pages: &Rc<RefCell<Pages>>) {
     });
     let w = with.clone();
     window.on_page_navigate(move |action| w(&|p| p.navigate(&action)));
+    let w = with.clone();
+    window.on_page_find(move |text, match_case, step| w(&|p| p.find(&text, match_case, step)));
     let w = with.clone();
     window.on_page_resized(move || w(&|p| p.resized()));
     let w = with.clone();

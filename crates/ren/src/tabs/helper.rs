@@ -208,6 +208,15 @@ impl Helper {
         self.send(&Command::Back { tab });
     }
 
+    pub fn find(&mut self, tab: TabId, text: &str, match_case: bool, step: ren_tabs::FindStep) {
+        self.send(&Command::Find {
+            tab,
+            text: text.chars().take(ren_tabs::MAX_FIND_TEXT).collect(),
+            match_case,
+            step,
+        });
+    }
+
     pub fn forward(&mut self, tab: TabId) {
         self.send(&Command::Forward { tab });
     }
