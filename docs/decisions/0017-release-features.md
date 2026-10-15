@@ -106,6 +106,13 @@ there is no socket, and a second start opens a second window as before.
 Demo data (`--items`, `--dump`), another database (`--database`) and the
 measurements stay apart (`Options::single_instance`).
 
+*After the review (3b4fc64):* the socket is answered right after it is
+claimed, not only once the window is made. Before, a start that handed
+over while the first was still making its window (a cold start, a large
+database) waited 2 s in vain and opened a second window; now it gets its
+answer at once, and the window comes to the front once it exists.
+Checked with two starts 50 ms apart: the second handed over in 8 ms.
+
 ### Broken feeds
 
 ![A broken feed's tooltip](0017/broken-feed.webp)
@@ -187,7 +194,11 @@ Now:
   message the page wrote can't be taken for one of Ren's; Escape
   cancels, Enter confirms, a prompt's default is selected. Messages are
   cut to 2,000 characters. Servo blocks the page's script until the
-  answer, as browsers do.
+  answer, as browsers do. *After the review (6433cdc):* a page's second
+  dialog offers "Don't let this page show more dialogs"; its next ones
+  are then cancelled without being shown, until the tab loads another
+  page, so a script opening one after another can't keep the reader from
+  the page (checked with `pattern-helper`).
 - **Colour inputs:** Ren's colour picker from the settings dialog (now
   without "Theme's Colour"), below the element; clicking beside it keeps
   the page's colour.
