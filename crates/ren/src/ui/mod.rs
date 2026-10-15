@@ -57,8 +57,11 @@ const TRAY_LOGO: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons
 const TRAY_LOGO_MONO: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/ren-mono.svg"));
 
-/// The size the tray icon is drawn at, in pixels; panels scale it down.
-const TRAY_ICON_SIZE: u32 = 64;
+/// The size the tray icon is drawn at, in pixels. Slint sends the tray one
+/// pixmap, which the panel scales: Plasma shows tray icons at 22 pixels,
+/// so 44 is their size at a scale of 2 and halves cleanly to 22, where 64
+/// came out blurred at both.
+const TRAY_ICON_SIZE: u32 = 44;
 
 /// The colours of the monochrome tray icon: Breeze's text colours on a dark
 /// and a light panel.
@@ -1469,7 +1472,7 @@ fn tray_svg(style: ren_settings::TrayIconStyle, dark: bool) -> String {
         Some(colour) => TRAY_LOGO_MONO.replace("#000000", colour),
         None => TRAY_LOGO.to_owned(),
     };
-    svg.replacen("width=\"16\" height=\"16\"", &size, 1)
+    svg.replacen("width=\"22\" height=\"22\"", &size, 1)
 }
 
 /// Whether the desktop shows tray icons: a StatusNotifierWatcher with a
@@ -2386,7 +2389,7 @@ mod tests {
         use ren_settings::TrayIconStyle;
         let colour = tray_svg(TrayIconStyle::Colour, true);
         assert!(colour.contains("url(#petal)"));
-        assert!(colour.contains("width=\"64\" height=\"64\""));
+        assert!(colour.contains("width=\"44\" height=\"44\""));
         for (style, dark, colour) in [
             (TrayIconStyle::Light, false, TRAY_LIGHT),
             (TrayIconStyle::Dark, true, TRAY_DARK),
@@ -2396,7 +2399,7 @@ mod tests {
             let svg = tray_svg(style, dark);
             assert!(svg.contains(&format!("stroke=\"{colour}\"")), "{style:?}");
             assert!(!svg.contains("#000000"));
-            assert!(svg.contains("width=\"64\""));
+            assert!(svg.contains("width=\"44\""));
             assert!(slint::Image::load_from_svg_data(svg.as_bytes()).is_ok());
         }
     }
