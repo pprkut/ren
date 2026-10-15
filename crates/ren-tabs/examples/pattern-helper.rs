@@ -22,7 +22,8 @@
 //!
 //! Keys open what pages open, to try the window's controls: `a`, `c` and
 //! `p` an `alert`, `confirm` and `prompt`, `k` a colour picker, `f` a file
-//! picker; the window's answers go to stderr.
+//! picker; the window's answers go to stderr. The find bar finds in
+//! [`PAGE_TEXT`] (the page's "text"), without selecting or scrolling.
 
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
@@ -34,7 +35,10 @@ use ren_tabs::frames::FrameWriter;
 use ren_tabs::scroll::{SmoothScroll, Wheel};
 use ren_tabs::stats::StageStats;
 use ren_tabs::wire::{self, Receiver};
-use ren_tabs::{Area, Command, DialogKind, Event, Input, Key, Rgb, Size, TabId};
+use ren_tabs::{Area, Command, DialogKind, Event, FindStep, Input, Key, Rgb, Size, TabId};
+
+/// What the find bar finds in.
+const PAGE_TEXT: &str = "The pattern helper paints a pattern, not a page: a pattern to scroll.";
 
 /// The synthetic page's height in physical pixels at scale 1.
 const PAGE_HEIGHT: f32 = 20_000.0;
@@ -87,6 +91,7 @@ fn main() -> io::Result<()> {
         scroll: SmoothScroll::default(),
         stats: StageStats::new("helper"),
         controls: 0,
+        found: None,
     };
     loop {
         // A frame that is ready waits for the window's answer, not a time.
@@ -148,6 +153,8 @@ struct Pattern {
     stats: StageStats,
     /// The number of the last control opened.
     controls: u32,
+    /// The match the find bar went to last.
+    found: Option<u32>,
 }
 
 impl Pattern {
@@ -221,6 +228,40 @@ impl Pattern {
             }
             Command::Files { control, paths } => {
                 eprintln!("pattern-helper: files {control}: {paths:?}");
+            }
+            Command::Find {
+                tab,
+                text,
+                match_case,
+                step,
+            } => {
+                let total = if text.is_empty() {
+                    0
+                } else if match_case {
+                    PAGE_TEXT.matches(&text).count() as u32
+                } else {
+                    PAGE_TEXT
+                        .to_lowercase()
+                        .matches(&text.to_lowercase())
+                        .count() as u32
+                };
+                self.found = (total > 0).then(|| match (step, self.found) {
+                    (FindStep::Next, Some(last)) => (last + 1) % total,
+                    (FindStep::Previous, Some(last)) => (last + total - 1) % total,
+                    (FindStep::Previous, None) => total - 1,
+                    _ => 0,
+                });
+                let current = self.found.map_or(0, |found| found + 1);
+                eprintln!("pattern-helper: found {current} of {total}");
+                wire::send(
+                    out,
+                    &Event::Found {
+                        tab,
+                        current,
+                        total,
+                    },
+                    None,
+                )?;
             }
             _ => {}
         }

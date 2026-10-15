@@ -14,6 +14,7 @@ import { CategoryEntry, SettingsWindow, SettingRow } from "settings_window.slint
 import { AboutWindow, NoticeBlock } from "about_window.slint";
 import { ConfirmWindow } from "confirm_window.slint";
 import { FeedDialog, FeedDialogKind } from "feed_dialog.slint";
+import { FindBar } from "find_bar.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { Logo } from "logo.slint";
@@ -90,6 +91,40 @@ export component MainWindow inherits Window {
 
     // Whether links can open in tabs (built with Servo).
     in property <bool> tabs-available;
+
+    // The find bar, below the article or the page shown.
+    in-out property <bool> find-open;
+    in-out property <string> find-text;
+    in-out property <bool> find-match-case;
+    // "2 of 7", "Not found", or empty.
+    in property <string> find-status;
+    // Finds in the article view or a page; step 0: the text or the
+    // options changed, 1: the next match, 2: the previous one. An empty
+    // text takes the match's selection away.
+    callback article-find(text: string, match-case: bool, step: int);
+    callback page-find(text: string, match-case: bool, step: int);
+    // There is text to find in: a page, or an article in the HTML view.
+    property <bool> can-find: root.current-tab >= 0 || (root.html-view && !root.welcome);
+
+    function run-find(step: int) {
+        if root.current-tab >= 0 {
+            root.page-find(root.find-text, root.find-match-case, step);
+        } else {
+            root.article-find(root.find-text, root.find-match-case, step);
+        }
+    }
+
+    function close-find() {
+        root.find-open = false;
+        if root.current-tab >= 0 {
+            root.page-find("", false, 0);
+            page-focus.focus();
+        } else {
+            root.article-find("", false, 0);
+            html-focus.focus();
+        }
+    }
+
     // Called when the HTML view needs to be rendered again (from a wake-up).
     callback article-render();
 
@@ -109,6 +144,10 @@ export component MainWindow inherits Window {
     // again when the article is.
     changed current-tab => {
         root.article-render();
+        // The find bar finds in the article or page shown now.
+        if root.find-open {
+            root.run-find(0);
+        }
     }
     // 0 default, 1 pointer, 2 text.
     in property <int> page-cursor;
@@ -229,8 +268,11 @@ export component MainWindow inherits Window {
     // Ctrl+A, …) and others go only to the page.
     pure function window-key(event: KeyEvent) -> bool {
         let m = event.modifiers;
+        if event.text == Key.F3 && !m.control && !m.alt && !m.meta {
+            return true;
+        }
         if m.alt && !m.control && !m.shift && !m.meta {
-            return event.text == Key.LeftArrow || event.text == Key.RightArrow;
+            return event.text == Key.LeftArrow || event.text == Key.RightArrow || event.text == "q";
         }
         if !m.control || m.alt || m.meta {
             return false;
@@ -328,12 +370,44 @@ export component MainWindow inherits Window {
         Menu {
             title: "Edit";
             MenuItem {
-                title: "Find Articles…";
+                title: "Find…";
                 icon: Icons.find;
                 shortcut: @keys(Control + F);
+                enabled: root.can-find;
                 activated => {
-                    search.focus();
-                    search.select-all();
+                    root.find-open = true;
+                    if root.find-text != "" {
+                        root.run-find(0);
+                    }
+                    // After the menu has closed: closing gives the focus
+                    // back to where it was.
+                    focus-find.running = true;
+                }
+            }
+            MenuItem {
+                title: "Find Next";
+                icon: Icons.find-next;
+                shortcut: @keys(F3);
+                enabled: root.can-find && root.find-open && root.find-text != "";
+                activated => {
+                    root.run-find(1);
+                }
+            }
+            MenuItem {
+                title: "Find Previous";
+                icon: Icons.find-previous;
+                shortcut: @keys(Shift + F3);
+                enabled: root.can-find && root.find-open && root.find-text != "";
+                activated => {
+                    root.run-find(2);
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "Find Articles…";
+                shortcut: @keys(Alt + Q);
+                activated => {
+                    focus-search.running = true;
                 }
             }
         }
@@ -565,6 +639,25 @@ export component MainWindow inherits Window {
     // article pass on the keys they don't take (the search field and pages
     // take all of them). j/k: next/previous article, s: star, m: read or
     // unread, o: open the link.
+    focus-search := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            search.focus();
+            search.select-all();
+        }
+    }
+
+    focus-find := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            find-bar.focus-field();
+        }
+    }
+
     FocusScope {
         // Only hears what the others pass on; never takes the focus.
         enabled: false;
@@ -668,6 +761,7 @@ export component MainWindow inherits Window {
 
                     property <bool> beside: root.arrangement == Arrangement.beside;
                     property <length> bar: 5px;
+                    property <length> find-height: root.find-open && root.can-find ? find-bar.preferred-height : 0px;
                     property <length> search-height: 34px;
                     property <length> tabs-height: root.tabs.length > 0 ? 30px : 0px;
 
@@ -798,12 +892,29 @@ export component MainWindow inherits Window {
                         }
                     }
 
+                    find-bar := FindBar {
+                        visible: content.find-height > 0;
+                        x: article.x;
+                        y: article.y + article.height - content.find-height;
+                        width: article.width;
+                        height: content.find-height;
+                        text <=> root.find-text;
+                        match-case <=> root.find-match-case;
+                        status: root.find-status;
+                        find(step) => {
+                            root.run-find(step);
+                        }
+                        close => {
+                            root.close-find();
+                        }
+                    }
+
                     html-pane := Rectangle {
                         visible: root.html-view && root.current-tab < 0;
                         x: article.x;
                         y: article.y;
                         width: article.width;
-                        height: article.height;
+                        height: article.height - content.find-height;
                         background: Palette.background;
                         clip: true;
 
@@ -1048,7 +1159,7 @@ export component MainWindow inherits Window {
                         x: article.x;
                         y: article.y;
                         width: article.width;
-                        height: article.height;
+                        height: article.height - content.find-height;
                         clip: true;
 
                         changed visible => {

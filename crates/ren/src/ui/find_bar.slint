@@ -1,0 +1,107 @@
+// SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { CheckBox, LineEdit, Palette } from "std-widgets.slint";
+import { Icons } from "icons.slint";
+import { Theme } from "theme.slint";
+import { ToolButton } from "toolbar.slint";
+
+// Finds text in the article or the page shown, below it, as in KDE's
+// applications: Enter goes to the next match, Shift+Enter to the previous
+// one, Escape closes the bar.
+export component FindBar inherits Rectangle {
+    in-out property <string> text;
+    in-out property <bool> match-case;
+    // "2 of 7", "Not found", or empty.
+    in property <string> status;
+    // 0: the text or the options changed, 1: the next match, 2: the
+    // previous one.
+    callback find(step: int);
+    callback close();
+
+    public function focus-field() {
+        field.focus();
+        field.select-all();
+    }
+
+    background: Palette.alternate-background;
+
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Palette.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 8px;
+        padding-top: 3px;
+        padding-bottom: 3px;
+        spacing: 6px;
+
+        ToolButton {
+            icon: Icons.find-close;
+            clicked => {
+                root.close();
+            }
+        }
+
+        Text {
+            text: "Find:";
+            vertical-alignment: center;
+            color: Palette.foreground;
+        }
+
+        field := LineEdit {
+            horizontal-stretch: 1;
+            text <=> root.text;
+            edited => {
+                root.find(0);
+            }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.close();
+                    return accept;
+                }
+                if event.text == Key.Return {
+                    root.find(event.modifiers.shift ? 2 : 1);
+                    return accept;
+                }
+                reject
+            }
+        }
+
+        ToolButton {
+            icon: Icons.find-next;
+            text: "Next";
+            enabled: root.text != "";
+            clicked => {
+                root.find(1);
+            }
+        }
+
+        ToolButton {
+            icon: Icons.find-previous;
+            text: "Previous";
+            enabled: root.text != "";
+            clicked => {
+                root.find(2);
+            }
+        }
+
+        CheckBox {
+            text: "Match case";
+            checked <=> root.match-case;
+            toggled => {
+                root.find(0);
+            }
+        }
+
+        Text {
+            min-width: 90px;
+            text: root.status;
+            vertical-alignment: center;
+            color: root.status == "Not found" ? Theme.negative : Palette.foreground;
+        }
+    }
+}

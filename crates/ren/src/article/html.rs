@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 use anyrender::ImageRenderer;
 use anyrender_vello_cpu::{ImageCacheConfig, VelloCpuImageRenderer};
 use atomic_refcell::AtomicRefCell;
-use blitz_dom::{Document, DocumentConfig, FontContext, QualName, StyleThreading, local_name, ns};
+use blitz_dom::{
+    Document, DocumentConfig, FontContext, NodeId, QualName, StyleThreading, local_name, ns,
+};
 use blitz_html::{HtmlDocument, HtmlProvider};
 use blitz_traits::events::{
     BlitzKeyEvent, BlitzPointerEvent, BlitzPointerId, BlitzWheelDelta, BlitzWheelEvent, KeyState,
@@ -30,6 +32,7 @@ use keyboard_types::{Code, Key, Location, Modifiers};
 use super::Rgb;
 use super::cache::ImageCache;
 use super::document::CONTENT_WIDTH;
+use super::find::{self, Step};
 use super::images::{self, Limits};
 use super::paint::SelectionPainter;
 use crate::http;
@@ -449,6 +452,36 @@ fn set_image_widths(doc: &mut HtmlDocument, widths: &Mutex<Vec<(usize, String, u
     }
 }
 
+/// The article's blocks of text (inline roots) in document order, with
+/// the length of their text: through the layout's children, which include
+/// anonymous blocks.
+fn text_blocks(doc: &HtmlDocument) -> Vec<(NodeId, usize)> {
+    let mut blocks = Vec::new();
+    let Some(root) = doc.try_root_element() else {
+        return blocks;
+    };
+    let mut stack = vec![root.id];
+    while let Some(id) = stack.pop() {
+        let Some(node) = doc.get_node(id) else {
+            continue;
+        };
+        let text = node
+            .element_data()
+            .and_then(|data| data.inline_layout_data.as_ref())
+            .map(|layout| layout.text.len());
+        if let Some(len) = text {
+            blocks.push((id, len));
+            continue;
+        }
+        let children: Vec<_> = match node.layout_children.borrow().as_ref() {
+            Some(children) => children.to_vec(),
+            None => node.children.to_vec(),
+        };
+        stack.extend(children.into_iter().rev());
+    }
+    blocks
+}
+
 /// A renderer for a view of `width`×`height` pixels.
 ///
 /// Besides its buffers for the view's size, the renderer keeps copies of
@@ -490,6 +523,8 @@ pub struct HtmlView {
     extra_clicks: Vec<String>,
     /// The link the left button was pressed on.
     pressed_link: Option<String>,
+    /// The match the find bar went to last, among all of the article's.
+    found: Option<usize>,
     started: Instant,
 }
 
@@ -532,6 +567,7 @@ impl HtmlView {
             pointer: (0.0, 0.0),
             extra_clicks: Vec::new(),
             pressed_link: None,
+            found: None,
             started: Instant::now(),
         }
     }
@@ -582,6 +618,7 @@ impl HtmlView {
             .store(doc.id(), Ordering::Release);
         self.doc = Some(doc);
         self.buttons = MouseEventButtons::None;
+        self.found = None;
         self.shell.request_redraw();
     }
 
@@ -875,39 +912,98 @@ impl HtmlView {
         let Some(doc) = &mut self.doc else {
             return false;
         };
-        let Some(root) = doc.try_root_element() else {
-            return false;
-        };
-        // The blocks of text (inline roots) in document order, through the
-        // layout's children, which include anonymous blocks.
-        let mut first = None;
-        let mut last = None;
-        let mut stack = vec![root.id];
-        while let Some(id) = stack.pop() {
-            let Some(node) = doc.get_node(id) else {
-                continue;
-            };
-            let text = node
-                .element_data()
-                .and_then(|data| data.inline_layout_data.as_ref())
-                .map(|layout| layout.text.len());
-            if let Some(len) = text {
-                first.get_or_insert(id);
-                last = Some((id, len));
-                continue;
-            }
-            let children: Vec<_> = match node.layout_children.borrow().as_ref() {
-                Some(children) => children.to_vec(),
-                None => node.children.to_vec(),
-            };
-            stack.extend(children.into_iter().rev());
-        }
-        let (Some(first), Some((last, end))) = (first, last) else {
+        let blocks = text_blocks(doc);
+        let (Some(&(first, _)), Some(&(last, end))) = (blocks.first(), blocks.last()) else {
             return false;
         };
         doc.set_text_selection(first, 0, last, end);
         self.shell.request_redraw();
         true
+    }
+
+    /// Goes to a match of `needle` (see [`Step`]): selects it and scrolls
+    /// it into view. Matches are within a block of text (a paragraph, a
+    /// list item). Returns which match it is (from 1; 0 for none) and how
+    /// many there are; an empty `needle` takes the selection away.
+    pub fn find(&mut self, needle: &str, match_case: bool, step: Step) -> (usize, usize) {
+        let Some(doc) = &mut self.doc else {
+            return (0, 0);
+        };
+        // The blocks of text exist after layout, which a document shown
+        // just now hasn't had yet.
+        set_image_widths(doc, &self.net.shared.widths);
+        doc.resolve(self.started.elapsed().as_secs_f64());
+        let mut all = Vec::new();
+        for (id, _) in text_blocks(doc) {
+            let Some(text) = doc
+                .get_node(id)
+                .and_then(|node| node.element_data())
+                .and_then(|data| data.inline_layout_data.as_ref())
+                .map(|layout| layout.text.as_str())
+            else {
+                continue;
+            };
+            all.extend(
+                find::matches(text, needle, match_case)
+                    .into_iter()
+                    .map(|range| (id, range)),
+            );
+        }
+        self.found = find::step(self.found, all.len(), step);
+        self.shell.request_redraw();
+        let Some(index) = self.found else {
+            doc.clear_text_selection();
+            return (0, all.len());
+        };
+        let (id, range) = all[index].clone();
+        doc.set_text_selection(id, range.start, id, range.end);
+        self.scroll_to_text(id, range.start);
+        (index + 1, all.len())
+    }
+
+    /// Scrolls the line with byte `offset` of a block of text into view,
+    /// to a third of the view's height, unless it's in view already.
+    fn scroll_to_text(&mut self, block: NodeId, offset: usize) {
+        let Some(doc) = &self.doc else {
+            return;
+        };
+        let Some(node) = doc.get_node(block) else {
+            return;
+        };
+        let Some(layout) = node
+            .element_data()
+            .and_then(|data| data.inline_layout_data.as_ref())
+            .map(|text| &text.layout)
+        else {
+            return;
+        };
+        // The layout's units are physical pixels.
+        let scale = layout.scale();
+        let Some((top, bottom)) = layout
+            .lines()
+            .find(|line| line.text_range().contains(&offset))
+            .map(|line| {
+                let metrics = line.metrics();
+                (
+                    metrics.block_min_coord / scale,
+                    metrics.block_max_coord / scale,
+                )
+            })
+        else {
+            return;
+        };
+        // From the block's border box to its content box, where the text is.
+        let box_layout = node.final_layout();
+        let content = node.absolute_position(
+            box_layout.border.left + box_layout.padding.left,
+            box_layout.border.top + box_layout.padding.top,
+        );
+        let (top, bottom) = (content.y + top, content.y + bottom);
+        let (offset, max, viewport) = self.vertical_scroll();
+        if top >= offset && bottom <= offset + viewport {
+            return;
+        }
+        self.scroll_to((top - viewport / 3.0).clamp(0.0, max));
     }
 
     /// Copies the selected text to the clipboard. Returns whether there

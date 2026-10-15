@@ -16,6 +16,8 @@ use crate::article::Article;
 #[cfg(feature = "html-view")]
 use crate::article::cache::ImageCache;
 #[cfg(feature = "html-view")]
+use crate::article::find;
+#[cfg(feature = "html-view")]
 use crate::article::glide::Glide;
 #[cfg(feature = "html-view")]
 use crate::article::html::{Button, Cursor, HtmlView, Mods, PointerKind};
@@ -158,6 +160,10 @@ impl ArticlePane {
             window.set_article_body(SharedString::new());
             self.article = Some(article);
             self.load_html();
+            // The find bar finds in the new article too.
+            if window.get_find_open() && window.get_current_tab() < 0 {
+                self.find(&window.get_find_text(), window.get_find_match_case(), 0);
+            }
             return;
         }
         window.set_article_body(article.plain_text().into());
@@ -567,6 +573,18 @@ impl ArticlePane {
         }
     }
 
+    /// Finds `text` in the article for the find bar (`step` as in
+    /// [`find::step_from`]) and says what it found.
+    fn find(&mut self, text: &str, match_case: bool, step: i32) {
+        let (current, total) = match &mut self.html {
+            Some(html) => html.view.find(text, match_case, find::step_from(step)),
+            None => (0, 0),
+        };
+        self.window()
+            .set_find_status(find::status(text, current, total).into());
+        self.schedule_render();
+    }
+
     /// The URL of the link at `x`, `y` (logical pixels), or an empty string.
     fn link_at(&self, x: f32, y: f32) -> SharedString {
         self.html
@@ -636,6 +654,8 @@ fn connect(window: &MainWindow, pane: &Rc<RefCell<ArticlePane>>) {
     window.on_article_theme_changed(move || w(&|p| p.load_html()));
     let w = with.clone();
     window.on_article_select_all(move || w(&|p| p.select_all()));
+    let w = with.clone();
+    window.on_article_find(move |text, match_case, step| w(&|p| p.find(&text, match_case, step)));
     window.on_article_copy(move || with(&|p| p.copy()));
     let weak = Rc::downgrade(pane);
     window.on_article_link_at(move |x, y| {
