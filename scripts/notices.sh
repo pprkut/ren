@@ -11,10 +11,10 @@
 #
 #     scripts/notices.sh [--check]
 #
-# --check compares with the committed file instead of writing it (CI).
-# Offline after `cargo fetch` (so the result doesn't depend on the
-# network): crates that lack their licence file get the licence's
-# standard text.
+# --check compares with the committed file instead of writing it (CI,
+# with the same cargo-about version: 0.9.2). Offline after `cargo fetch`
+# (so the result doesn't depend on the network): crates that lack their
+# licence file get the licence's standard text.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
