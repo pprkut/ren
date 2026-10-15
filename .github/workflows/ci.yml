@@ -49,9 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+      # The version that generated the file: another may word it
+      # differently.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-about
+          tool: cargo-about@0.9.2
       - run: scripts/notices.sh --check
 
   # Without the heavy engines (Blitz, Servo), so it stays fast. The
