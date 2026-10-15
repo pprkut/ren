@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+[Desktop Entry]
+Type=Application
+Name=Ren
+GenericName=News Reader
+Comment=Read the feeds of your Nextcloud News
+Exec=ren
+Icon=io.github.pprkut.ren
+Terminal=false
+Categories=Network;Feed;News;
+Keywords=RSS;Atom;Feed;Nextcloud;News;Reader;
+StartupNotify=true
+StartupWMClass=io.github.pprkut.ren
+SingleMainWindow=true

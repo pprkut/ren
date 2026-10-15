@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+SPDX-License-Identifier: CC0-1.0
+-->
+<component type="desktop-application">
+  <id>io.github.pprkut.ren</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Ren</name>
+  <summary>Read the feeds of your Nextcloud News</summary>
+  <developer id="io.github.pprkut">
+    <name>Heinz Wiesinger</name>
+  </developer>
+  <description>
+    <p>
+      Ren is a native reader for the News app of Nextcloud. It syncs your
+      feeds, folders and articles, and whether you read or starred them,
+      and works offline from its own copy.
+    </p>
+    <ul>
+      <li>Articles shown as the feed sends them, with their images, light or dark</li>
+      <li>The web page behind an article in a tab, with ads and trackers blocked</li>
+      <li>Feeds added, edited and deleted, and broken ones pointed out</li>
+      <li>Keyboard navigation, a tray icon, and little memory and processor time</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.pprkut.ren.desktop</launchable>
+  <provides>
+    <binary>ren</binary>
+  </provides>
+  <url type="homepage">https://github.com/pprkut/ren</url>
+  <url type="bugtracker">https://github.com/pprkut/ren/issues</url>
+  <url type="vcs-browser">https://github.com/pprkut/ren</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The feeds, the articles and the welcome page</caption>
+      <image>https://raw.githubusercontent.com/pprkut/ren/master/data/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>Network</category>
+    <category>Feed</category>
+    <category>News</category>
+  </categories>
+  <keywords>
+    <keyword>RSS</keyword>
+    <keyword>Atom</keyword>
+    <keyword>Nextcloud</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <internet>first-run</internet>
+  </requires>
+  <releases>
+    <release version="0.1.0" type="development" date="2026-10-15">
+      <description>
+        <p>The first release.</p>
+      </description>
+    </release>
+  </releases>
+</component>
