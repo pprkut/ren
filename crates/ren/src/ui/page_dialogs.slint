@@ -87,7 +87,7 @@ export component PageDialog inherits Rectangle {
 
                 field := LineEdit {
                     visible: root.kind == 3;
-                    height: self.visible ? self.preferred-height : 0px;
+                    height: self.visible ? max(self.min-height, self.preferred-height) : 0px;
                     text <=> root.text;
                     accepted => {
                         root.answered(true);
