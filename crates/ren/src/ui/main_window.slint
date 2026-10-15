@@ -332,8 +332,9 @@ export component MainWindow inherits Window {
                 icon: Icons.find;
                 shortcut: @keys(Control + F);
                 activated => {
-                    search.focus();
-                    search.select-all();
+                    // After the menu has closed: closing gives the focus
+                    // back to where it was.
+                    focus-search.running = true;
                 }
             }
         }
@@ -565,6 +566,16 @@ export component MainWindow inherits Window {
     // article pass on the keys they don't take (the search field and pages
     // take all of them). j/k: next/previous article, s: star, m: read or
     // unread, o: open the link.
+    focus-search := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            search.focus();
+            search.select-all();
+        }
+    }
+
     FocusScope {
         // Only hears what the others pass on; never takes the focus.
         enabled: false;
