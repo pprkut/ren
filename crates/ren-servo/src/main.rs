@@ -110,6 +110,15 @@ fn read_commands(socket: UnixStream, sender: mpsc::Sender<Message>) {
         let command = match receiver.recv::<Command>() {
             Ok(Some(command)) => command,
             Ok(None) => break,
+            // From a newer ren: without what it asks for, but the tabs
+            // go on.
+            Err(err) if err.kind() == std::io::ErrorKind::Unsupported => {
+                eprintln!(
+                    "ren-servo: a command this helper doesn't know, skipped (is ren newer? \
+                     `just build` builds both): {err}"
+                );
+                continue;
+            }
             Err(err) => {
                 eprintln!("ren-servo: reading from ren failed: {err}");
                 break;
