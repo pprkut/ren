@@ -12,6 +12,7 @@
 mod blocking;
 mod browser;
 mod controls;
+mod find;
 mod headless;
 mod input;
 
@@ -394,5 +395,11 @@ fn handle(
         Command::Dialog { control, answer } => browser.answer_dialog(control, answer),
         Command::Colour { control, colour } => browser.answer_colour(control, colour),
         Command::Files { control, paths } => browser.answer_files(control, paths),
+        Command::Find {
+            tab,
+            text,
+            match_case,
+            step,
+        } => browser.find(tab, &text, match_case, step),
     }
 }
