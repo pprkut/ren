@@ -12,7 +12,8 @@ use std::time::Instant;
 use dpi::PhysicalSize;
 use euclid::Scale;
 use ren_tabs::{
-    Blocking, Cursor, DialogAnswer, Event, FIRST_PAGE_TAB, Input, MenuAction, Rgb, Size, TabId,
+    Blocking, Cursor, DialogAnswer, Event, FIRST_PAGE_TAB, FindStep, Input, MenuAction, Rgb, Size,
+    TabId,
 };
 use servo::{
     ColorPicker, ContextMenu, CreateNewWebViewRequest, DevicePoint, EmbedderControl,
@@ -26,6 +27,7 @@ use url::Url;
 
 use crate::blocking::{Blocker, Verdict};
 use crate::controls;
+use crate::find;
 use crate::input::{self, Gesture, Navigation};
 
 /// The most tabs; pages can't open more.
@@ -91,6 +93,8 @@ struct Delegate {
     waiting: RefCell<Vec<(WebView, WebResourceLoad)>>,
     /// Drop-downs and context menus the window shows.
     controls: RefCell<Vec<Shown>>,
+    /// The match the find bar selected last in each tab.
+    found: RefCell<HashMap<TabId, i64>>,
     next_control: Cell<u32>,
     /// Every request and load, for measurements (`REN_SERVO_REQUEST_LOG`).
     request_log: Option<RequestLog>,
@@ -477,6 +481,7 @@ impl Browser {
             blocker: RefCell::new(blocker),
             waiting: RefCell::default(),
             controls: RefCell::default(),
+            found: RefCell::default(),
             next_control: Cell::new(0),
             request_log: RequestLog::from_env(),
         });
@@ -548,12 +553,38 @@ impl Browser {
         let (_, webview) = self.tabs.remove(index);
         self.delegate.tab_ids.borrow_mut().remove(&webview.id());
         self.delegate.gestures.borrow_mut().remove(&webview.id());
+        self.delegate.found.borrow_mut().remove(&tab);
         self.dismiss_controls(|shown| shown == tab);
         // The window activates another tab if it wants one.
         if self.active == Some(tab) {
             self.active = None;
             self.delegate.active.set(None);
         }
+    }
+
+    /// Finds text in a tab's page for the find bar (`find.rs`); the
+    /// answer comes as [`Event::Found`].
+    pub fn find(&mut self, tab: TabId, text: &str, match_case: bool, step: FindStep) {
+        let Some(webview) = self.webview(tab) else {
+            return;
+        };
+        let last = self.delegate.found.borrow().get(&tab).copied();
+        let script = find::script(text, match_case, find::index(last, step));
+        let delegate = self.delegate.clone();
+        webview.evaluate_javascript(script, move |result| {
+            let found = result.ok().as_ref().and_then(find::answer);
+            let mut selected = delegate.found.borrow_mut();
+            match found {
+                Some((index, _)) => selected.insert(tab, index),
+                None => selected.remove(&tab),
+            };
+            let (current, total) = found.map_or((0, 0), |(index, count)| (index as u32 + 1, count));
+            delegate.events.borrow_mut().push(Event::Found {
+                tab,
+                current,
+                total,
+            });
+        });
     }
 
     /// Shows `tab`, or no page for `None`; the others are hidden.
