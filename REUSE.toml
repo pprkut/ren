@@ -56,6 +56,17 @@ path = "notices/icu-78.txt"
 SPDX-FileCopyrightText = "Copyright 2016-2025 Unicode, Inc."
 SPDX-License-Identifier = "Unicode-3.0"
 
+# The SlackBuild's files that can't carry a header.
+[[annotations]]
+path = "packaging/slackware/ren.info"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "packaging/slackware/README"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
 # The logo's PNGs for the icon theme, rendered by scripts/icons.sh.
 [[annotations]]
 path = "data/icons/**"

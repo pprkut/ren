@@ -1,0 +1,19 @@
+Ren is a native reader for the News app of Nextcloud. It syncs the
+feeds, folders and articles of your Nextcloud, and whether you read or
+starred them, and works from its own copy, also offline. Articles are
+shown as the feed sends them; the web page behind an article opens in a
+tab, rendered by Servo (in a helper program, started only then), with
+ads and trackers blocked.
+
+It needs Rust 1.92 or newer (rust-opt, or rustup), and to build Servo's
+JavaScript engine from its source clang with libclang, Python 3 and a
+C++ compiler, which a full Slackware installation has. The build is
+offline: the second download holds the crates. Building Servo takes
+a while and several GB of disk; WITHOUT_SERVO=yes builds without web
+page tabs (pages then open in the browser):
+
+  WITHOUT_SERVO=yes ./ren.SlackBuild
+
+The app password for your Nextcloud is kept in the Secret Service
+(KWallet, or GNOME Keyring), or comes from a command set in the settings
+(password-command).

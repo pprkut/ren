@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+#
+# HOW TO EDIT THIS FILE:
+# The "handy ruler" below makes it easier to edit a package description.
+# Line up the first '|' above the ':' following the base package name, and
+# the '|' on the right side marks the last column you can put a character
+# in. You must make exactly 11 lines for the formatting to be correct.
+# It's also customary to leave one space after the ':' except on otherwise
+# blank lines.
+
+   |-----handy-ruler------------------------------------------------------|
+ren: ren (native reader for Nextcloud News)
+ren:
+ren: Ren syncs the feeds, folders and articles of the News app of your
+ren: Nextcloud, and whether you read or starred them, and works from its
+ren: own copy, also offline. Articles are shown as the feed sends them;
+ren: the web page behind an article opens in a tab, rendered by Servo,
+ren: with ads and trackers blocked. Low memory and processor use come
+ren: first.
+ren:
+ren: Homepage: https://github.com/pprkut/ren
+ren:
