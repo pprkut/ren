@@ -2,3 +2,7 @@
 # SPDX-License-Identifier: CC0-1.0
 
 /target
+# just vendor, vendor-extract
+/.cargo
+/vendor
+/vendor.tar.xz

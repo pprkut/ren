@@ -1,7 +1,31 @@
 # SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
 # SPDX-License-Identifier: CC0-1.0
 
+name := 'ren'
 appid := 'io.github.pprkut.ren'
+
+# Where `just install` puts Ren, set by name as in COSMIC's justfiles:
+# `just prefix=/usr rootdir="$PKG" install` for packages (rootdir is
+# prepended to every path), `just prefix="$HOME/.local" install` for
+# yourself.
+rootdir := ''
+prefix := '/usr/local'
+docdir := prefix / 'share' / 'doc' / name
+# `just helper=false install` leaves out the Servo helper: web pages then
+# open in the browser.
+helper := 'true'
+
+base-dir := absolute_path(clean(rootdir / prefix))
+doc-dst := absolute_path(clean(rootdir / docdir))
+cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
+bin-src := cargo-target-dir / 'release' / name
+bin-dst := base-dir / 'bin' / name
+helper-src := cargo-target-dir / 'release' / 'ren-servo'
+# Where ren looks for it: ../libexec/ren/ from its binary.
+helper-dst := base-dir / 'libexec' / name / 'ren-servo'
+desktop-dst := base-dir / 'share' / 'applications' / appid + '.desktop'
+metainfo-dst := base-dir / 'share' / 'metainfo' / appid + '.metainfo.xml'
+icons-dst := base-dir / 'share' / 'icons' / 'hicolor'
 
 # List the recipes
 default:
@@ -64,6 +88,57 @@ build profile="release":
 # Generate THIRD-PARTY-NOTICES.html from both workspaces' crates (cargo-about) and notices/; --check compares instead
 notices *args:
     scripts/notices.sh {{args}}
+
+# Install what `just build` built: the binary, the Servo helper in libexec/ren, the .desktop file, AppStream, icons, docs
+install:
+    install -Dm0755 {{bin-src}} {{bin-dst}}
+    if [ '{{helper}}' = true ]; then install -Dm0755 {{helper-src}} {{helper-dst}}; fi
+    install -Dm0644 data/{{appid}}.desktop {{desktop-dst}}
+    install -Dm0644 data/{{appid}}.metainfo.xml {{metainfo-dst}}
+    install -Dm0644 crates/ren/icons/ren.svg {{icons-dst}}/scalable/apps/{{appid}}.svg
+    for size in `ls data/icons`; do \
+        install -Dm0644 data/icons/$size/{{appid}}.png {{icons-dst}}/$size/apps/{{appid}}.png; \
+    done
+    install -Dm0644 README.md {{doc-dst}}/README.md
+    install -Dm0644 THIRD-PARTY-NOTICES.html {{doc-dst}}/THIRD-PARTY-NOTICES.html
+    install -Dm0644 LICENSES/GPL-3.0-or-later.txt {{doc-dst}}/COPYING
+
+# Remove what `just install` installed (with the same variables)
+uninstall:
+    rm -f {{bin-dst}} {{helper-dst}} {{desktop-dst}} {{metainfo-dst}}
+    rm -f {{icons-dst}}/scalable/apps/{{appid}}.svg {{icons-dst}}/*/apps/{{appid}}.png
+    rm -f {{doc-dst}}/README.md {{doc-dst}}/THIRD-PARTY-NOTICES.html {{doc-dst}}/COPYING
+    -rmdir {{doc-dst}} {{base-dir}}/libexec/{{name}}
+
+# Vendor both workspaces' crates into vendor.tar.xz, for building without the network (packages; see build-vendored)
+vendor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    mkdir "$work/.cargo"
+    # One directory for both workspaces; versions in the names, as the
+    # two lock files may want different versions of a crate. The last
+    # line of cargo's configuration has vendor/'s absolute path.
+    cargo vendor --locked --versioned-dirs --sync crates/ren-servo/Cargo.toml "$work/vendor" \
+        | head -n -1 > "$work/.cargo/config.toml"
+    echo 'directory = "vendor"' >> "$work/.cargo/config.toml"
+    tar -C "$work" -cf - .cargo vendor | xz -T0 > vendor.tar.xz
+    ls -l vendor.tar.xz
+
+# Unpack vendor.tar.xz into the source: .cargo/config.toml and vendor/
+vendor-extract:
+    rm -rf vendor
+    tar -xf vendor.tar.xz
+
+# Build like `just build`, from vendor.tar.xz without the network (MOZJS_FROM_SOURCE=1 for SpiderMonkey)
+build-vendored: vendor-extract
+    cargo build --frozen --release
+    cd crates/ren-servo && cargo build --frozen --release
+
+# Remove what vendor and vendor-extract made
+clean-vendor:
+    rm -rf .cargo vendor vendor.tar.xz
 
 # Render the logo's PNGs for the icon theme into data/icons (needs rsvg-convert)
 icons:
