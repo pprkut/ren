@@ -182,11 +182,6 @@ impl Reader {
         Ok(self.store.feeds()?.into_iter().find(|feed| feed.id == id))
     }
 
-    /// The feeds the server can't update: id, title and why.
-    pub fn broken_feeds(&self) -> Vec<(u64, &str, &str)> {
-        self.tree.broken()
-    }
-
     /// The counts and the last sync, for the welcome page.
     pub fn overview(&self) -> Result<Overview> {
         Ok(Overview {
@@ -516,7 +511,12 @@ mod tests {
     #[test]
     fn broken_feeds() {
         let mut reader = reader();
-        assert!(reader.broken_feeds().is_empty());
+        assert!(
+            !reader
+                .tree_rows()
+                .iter()
+                .any(|row| row.node == Node::Broken)
+        );
         reader
             .store
             .replace_feeds(&[
@@ -530,9 +530,10 @@ mod tests {
             ])
             .unwrap();
         reader.reload().unwrap();
-        let broken = reader.broken_feeds();
+        let rows = reader.tree_rows();
+        let broken: Vec<_> = rows.iter().filter(|row| row.error.is_some()).collect();
         assert_eq!(broken.len(), 1);
-        assert_eq!(broken[0].0, 3);
+        assert_eq!(broken[0].node, Node::Feed(3));
         reader.select(Node::Broken).unwrap();
         assert_eq!(reader.len(), 2);
         let (marked, changes) = reader.mark_all_read(Node::Broken).unwrap();

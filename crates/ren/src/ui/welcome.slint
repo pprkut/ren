@@ -3,13 +3,6 @@
 
 import { Palette, ScrollView } from "std-widgets.slint";
 import { Logo } from "logo.slint";
-import { Theme } from "theme.slint";
-
-// A feed the server can't update, and why.
-export struct BrokenFeed {
-    title: string,
-    error: string,
-}
 
 // A link on the welcome page: text in the accent colour that runs an
 // action.
@@ -49,7 +42,7 @@ component Shortcut inherits HorizontalLayout {
 
 // Shown in the article pane while no article is, as in KDE's applications:
 // Ren's name and version, the counts and the last sync, links and the
-// shortcuts for reading, over the logo as a faint background. Drawn by
+// shortcuts for reading, over the logo, faint, in the middle. Drawn by
 // Slint, so it doesn't make the article view (Blitz) at the start.
 export component WelcomePage inherits Rectangle {
     in property <string> version;
@@ -58,8 +51,6 @@ export component WelcomePage inherits Rectangle {
     in property <string> sync;
     // An account is set up: "Log In" makes way for "Fetch All Feeds".
     in property <bool> logged-in;
-    // The feeds the server can't update.
-    in property <[BrokenFeed]> broken;
     // "account", "fetch-all", "add-feed" or "configure".
     callback action(name: string);
 
@@ -67,9 +58,9 @@ export component WelcomePage inherits Rectangle {
     clip: true;
 
     Image {
-        property <length> side: min(parent.width, parent.height) * 0.8;
-        x: parent.width - self.side * 0.85;
-        y: parent.height - self.side * 0.9;
+        property <length> side: min(parent.width, parent.height) * 0.6;
+        x: (parent.width - self.side) / 2;
+        y: (parent.height - self.side) / 2;
         width: self.side;
         height: self.side;
         source: Logo.large;
@@ -110,34 +101,6 @@ export component WelcomePage inherits Rectangle {
                 text: root.sync;
                 wrap: word-wrap;
                 color: Palette.foreground;
-            }
-
-            if root.broken.length > 0: Rectangle {
-                height: 6px;
-            }
-
-            if root.broken.length > 0: Text {
-                text: root.broken.length == 1 ? "The server can't update one feed:" : "The server can't update \{root.broken.length} feeds:";
-                wrap: word-wrap;
-                font-weight: 700;
-                color: Theme.negative;
-            }
-
-            for feed in root.broken: VerticalLayout {
-                padding-left: 12px;
-
-                Text {
-                    text: feed.title;
-                    font-weight: 700;
-                    color: Palette.foreground;
-                }
-
-                Text {
-                    text: feed.error;
-                    wrap: word-wrap;
-                    color: Palette.foreground;
-                    opacity: 0.8;
-                }
             }
 
             Rectangle {
