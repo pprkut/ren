@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use ren_settings::{Reload, Settings, SettingsFile};
@@ -61,8 +62,11 @@ const TRAY_LOGO: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons
 const TRAY_LOGO_MONO: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/ren-mono.svg"));
 
-/// The size the tray icon is drawn at, in pixels; panels scale it down.
-const TRAY_ICON_SIZE: u32 = 64;
+/// The size the tray icon is drawn at, in pixels. Slint sends the tray one
+/// pixmap, which the panel scales: Plasma shows tray icons at 22 pixels,
+/// so 44 is their size at a scale of 2 and halves cleanly to 22, where 64
+/// came out blurred at both.
+const TRAY_ICON_SIZE: u32 = 44;
 
 /// The colours of the monochrome tray icon: Breeze's text colours on a dark
 /// and a light panel.
@@ -448,17 +452,6 @@ impl App {
         let failure = self.sync_failure.borrow();
         window.set_welcome_sync(crate::welcome::sync_text(&overview, failure.as_deref()).into());
         window.set_logged_in(self.current_settings().account().is_ok());
-        let broken: Vec<BrokenFeed> = self
-            .reader
-            .borrow()
-            .broken_feeds()
-            .into_iter()
-            .map(|(_, title, error)| BrokenFeed {
-                title: title.into(),
-                error: error.into(),
-            })
-            .collect();
-        window.set_broken_feeds(ModelRc::new(VecModel::from(broken)));
     }
 
     /// Shows or removes the icon in the system tray.
@@ -1473,7 +1466,7 @@ fn tray_svg(style: ren_settings::TrayIconStyle, dark: bool) -> String {
         Some(colour) => TRAY_LOGO_MONO.replace("#000000", colour),
         None => TRAY_LOGO.to_owned(),
     };
-    svg.replacen("width=\"16\" height=\"16\"", &size, 1)
+    svg.replacen("width=\"22\" height=\"22\"", &size, 1)
 }
 
 /// Whether the desktop shows tray icons: a StatusNotifierWatcher with a
@@ -1918,6 +1911,27 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
         Some(Claim::First(instance)) => Some(instance),
         None => None,
     };
+    // Answered from now on, not only once the window is made: a start
+    // that hands over meanwhile would otherwise wait in vain and open a
+    // second window.
+    let activations = Arc::new(Mutex::new(Activations::default()));
+    let socket = instance.map(|mut instance| {
+        let target = activations.clone();
+        let serving = instance.serve(move |activate| {
+            target
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .activate(activate);
+        });
+        if let Err(err) = serving {
+            eprintln!("ren: a second start opens a second window: {err}");
+        }
+        instance
+    });
+    let instance = OneInstance {
+        socket,
+        activations,
+    };
     // Demo data is written before the window is made; the startup times
     // are measured from when it is ready.
     let demo = demo_data(options)?;
@@ -1957,6 +1971,48 @@ pub fn run(options: &Options, started: Instant) -> Result<(), String> {
     .map_err(|err| err.to_string())
 }
 
+/// The socket of this Ren, if it has one, and where the starts that hand
+/// over to it go.
+struct OneInstance {
+    // Dropped when the event loop ends: the socket goes with it.
+    socket: Option<Instance>,
+    activations: Arc<Mutex<Activations>>,
+}
+
+/// Where the starts that hand over go: the window once it is made; until
+/// then they wait.
+#[derive(Default)]
+struct Activations {
+    window: Option<slint::Weak<MainWindow>>,
+    waiting: Vec<Activate>,
+}
+
+impl Activations {
+    fn activate(&mut self, activate: Activate) {
+        match &self.window {
+            Some(window) => Self::send(window.clone(), activate),
+            None => self.waiting.push(activate),
+        }
+    }
+
+    /// Sends the starts that waited to `window`, and the next ones.
+    fn window_made(&mut self, window: slint::Weak<MainWindow>) {
+        for activate in self.waiting.drain(..) {
+            Self::send(window.clone(), activate);
+        }
+        self.window = Some(window);
+    }
+
+    /// The window comes to the front once the event loop runs.
+    fn send(window: slint::Weak<MainWindow>, activate: Activate) {
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(window) = window.upgrade() {
+                window.invoke_activate(activate.token.unwrap_or_default().into());
+            }
+        });
+    }
+}
+
 /// Hands over to a Ren that runs already, or claims the socket for this
 /// one; `None` where it doesn't take part (`Options::single_instance`)
 /// or the socket can't be used.
@@ -1984,25 +2040,16 @@ fn run_window(
     settings: Option<(SettingsFile, Reload)>,
     database: Option<PathBuf>,
     saved: (Saved, Option<String>),
-    mut instance: Option<Instance>,
+    instance: OneInstance,
 ) -> Result<(), slint::PlatformError> {
     select_backend(options.backend.as_deref(), options.renderer.as_deref())?;
     slint::set_xdg_app_id(APP_ID)?;
     let (window, app) = build_window(options, started, reader, settings, database, saved)?;
-    if let Some(instance) = &mut instance {
-        let weak = window.as_weak();
-        let serving = instance.serve(move |activate| {
-            let weak = weak.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(window) = weak.upgrade() {
-                    window.invoke_activate(activate.token.unwrap_or_default().into());
-                }
-            });
-        });
-        if let Err(err) = serving {
-            eprintln!("ren: a second start opens a second window: {err}");
-        }
-    }
+    instance
+        .activations
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .window_made(window.as_weak());
 
     let _autoscroll = options.autoscroll.then(|| start_autoscroll(&window));
     let _measure_sync = options
@@ -2045,7 +2092,7 @@ fn run_window(
     // Until quit: the window may be hidden in the tray.
     let result = slint::run_event_loop_until_quit();
     // A start from now on opens a new window.
-    drop(instance);
+    drop(instance.socket);
     window.hide()?;
     app.dialog.borrow_mut().take();
     app.login.borrow_mut().take();
@@ -2337,7 +2384,7 @@ mod tests {
         use ren_settings::TrayIconStyle;
         let colour = tray_svg(TrayIconStyle::Colour, true);
         assert!(colour.contains("url(#petal)"));
-        assert!(colour.contains("width=\"64\" height=\"64\""));
+        assert!(colour.contains("width=\"44\" height=\"44\""));
         for (style, dark, colour) in [
             (TrayIconStyle::Light, false, TRAY_LIGHT),
             (TrayIconStyle::Dark, true, TRAY_DARK),
@@ -2347,7 +2394,7 @@ mod tests {
             let svg = tray_svg(style, dark);
             assert!(svg.contains(&format!("stroke=\"{colour}\"")), "{style:?}");
             assert!(!svg.contains("#000000"));
-            assert!(svg.contains("width=\"64\""));
+            assert!(svg.contains("width=\"44\""));
             assert!(slint::Image::load_from_svg_data(svg.as_bytes()).is_ok());
         }
     }

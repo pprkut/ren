@@ -17,9 +17,9 @@ import { FeedDialog, FeedDialogKind } from "feed_dialog.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { Logo } from "logo.slint";
-import { BrokenFeed, WelcomePage } from "welcome.slint";
+import { WelcomePage } from "welcome.slint";
 
-export { AboutWindow, BrokenFeed, CategoryEntry, ConfirmWindow, FeedDialog, FeedDialogKind, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
+export { AboutWindow, CategoryEntry, ConfirmWindow, FeedDialog, FeedDialogKind, NoticeBlock, FeedRow, ItemRow, ItemStatus, Icons, PageMenu, PageOption, SettingRow, SettingsWindow, TabRow, Theme, Tray }
 
 // Where the item list goes relative to the article.
 export enum Arrangement {
@@ -87,7 +87,6 @@ export component MainWindow inherits Window {
     in property <string> welcome-articles;
     in property <string> welcome-sync;
     in property <bool> logged-in;
-    in property <[BrokenFeed]> broken-feeds;
 
     // Whether links can open in tabs (built with Servo).
     in property <bool> tabs-available;
@@ -156,6 +155,9 @@ export component MainWindow inherits Window {
     in property <string> page-dialog-site;
     in property <string> page-dialog-message;
     in-out property <string> page-dialog-text;
+    // Another dialog of the same page: it offers to stop them.
+    in property <bool> page-dialog-again;
+    in-out property <bool> page-dialog-stop;
     callback page-dialog-answered(ok: bool);
     // A colour picker of the page shown, below the element (relative to
     // the page).
@@ -277,7 +279,7 @@ export component MainWindow inherits Window {
     }
 
     title: "Ren";
-    icon: Logo.large;
+    icon: Logo.small;
     forward-focus: tree;
     preferred-width: 1280px;
     preferred-height: 800px;
@@ -1036,7 +1038,6 @@ export component MainWindow inherits Window {
                         articles: root.welcome-articles;
                         sync: root.welcome-sync;
                         logged-in: root.logged-in;
-                        broken: root.broken-feeds;
                         action(name) => {
                             root.action(name);
                         }
@@ -1313,6 +1314,8 @@ export component MainWindow inherits Window {
                                 site: root.page-dialog-site;
                                 message: root.page-dialog-message;
                                 text <=> root.page-dialog-text;
+                                again: root.page-dialog-again;
+                                stop <=> root.page-dialog-stop;
                                 answered(ok) => {
                                     root.page-dialog-answered(ok);
                                     page-focus.focus();

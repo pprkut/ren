@@ -97,7 +97,7 @@ impl TreeFeed {
     }
 }
 
-/// What the tree and the welcome page say about a broken feed; `None` for
+/// What the tree says about a broken feed; `None` for
 /// one that isn't.
 pub fn broken_error(feed: &Feed) -> Option<String> {
     if !feed.is_broken() {
@@ -203,14 +203,6 @@ impl FeedTree {
     /// The number of unread items in all feeds.
     pub fn unread(&self) -> u64 {
         self.feeds().map(|feed| feed.unread).sum()
-    }
-
-    /// The broken feeds, with their titles and why the server can't
-    /// update them, in the tree's order.
-    pub fn broken(&self) -> Vec<(u64, &str, &str)> {
-        self.feeds()
-            .filter_map(|feed| Some((feed.id, feed.title.as_str(), feed.error.as_deref()?)))
-            .collect()
     }
 
     fn broken_count(&self) -> u64 {
@@ -633,19 +625,7 @@ mod tests {
         // Not broken yet.
         assert_eq!(rows[7].error, None);
         assert!(tree.contains(Node::Broken));
-        assert_eq!(
-            tree.broken(),
-            [
-                (3, "Feed 3", error),
-                (
-                    4,
-                    "Feed 4",
-                    "The server couldn't update this feed the last 9 times: the server gave no reason"
-                )
-            ]
-        );
         assert!(!self::tree().contains(Node::Broken));
-        assert!(self::tree().broken().is_empty());
     }
 
     #[test]

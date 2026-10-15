@@ -4,7 +4,7 @@
 // What pages ask for that the window shows over them: the `alert`,
 // `confirm` and `prompt` dialogs of their scripts, and colour pickers.
 
-import { Button, LineEdit, Palette, ScrollView } from "std-widgets.slint";
+import { Button, CheckBox, LineEdit, Palette, ScrollView } from "std-widgets.slint";
 import { ColourPicker } from "setting_controls.slint";
 import { Theme } from "theme.slint";
 
@@ -16,6 +16,10 @@ export component PageDialog inherits Rectangle {
     in property <string> site;
     in property <string> message;
     in-out property <string> text;
+    // Another dialog of the same page, which can be stopped (`stop`): its
+    // next ones are cancelled without being shown.
+    in property <bool> again;
+    in-out property <bool> stop;
     callback answered(ok: bool);
 
     // Grabs the focus for the keys: Escape cancels, Enter confirms.
@@ -88,6 +92,11 @@ export component PageDialog inherits Rectangle {
                     accepted => {
                         root.answered(true);
                     }
+                }
+
+                if root.again: CheckBox {
+                    text: "Don't let this page show more dialogs";
+                    checked <=> root.stop;
                 }
 
                 HorizontalLayout {

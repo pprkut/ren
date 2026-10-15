@@ -54,6 +54,8 @@ pub struct Pages {
     /// control.
     dialog: Option<(TabId, u32)>,
     colour: Option<(TabId, u32)>,
+    /// Pages that showed dialogs, and those whose dialogs were stopped.
+    page_dialogs: controls::PageDialogs,
     /// Files chosen in the desktop's file chooser, for the helper.
     chosen: Arc<Mutex<Vec<(u32, crate::tabs::portal::Chosen)>>>,
     /// A pump is already queued on the event loop.
@@ -91,6 +93,7 @@ impl Pages {
             select: None,
             menu: None,
             dialog: None,
+            page_dialogs: controls::PageDialogs::default(),
             colour: None,
             chosen: Arc::default(),
             stats: StageStats::new("ui"),
@@ -344,6 +347,7 @@ impl Pages {
             return;
         };
         self.rows.remove(index);
+        self.page_dialogs.closed(tab);
         if let Some(helper) = &mut self.helper {
             helper.close(tab);
         }
@@ -599,12 +603,18 @@ impl Pages {
             }
             return;
         }
+        let url = self.current_url().unwrap_or_default();
+        let turn = self.page_dialogs.turn(tab, &url);
+        if turn == controls::DialogTurn::Stopped {
+            if let Some(helper) = &mut self.helper {
+                helper.answer_dialog(control, DialogAnswer::Cancel);
+            }
+            return;
+        }
         let window = self.window();
-        let site = self
-            .current_url()
-            .as_deref()
-            .and_then(ren_tabs::host_of)
-            .map_or_else(|| "The page".to_owned(), str::to_owned);
+        let site = ren_tabs::host_of(&url).map_or_else(|| "The page".to_owned(), str::to_owned);
+        window.set_page_dialog_again(turn == controls::DialogTurn::Again);
+        window.set_page_dialog_stop(false);
         window.set_page_dialog_site(site.into());
         window.set_page_dialog_message(message.into());
         window.set_page_dialog_text(text.into());
@@ -619,10 +629,13 @@ impl Pages {
 
     /// The reader answered the page's dialog.
     fn dialog_answered(&mut self, ok: bool) {
-        let Some((_, control)) = self.dialog.take() else {
+        let Some((tab, control)) = self.dialog.take() else {
             return;
         };
         let window = self.window();
+        if window.get_page_dialog_stop() {
+            self.page_dialogs.stop(tab);
+        }
         let answer = match (ok, window.get_page_dialog_kind()) {
             (false, _) => DialogAnswer::Cancel,
             (true, 3) => DialogAnswer::Ok(Some(window.get_page_dialog_text().into())),
