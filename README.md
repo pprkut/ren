@@ -27,7 +27,8 @@ GNOME Keyring), or comes from a command (`password-command`, e.g.
 
 The menus list the shortcuts; for reading, J and K go to the next
 and previous article, Space scrolls, M marks it read or unread, S stars
-it, O opens its page in a tab.
+it, O opens its page in a tab. Ctrl+F finds text in the article or the
+page shown, Alt+Q searches the article list.
 
 ## Building
 
