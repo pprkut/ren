@@ -244,6 +244,40 @@ The protocol (`ren-tabs`) got `Event::Dialog`, `ColourPicker` and
 side here: the answers arrived as given. The helper's side is checked
 by CI's Servo job.
 
+### Finding text (the review)
+
+![The find bar in an article](0017/find.webp)
+
+Asked for in the review, as Akregator has it: Edit → Find… (Ctrl+F)
+opens a bar below the article or the page shown. Typing finds the first
+match; Enter and F3 go to the next one, Shift+Enter and Shift+F3 to the
+previous one, round the ends; "Match case" is off by default; the bar
+says "2 of 7" or "Not found"; Escape closes it and takes the selection
+away. It stays open when the article or the tab changes and finds there
+again. Searching the article list moved to Alt+Q (Edit → Find Articles…),
+as in Akregator; chosen from the menu, it also keeps the focus now (the
+closing menu gave it back to where it was).
+
+- **Articles (Blitz):** matches within a block of text (a paragraph, a
+  heading, a list item); the match is selected with Blitz's text
+  selection and scrolled to a third of the view's height when it's out
+  of view (`HtmlView::find`). Ignoring the case compares letters in
+  lower case, also where that has another length (`article/find.rs`,
+  tested).
+- **Pages (Servo):** Servo 0.7 has no find-in-page, so the helper runs a
+  script in the page (`crates/ren-servo/src/find.js`; `Command::Find`,
+  `Event::Found`): it searches the text nodes that are shown (not those
+  of scripts, styles and hidden elements), selects the match through the
+  page's selection, which Servo paints, and scrolls it into view.
+  Matches within one text node. The script runs in the page's context,
+  so a page's own scripts could spoil it, on that page only. The script
+  was tried in Chromium, the window's side with the pattern helper;
+  Servo builds it in CI's Servo job.
+- Only the match gone to is highlighted, not all of them as in
+  browsers: Blitz and Servo draw one selection.
+- Without the HTML view (light builds) there's nothing to find in an
+  article; Find… is disabled there.
+
 ## Tests
 
 New tests: the API's edits (requests, answers, the null count), ren-sync's
@@ -252,7 +286,8 @@ address and its failures), the end-to-end test's feed changes, the
 sync thread's changes before a sync, the welcome page's texts, the
 overview and broken feeds in the reader, the tree's "Broken feeds", the
 tray icon's SVGs, one instance's socket, the portal's URIs and filters,
-the helper's extensions and colours, and a UI flow that adds a feed (into
+the helper's extensions and colours, finding text (the matches, the
+steps, the helper's script and answers), and a UI flow that adds a feed (into
 the folder selected) and deletes it against a mock server. `just
 check-light` passes; the end-to-end test passes with Nextcloud 32/News
 28.7.0 and 33/29.0.0 (`just test-nextcloud`, run here with the images
@@ -295,7 +330,8 @@ Not checked there yet; worth a look before the release:
 - a page's file input (KDE's portal), a colour input, `alert`/`prompt`
   (e.g. on <https://www.w3schools.com/js/tryit.asp?filename=tryjs_prompt>);
 - adding a feed by a site's address, and changing a feed's address, on
-  the real server.
+  the real server;
+- finding text in a page in a tab (Servo), and in a long article.
 
 ## Open
 
