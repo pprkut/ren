@@ -1146,7 +1146,7 @@ impl App {
             pages.set_keep_site_data(settings.keep_site_data());
             pages.set_blocking(settings.filter_lists(), settings.unblocked_sites());
         }
-        // Logging in or out changes the welcome page's links.
+        // Logging in or out shows or hides the welcome page's button.
         self.refresh_welcome();
     }
 

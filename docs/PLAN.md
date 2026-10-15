@@ -950,16 +950,16 @@ From here on every milestone ships with tests for what it adds.
     Servo's: split off if it would hold up the release.
 
   *Result:* "Ren" in titles, menus, dialogs and texts; the logo, a
-  wire-frame lotus (`icons/ren.svg`; a small one-pixel-line version on
-  Breeze's 22-pixel grid and a one-colour one), the small one as the
-  windows' icon, the large one in About Ren; in the tray in colour or in
-  one colour (`window.tray-icon-style`: following the colour scheme,
-  light or dark), drawn at 44 pixels. A welcome page while no article is
-  shown, drawn by Slint rather than Blitz so the start doesn't make the
-  article view: version, counts, the last sync, links, shortcuts, the
-  logo faint in the middle. One instance
-  through a socket in `$XDG_RUNTIME_DIR` (a second start hands over; on
-  Wayland the window only asks for attention). Broken feeds (more than
+  wire-frame lotus (`icons/ren.svg`; a small one-pixel-line version
+  without the wires on Breeze's 22-pixel grid and a one-colour one), the
+  small one as the windows' icon, the large one in About Ren; in the tray
+  in colour or in one colour (`window.tray-icon-style`: following the
+  colour scheme, light or dark), drawn at 44 pixels. A welcome page while
+  no article is shown, drawn by Slint rather than Blitz so the start
+  doesn't make the article view: version, counts, the last sync, a
+  button to log in without an account, the logo faint in the middle. One
+  instance through a socket in `$XDG_RUNTIME_DIR` (a second start hands
+  over; on Wayland the window only asks for attention). Broken feeds (more than
   eight failed updates, as News' web interface) with a mark and the
   error as tooltip, "Broken feeds" in the tree; the API has no last
   successful update. Add Feed, editing (name, address, folder) and

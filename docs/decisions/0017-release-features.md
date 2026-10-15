@@ -37,11 +37,11 @@ on stderr. The `.desktop` file is M11's.
 A lotus of five petals drawn as outlines, each with its midrib and two
 cross lines (the "wires"), in a gradient from pink to violet:
 `crates/ren/icons/ren.svg`, for 48 pixels and up. At 16–32 pixels the
-wires blur, so `ren-small.svg` is the lotus without them, and without
-the parts of petals that others hide, so that the lines don't run
-together where the petals meet; it's drawn on Breeze's 22-pixel grid,
-with one-pixel lines like Breeze's icons. `ren-mono.svg` is that in one
-colour. Under the GPL, like the code, with SPDX headers in the files.
+wires blur, so `ren-small.svg` is the lotus without them, its petals
+still overlapping, drawn on Breeze's 22-pixel grid with one-pixel lines
+like Breeze's icons, and with the petals' bases a little apart, so that
+their lines don't run together where they meet. `ren-mono.svg` is that
+in one colour. Under the GPL, like the code, with SPDX headers in the files.
 The windows take the small one as their icon (X11; Wayland takes the
 icon from the `.desktop` file, M11): window managers show it at title
 bar size, where the wires ran together. About Ren shows the large one,
@@ -53,7 +53,9 @@ The review dropped the line of water in teal the logo first stood on
 Plasma's own: the small logo had lines half again as thick as Breeze's,
 which ran together into a blot where the five petals met, and was drawn
 at 64 pixels for a panel showing 44 (see "The tray"). Both are fixed
-above.
+above. A first fix left out the parts of petals that others hide, which
+was clear but lost the overlapping lines; the second review brought them
+back, with the bases apart instead.
 
 ### The tray
 
@@ -87,11 +89,12 @@ a scale of 2, and halved cleanly at 1. At 64, as first, it was scaled by
 Shown in the article pane while no article is (at the start, after
 choosing another list), as KDE's applications do: "Welcome to Ren", the
 version, the unread articles and feeds, when the last sync ended and how
-many articles it brought (or why the last one failed), links to log in
-(without an account), fetch the feeds, add a feed and the settings, and
-the shortcuts for reading, over the logo, faint, in the middle of the
-pane. It listed the broken feeds with their errors too, which made it
-too busy with a real account's 15 (the review); the tree has them.
+many articles it brought (or why the last one failed), and without an
+account a button to log in, over the logo, faint, in the middle of the
+pane. The reviews made it calmer: it listed the broken feeds with their
+errors too, which made it too busy with a real account's 15 (the tree
+has them), and links to fetch the feeds, add a feed and the settings
+and the shortcuts for reading, which the tool bar and the menus have.
 
 The plan said "in the article view, so it costs nothing beyond what the
 first article costs anyway". It's drawn by Slint in the article pane
@@ -165,7 +168,7 @@ address, and fetches it; it answers with the feed), `POST
 `FeedChange`; the sync after it brings the result into the store, with
 the articles of a feed added (their `lastModified` is after the cursor).
 
-In the window: Feed → Add Feed (also the tool bar and the welcome page)
+In the window: Feed → Add Feed (also the tool bar)
 asks for the address and a folder, by default the one selected; a
 feed's context menu edits it (name, address, folder), deletes it and
 opens its homepage; a folder's renames and deletes it; the root's adds a
@@ -270,9 +273,9 @@ pane's size, is about 0.6 MiB; the rest is the new code (the binary
 grows by 1.1 MiB) and the welcome page's elements. The start is as fast
 as before (within the runs' spread).
 
-After the review the logo is drawn at 0.6 of the pane's smaller side
-instead of 0.8, in the middle, and the broken feeds are gone from the
-page. Measured again (five runs each, alternating): 34.2–35.6 MiB with
+After the first review the logo is drawn at 0.6 of the pane's smaller
+side instead of 0.8, in the middle, and the broken feeds are gone from
+the page. Measured again (five runs each, alternating): 34.2–35.6 MiB with
 the logo, 34.4–35.0 MiB without, 38–62 and 41–46 ms; its cost is within
 the runs' spread now. The feed dialog and the page's
 dialogs are made when they open; the file chooser's thread and its
