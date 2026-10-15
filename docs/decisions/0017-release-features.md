@@ -35,15 +35,25 @@ on stderr. The `.desktop` file is M11's.
 ### The logo
 
 A lotus of five petals drawn as outlines, each with its midrib and two
-cross lines (the "wires"), in a gradient from pink to violet, over a
-line of water in teal: `crates/ren/icons/ren.svg`, for 48 pixels and
-up. At 16–32 pixels the wires blur, so `ren-small.svg` is the same lotus
-without them and with thicker lines; `ren-mono.svg` is that in one
+cross lines (the "wires"), in a gradient from pink to violet:
+`crates/ren/icons/ren.svg`, for 48 pixels and up. At 16–32 pixels the
+wires blur, so `ren-small.svg` is the lotus without them, and without
+the parts of petals that others hide, so that the lines don't run
+together where the petals meet; it's drawn on Breeze's 22-pixel grid,
+with one-pixel lines like Breeze's icons. `ren-mono.svg` is that in one
 colour. Under the GPL, like the code, with SPDX headers in the files.
-The windows take it as their icon (X11; Wayland takes the icon from the
-`.desktop` file, M11), About Ren shows it, the welcome page has it as a
-faint background. M11 installs it into the hicolor theme (scalable, and
-the small one at 16–32).
+The windows take the small one as their icon (X11; Wayland takes the
+icon from the `.desktop` file, M11): window managers show it at title
+bar size, where the wires ran together. About Ren shows the large one,
+the welcome page has it as a faint background. M11 installs them into
+the hicolor theme (scalable, and the small one at 16–32).
+
+The review dropped the line of water in teal the logo first stood on
+(too separate from the flower), and found the tray icon blurred next to
+Plasma's own: the small logo had lines half again as thick as Breeze's,
+which ran together into a blot where the five petals met, and was drawn
+at 64 pixels for a panel showing 44 (see "The tray"). Both are fixed
+above.
 
 ### The tray
 
@@ -62,20 +72,26 @@ Slint's tray sends pixels (`IconPixmap`), so Ren draws the colour
 itself, Breeze's text colours (`#fcfcfc`, `#232629`). A panel's colours
 can't be asked for: the colour scheme is the best guess, and the fixed
 ones cover a panel that differs, as with Breeze Twilight (dark panel,
-light windows). The icon is drawn at 64 pixels; panels scale it down.
+light windows).
+
+Slint sends one pixmap, which the panel scales to its icon size. Plasma
+shows tray icons at 22 pixels, so the icon is drawn at 44: that size at
+a scale of 2, and halved cleanly at 1. At 64, as first, it was scaled by
+1.45 or 2.9 and came out blurred.
 
 ### The welcome page
 
 ![The welcome page](0017/welcome-light.webp)
-![The welcome page in dark mode, with the list above the article](0017/welcome-dark.webp)
+![The welcome page in dark mode](0017/welcome-dark.webp)
 
 Shown in the article pane while no article is (at the start, after
 choosing another list), as KDE's applications do: "Welcome to Ren", the
 version, the unread articles and feeds, when the last sync ended and how
-many articles it brought (or why the last one failed), the feeds the
-server can't update with their errors, links to log in (without an
-account), fetch the feeds, add a feed and the settings, and the
-shortcuts for reading, over the logo as a faint background.
+many articles it brought (or why the last one failed), links to log in
+(without an account), fetch the feeds, add a feed and the settings, and
+the shortcuts for reading, over the logo, faint, in the middle of the
+pane. It listed the broken feeds with their errors too, which made it
+too busy with a real account's 15 (the review); the tree has them.
 
 The plan said "in the article view, so it costs nothing beyond what the
 first article costs anyway". It's drawn by Slint in the article pane
@@ -130,8 +146,7 @@ Broken feeds get:
 - "Broken feeds" after "Starred" while there are any, with their number,
   which lists their articles (`Selection::Broken`; marked read item by
   item like "Starred", as the server can't mark such a list; kept in the
-  state file);
-- a list on the welcome page, with their errors.
+  state file).
 
 The plan asked for the feed's last successful update "if the server
 tells it": it doesn't. News' API v1-3 sends `nextUpdateTime` (when it
@@ -253,7 +268,13 @@ generated items, RSS 5 s after the start, five runs each:
 So 2.2–2.6 MiB more at the start, of which the faint logo, drawn at the
 pane's size, is about 0.6 MiB; the rest is the new code (the binary
 grows by 1.1 MiB) and the welcome page's elements. The start is as fast
-as before (within the runs' spread). The feed dialog and the page's
+as before (within the runs' spread).
+
+After the review the logo is drawn at 0.6 of the pane's smaller side
+instead of 0.8, in the middle, and the broken feeds are gone from the
+page. Measured again (five runs each, alternating): 34.2–35.6 MiB with
+the logo, 34.4–35.0 MiB without, 38–62 and 41–46 ms; its cost is within
+the runs' spread now. The feed dialog and the page's
 dialogs are made when they open; the file chooser's thread and its
 D-Bus connection last until it answers. On the desktop, `just measure`
 compares the idle window again.
