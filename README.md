@@ -25,7 +25,7 @@ by hand. The app password is kept in the desktop's Secret Service (KWallet,
 GNOME Keyring), or comes from a command (`password-command`, e.g.
 `pass show nextcloud/ren`).
 
-The welcome page lists the shortcuts for reading: J and K go to the next
+The menus list the shortcuts; for reading, J and K go to the next
 and previous article, Space scrolls, M marks it read or unread, S stars
 it, O opens its page in a tab.
 
