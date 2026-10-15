@@ -9,7 +9,8 @@ isn't a crate (notices/header.html).
 
     scripts/notices.py [--check]
 
---check compares with the committed file instead of writing it (CI).
+--check compares with the committed file instead of writing it (CI,
+with the same cargo-about version: 0.9.2).
 Offline after `cargo fetch` (so the result doesn't depend on the
 network): crates that lack their licence file get the licence's
 standard text.
