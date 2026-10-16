@@ -94,6 +94,15 @@ ureq = { version = "3.4", default-features = false, features = ["rustls-no-provi
 # Whether the desktop shows tray icons, before the window hides in the
 # tray; in the build already (Slint's winit backend, ksni).
 zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+# Bringing the window to the front on Wayland with the launcher's
+# activation token (xdg-activation), on winit's own connection; in the
+# build already, with these features (winit's Wayland backend).
+wayland-backend = { version = "0.3", default-features = false, features = ["client_system"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# The same on X11: a request to the window manager on a connection of
+# Ren's own (libxcb, which winit loads too).
+x11rb = { version = "0.13", default-features = false, features = ["allow-unsafe-code", "dl-libxcb"] }
 
 [dev-dependencies]
 # Slint's testing backend, for the UI flows (ui/flows.rs); its version
