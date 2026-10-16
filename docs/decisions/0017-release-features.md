@@ -343,18 +343,18 @@ Checked there in the reviews (Plasma, X11): the logo in the tray, in
 colour and in one colour on a dark panel, in one colour (dark) on a light
 one, and as the window's icon; the welcome page; finding text in
 articles and in pages (Servo); starting Ren a second time with the
-window in the tray, behind others and on another desktop; adding a feed
-and changing a feed's address on the real server. Adding a feed with a
-feed selected crashed (the reader was still borrowed while the feed's
-folder was looked up); fixed, and the UI flow covers it.
+window in the tray, behind others and on another desktop; adding a feed,
+also by a site's address, and changing a feed's address on the real
+server. Adding a feed with a feed selected crashed (the reader was still
+borrowed while the feed's folder was looked up); fixed, and the UI flow
+covers it.
 
 Not checked there yet; worth a look before the release:
 
 - starting Ren a second time on Wayland, from the launcher and from a
   terminal;
 - a page's file input (KDE's portal), a colour input, `alert`/`prompt`
-  (e.g. on <https://www.w3schools.com/js/tryit.asp?filename=tryjs_prompt>);
-- adding a feed by a site's address (the server finds the feed).
+  (e.g. on <https://www.w3schools.com/js/tryit.asp?filename=tryjs_prompt>).
 
 ## Open
 
