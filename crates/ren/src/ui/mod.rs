@@ -27,6 +27,7 @@ use crate::window_state::{self, Saved};
 
 mod about;
 mod account;
+mod activation;
 mod article;
 mod feeds;
 #[cfg(test)]
@@ -74,6 +75,10 @@ const GEOMETRY_DELAY: Duration = Duration::from_millis(300);
 
 /// Time after the window was hidden until freed memory is given back.
 const HIDDEN_TRIM_DELAY: Duration = Duration::from_secs(1);
+
+/// Time between hiding the window and showing it again to bring it to the
+/// front: the window manager sees it go before it comes back.
+const RESHOW_DELAY: Duration = Duration::from_millis(100);
 
 /// Time between the start and the first automatic sync, so that it
 /// doesn't compete with the first frames.
@@ -578,17 +583,29 @@ impl App {
             self.show_window();
             return;
         }
-        let _ = token;
         let window = self.window();
         if window.window().is_minimized() {
             window.window().set_minimized(false);
         }
+        // Forward where it is: on another virtual desktop, the window
+        // manager goes there.
         use slint::winit_030::WinitWindowAccessor;
-        window.window().with_winit_window(|winit_window| {
-            winit_window.focus_window();
-            winit_window.request_user_attention(Some(
-                slint::winit_030::winit::window::UserAttentionType::Informational,
-            ));
+        let activated = window
+            .window()
+            .with_winit_window(|winit_window| activation::activate(winit_window, token))
+            .unwrap_or(false);
+        if activated {
+            return;
+        }
+        // On Wayland without the launcher's token (started from a
+        // terminal), the window is shown anew, as from the tray, which
+        // compositors bring to the front on the current desktop.
+        self.hide_window();
+        let app = self.this.clone();
+        slint::Timer::single_shot(RESHOW_DELAY, move || {
+            if let Some(app) = app.upgrade() {
+                app.show_window();
+            }
         });
     }
 
