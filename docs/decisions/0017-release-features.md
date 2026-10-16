@@ -112,10 +112,28 @@ The window listens on a Unix socket, `$XDG_RUNTIME_DIR/ren/instance`. A
 second start connects, sends `activate` with the launcher's activation
 token (`XDG_ACTIVATION_TOKEN`, `DESKTOP_STARTUP_ID`), waits for `ok` and
 exits; it never opens the database. The running window comes back from
-the tray, or to the front: X11 raises and focuses it; on Wayland only the
-launcher's token can, and winit 0.30 has no way to activate an existing
-window with a token, so there the window asks for attention (the task
-bar highlights it). A socket nobody answers on (a Ren that was killed)
+the tray, or to the front (`ui/activation.rs`):
+
+- On X11, winit's `focus_window` asks the window manager as an
+  application, which KWin's focus stealing prevention refuses while
+  another window is active: the review found the window staying behind
+  others and on its virtual desktop. Ren now asks as a pager does
+  (`_NET_ACTIVE_WINDOW` with source indication 2, as KWindowSystem's
+  `forceActiveWindow` and the task bar), on a connection of its own, and
+  first for the window's desktop (`_NET_CURRENT_DESKTOP`), which not
+  every window manager goes to by itself. Tried with Openbox under Xvfb,
+  ten times each, behind another window and from another desktop: the
+  desktop switch needed a round trip before the activation (Openbox lost
+  it when both came at once), as xdotool's `windowactivate` makes.
+- On Wayland, compositors raise a window only with an activation token,
+  and winit 0.30's `focus_window` does nothing there. The launcher's
+  token goes to the compositor through xdg-activation on winit's own
+  Wayland connection; without one (Ren started from a terminal), the
+  window is hidden and shown anew, as from the tray, which brings it to
+  the current desktop. Tried with Weston (headless), which has no
+  xdg-activation: the fallback runs; the token itself only on KWin.
+
+A socket nobody answers on (a Ren that was killed)
 is replaced; the socket goes when Ren quits, unless another Ren replaced
 it meanwhile (its inode is compared).
 
@@ -329,8 +347,9 @@ Not checked there yet; worth a look before the release:
 
 - the tray icon on a light panel (`window.tray-icon-style`: `monochrome`
   with a light colour scheme, `dark`);
-- starting Ren a second time, with the window behind others and hidden
-  in the tray, on Wayland and X11;
+- starting Ren a second time on X11 with the window behind others and
+  on another desktop (the fix; from the tray it worked already), and on
+  Wayland, from the launcher and from a terminal;
 - a page's file input (KDE's portal), a colour input, `alert`/`prompt`
   (e.g. on <https://www.w3schools.com/js/tryit.asp?filename=tryjs_prompt>);
 - adding a feed by a site's address, and changing a feed's address, on
@@ -339,7 +358,7 @@ Not checked there yet; worth a look before the release:
 ## Open
 
 - Input methods in pages (see above), in the backlog.
-- On Wayland a second start only highlights the running window in the
-  task bar (winit can't activate a window with the launcher's token).
+- On Wayland, a second start from a terminal (without a launcher's
+  token) shows the window anew rather than raising it where it is.
 - The feed's last successful update isn't known to the API; Ren shows
   the errors only.
