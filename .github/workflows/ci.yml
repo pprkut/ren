@@ -41,6 +41,21 @@ jobs:
           manifest-path: crates/ren-servo/Cargo.toml
           command: check licenses
 
+  # THIRD-PARTY-NOTICES.html must match both Cargo.lock files: `just
+  # notices` regenerates it.
+  notices:
+    name: Third-party notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      # The version that generated the file: another may word it
+      # differently.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - run: scripts/notices.py --check
+
   # Without the heavy engines (Blitz, Servo), so it stays fast. The
   # `servo` feature is only the window's side of the tabs; Servo itself is
   # in the helper, crates/ren-servo.

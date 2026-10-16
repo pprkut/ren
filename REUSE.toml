@@ -52,6 +52,40 @@ SPDX-FileCopyrightText = [
 ]
 SPDX-License-Identifier = "ISC AND MIT"
 
+# ICU's licence and the notices of its third-party parts, for the
+# third-party notices (ICU is in SpiderMonkey's source in mozjs_sys).
+[[annotations]]
+path = "notices/icu-78.txt"
+SPDX-FileCopyrightText = "Copyright 2016-2025 Unicode, Inc."
+SPDX-License-Identifier = "Unicode-3.0"
+
+# The SlackBuild's files that can't carry a header.
+[[annotations]]
+path = "packaging/slackware/ren.info"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "packaging/slackware/README"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The logo's PNGs for the icon theme, rendered by scripts/icons.sh.
+[[annotations]]
+path = "data/icons/**"
+SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# The screenshot for AppStream, with the bundled icons (Lucide, see above).
+[[annotations]]
+path = "data/screenshot.png"
+SPDX-FileCopyrightText = [
+    "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands",
+    "Copyright 2026 Lucide Icons and Contributors",
+    "Copyright 2013-present Cole Bemis",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later AND ISC AND MIT"
+
 # Screenshots of ren; they show Breeze icons (KDE, LGPL-3.0-or-later).
 [[annotations]]
 path = "docs/decisions/*/*.webp"

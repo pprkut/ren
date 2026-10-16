@@ -1,0 +1,93 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Slackware build script for Ren, a native reader for Nextcloud News.
+#
+# Builds offline from the two release tarballs (the source, and the
+# crates of both workspaces from `just dist`), Servo's JavaScript engine
+# from its source too. WITHOUT_SERVO=yes builds without web page tabs
+# (pages open in the browser; a much shorter build).
+
+cd "$(dirname "$0")" ; CWD=$(pwd)
+
+PRGNAM=ren
+VERSION=${VERSION:-0.1.0}
+BUILD=${BUILD:-1}
+TAG=${TAG:-_SBo}
+PKGTYPE=${PKGTYPE:-tgz}
+
+if [ -z "$ARCH" ]; then
+  case "$( uname -m )" in
+    i?86) ARCH=i586 ;;
+    arm*) ARCH=arm ;;
+       *) ARCH=$( uname -m ) ;;
+  esac
+fi
+
+if [ ! -z "${PRINT_PACKAGE_NAME}" ]; then
+  echo "$PRGNAM-$VERSION-$ARCH-$BUILD$TAG.$PKGTYPE"
+  exit 0
+fi
+
+case "$ARCH" in
+  x86_64|aarch64) ;;
+  *) echo "$ARCH is not supported: Ren is built for x86_64 and aarch64" >&2; exit 1 ;;
+esac
+
+TMP=${TMP:-/tmp/SBo}
+PKG=$TMP/package-$PRGNAM
+OUTPUT=${OUTPUT:-/tmp}
+
+set -e
+
+# A newer Rust than Slackware's, e.g. from rust-opt.
+if [ -r /etc/profile.d/rust-opt.sh ]; then
+  . /etc/profile.d/rust-opt.sh
+fi
+RUST=$(rustc --version | cut -d' ' -f2)
+if [ "$(printf '%s\n1.92.0\n' "$RUST" | sort -V | head -n1)" != "1.92.0" ]; then
+  echo "Ren needs Rust 1.92 or newer, found $RUST" >&2
+  exit 1
+fi
+
+rm -rf $PKG
+mkdir -p $TMP $PKG $OUTPUT
+cd $TMP
+rm -rf $PRGNAM-$VERSION
+tar xvf $CWD/$PRGNAM-$VERSION.tar.xz
+tar xvf $CWD/$PRGNAM-$VERSION-vendor.tar.xz
+cd $PRGNAM-$VERSION
+chown -R root:root .
+find -L . \
+ \( -perm 777 -o -perm 775 -o -perm 750 -o -perm 711 -o -perm 555 \
+  -o -perm 511 \) -exec chmod 755 {} \; -o \
+ \( -perm 666 -o -perm 664 -o -perm 640 -o -perm 600 -o -perm 444 \
+  -o -perm 440 -o -perm 400 \) -exec chmod 644 {} \;
+
+# The crates come from vendor/ (.cargo/config.toml of the vendor
+# tarball); nothing is downloaded, not even SpiderMonkey.
+export CARGO_HOME=$TMP/$PRGNAM-cargo-home
+export MOZJS_FROM_SOURCE=1
+if [ "${WITHOUT_SERVO:-no}" = "yes" ]; then
+  # Without the window's side of the tabs too: pages open in the browser.
+  cargo build --release --offline --locked \
+    --no-default-features --features renderer-software,html-view
+  export NO_HELPER=1
+else
+  cargo build --release --offline --locked
+  ( cd crates/ren-servo && cargo build --release --offline --locked )
+fi
+rm -rf $CARGO_HOME
+
+# The release profile strips the binaries already.
+DOCDIR=/usr/doc/$PRGNAM-$VERSION scripts/install.sh /usr $PKG
+
+cat $CWD/$PRGNAM.SlackBuild > $PKG/usr/doc/$PRGNAM-$VERSION/$PRGNAM.SlackBuild
+
+mkdir -p $PKG/install
+cat $CWD/slack-desc > $PKG/install/slack-desc
+cat $CWD/doinst.sh > $PKG/install/doinst.sh
+
+cd $PKG
+/sbin/makepkg -l y -c n $OUTPUT/$PRGNAM-$VERSION-$ARCH-$BUILD$TAG.$PKGTYPE

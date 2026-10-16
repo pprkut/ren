@@ -978,7 +978,8 @@ From here on every milestone ships with tests for what it adds.
   start in the container (0.6 of it the welcome page's faint logo,
   within the runs' spread after the review made it smaller).
   Not yet checked on the desktop.
-- **M11 — Release and packaging.**
+- **M11 — Release and packaging.** *(done; see
+  `docs/decisions/0018-release.md`)*
   - **Third-party notices** generated with `cargo-about` (all features, so
     one file covers every build) into a committed
     `THIRD-PARTY-NOTICES.html`, regenerated with `just notices`; CI checks
@@ -989,6 +990,22 @@ From here on every milestone ships with tests for what it adds.
   - A `.desktop` file, the app icon (M10b's logo), AppStream metadata,
     the install layout (binary, the Servo helper in `libexec/ren/`,
     notices, icons), and a SlackBuild. The notices cover both workspaces (ren's and the helper's).
+
+  *Result:* the application's id `io.github.pprkut.ren`, of the
+  `.desktop` file, the AppStream metadata (both validated) and the
+  windows (`slint::set_xdg_app_id`); the logo in hicolor as SVG and as
+  PNGs from 16 to 512 (`just icons`). `just notices` writes
+  THIRD-PARTY-NOTICES.html from cargo-about's licences of both
+  workspaces (offline, without test and build-only crates: 790 crates,
+  174 texts), SpiderMonkey's libraries in mozjs_sys (ICU 78's licence in
+  `notices/`) and `notices/header.html`; CI checks it with the same
+  cargo-about. 740 KiB, 1.8 MiB while About Ren shows it. `just
+  install` (bin, libexec/ren/ren-servo, applications, metainfo, icons,
+  doc), `just dist` (the source and both workspaces' vendored crates,
+  for offline builds: 2.6 and 152 MiB), a README, `rust-version` 1.92
+  (Slint's). A SlackBuild in `packaging/slackware/`, offline, SpiderMonkey
+  from source, `WITHOUT_SERVO=yes`; built here without Servo. Not yet
+  on Slackware.
 
 ### Backlog
 

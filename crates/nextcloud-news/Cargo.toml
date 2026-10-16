@@ -6,6 +6,7 @@ name = "nextcloud-news"
 description = "Client for the Nextcloud News API v1-3"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
