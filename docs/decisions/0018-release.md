@@ -135,6 +135,17 @@ install scripts, and its `ren` runs (41 MiB, stripped). With Servo, the
 helper's build adds SpiderMonkey's from source; CI's Servo job builds the
 helper, but with the prebuilt SpiderMonkey.
 
+## On the desktop
+
+Not checked there yet; worth a look before the release:
+
+- `just install` into a prefix of your own (`just install ~/.local`, or
+  `just install /usr "$DESTDIR"` into a staging directory): Ren in the
+  launcher under its `.desktop` file's name and icon, and the icon in
+  the task bar on Wayland (matched by the app id) and X11;
+- starting the installed Ren: the helper found in `libexec/ren/`;
+- About Ren → the licences page, with the generated notices.
+
 ## Open
 
 - The SlackBuild with Servo, and on Slackware itself: SpiderMonkey's
