@@ -960,8 +960,9 @@ From here on every milestone ships with tests for what it adds.
   button to log in without an account, the logo faint in the middle. A
   find bar (Ctrl+F) for the article or the page shown, after the review;
   the article list's search moved to Alt+Q. One instance through a
-  socket in `$XDG_RUNTIME_DIR` (a second start hands over; on Wayland
-  the window only asks for attention). Broken feeds (more than eight
+  socket in `$XDG_RUNTIME_DIR` (a second start hands over; the window
+  comes forward as a pager asks on X11, with the launcher's token on
+  Wayland, or shown anew without one). Broken feeds (more than eight
   failed updates, as News' web interface) with a mark and the
   error as tooltip, "Broken feeds" in the tree; the API has no last
   successful update. Add Feed, editing (name, address, folder) and
