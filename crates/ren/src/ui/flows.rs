@@ -504,6 +504,30 @@ fn adding_and_deleting_feeds() {
         r#"{"url":"https://example.org/new.xml","folderId":1}"#
     );
 
+    // Add Feed with a feed selected: in the feed's folder (the reader was
+    // still borrowed for its folder, a panic).
+    ui.window.invoke_action("add-feed".into());
+    let dialog = match &*ui.app.feed_dialog.borrow() {
+        Some(dialog) => dialog.window.clone_strong(),
+        None => panic!("the feed dialog isn't open"),
+    };
+    let (folders, feed) = {
+        let reader = ui.app.reader.borrow();
+        (
+            reader.folders().unwrap(),
+            reader.feed(added).unwrap().unwrap(),
+        )
+    };
+    assert!(feed.folder_id.is_some());
+    assert_eq!(
+        dialog.get_folder_index(),
+        crate::feed_edit::folder_index(&folders, feed.folder_id)
+    );
+    dialog.invoke_cancelled();
+    // Dropped right after its callback.
+    mock_elapsed_time(16);
+    assert!(ui.app.feed_dialog.borrow().is_none());
+
     // Deleting it asks first.
     let row = ui
         .app

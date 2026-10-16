@@ -37,7 +37,9 @@ pub(super) struct Dialog {
 impl App {
     /// Feed → Add Feed: in the folder selected, or the selected feed's.
     pub(super) fn add_feed(&self) {
-        let folder = match self.reader.borrow().selected() {
+        // Not borrowed in the match: the feed's folder needs the reader.
+        let selected = self.reader.borrow().selected();
+        let folder = match selected {
             Node::Folder(id) => Some(id),
             Node::Feed(id) => self
                 .with_reader(|reader| reader.feed(id))
