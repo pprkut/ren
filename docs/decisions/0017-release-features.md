@@ -321,17 +321,20 @@ compares the idle window again.
 
 ## On the desktop
 
+Checked there in the reviews (Plasma): the logo in the tray, in colour
+and in one colour on a dark panel, and as the window's icon; the welcome
+page; finding text in articles and in pages (Servo).
+
 Not checked there yet; worth a look before the release:
 
-- the logo in the tray, in each style, on a light and a dark panel
-  (`window.tray-icon-style`), and the window's icon on X11;
+- the tray icon on a light panel (`window.tray-icon-style`: `monochrome`
+  with a light colour scheme, `dark`);
 - starting Ren a second time, with the window behind others and hidden
   in the tray, on Wayland and X11;
 - a page's file input (KDE's portal), a colour input, `alert`/`prompt`
   (e.g. on <https://www.w3schools.com/js/tryit.asp?filename=tryjs_prompt>);
 - adding a feed by a site's address, and changing a feed's address, on
-  the real server;
-- finding text in a page in a tab (Servo), and in a long article.
+  the real server.
 
 ## Open
 
