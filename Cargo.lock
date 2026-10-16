@@ -4345,6 +4345,10 @@ dependencies = [
  "slint-build",
  "ureq",
  "url",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
+ "x11rb",
  "zbus",
 ]
 
