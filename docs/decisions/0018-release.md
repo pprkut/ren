@@ -127,6 +127,18 @@ sets its target directory, and cargo merges the parent's. 141 MiB
 Checked: both workspaces resolve from it with an empty cargo home, and
 a crate builds.
 
+## On the desktop
+
+Not checked there yet; worth a look before the release:
+
+- `just install` into a prefix of your own (`just prefix="$HOME/.local"
+  install`, or `just prefix=/usr rootdir="$PKG" install` into a staging
+  directory): Ren in the
+  launcher under its `.desktop` file's name and icon, and the icon in
+  the task bar on Wayland (matched by the app id) and X11;
+- starting the installed Ren: the helper found in `libexec/ren/`;
+- About Ren → the licences page, with the generated notices.
+
 ## Open
 
 - Building the helper offline from `vendor.tar.xz`: SpiderMonkey's build
