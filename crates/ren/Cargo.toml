@@ -112,3 +112,9 @@ i-slint-backend-testing = "=1.18.1"
 
 [build-dependencies]
 slint-build = "1.18"
+
+# Dependencies cargo-machete can't see being used.
+[package.metadata.cargo-machete]
+# Only for its client_system feature: Backend::from_foreign_display,
+# used through wayland-client's re-export (ui/activation.rs).
+ignored = ["wayland-backend"]

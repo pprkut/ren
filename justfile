@@ -32,7 +32,7 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check: reuse validate-data fmt-check clippy-light test-light clippy test licenses advisories
+check: reuse validate-data fmt-check machete clippy-light test-light clippy test licenses advisories
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
 check-light: reuse fmt-check clippy-light test-light
@@ -51,6 +51,10 @@ validate-data:
 fmt-check:
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
+
+# Look for unused dependencies in both workspaces (cargo-machete)
+machete:
+    cargo machete
 
 # Lint without Blitz and Servo: without and with the window's side of the tabs
 clippy-light:
