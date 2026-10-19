@@ -15,6 +15,13 @@ on:
 
 permissions: {}
 
+# A new push to a branch cancels the run for the one before; on master
+# every commit is checked to the end. Push and pull request runs have
+# their own groups, as they run different jobs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 env:
   CARGO_TERM_COLOR: always
 
