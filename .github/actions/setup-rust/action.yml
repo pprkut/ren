@@ -22,9 +22,11 @@ inputs:
   cache-workspaces:
     description: rust-cache's workspaces, for a workspace outside the root
     default: ". -> target"
+  # Only master's caches: the repository's 10 GiB fill up with about 3.5
+  # GiB per commit, and branches and pull requests restore master's.
   cache-save:
     description: Save the build cache at the end of the job
-    default: "true"
+    default: ${{ github.ref == 'refs/heads/master' }}
   tools:
     description: Comma separated tools for taiki-e/install-action, without spaces
     default: just
