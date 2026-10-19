@@ -32,7 +32,7 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check: reuse validate-data fmt-check clippy-light test-light clippy test licenses
+check: reuse validate-data fmt-check clippy-light test-light clippy test licenses advisories
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
 check-light: reuse fmt-check clippy-light test-light
@@ -83,6 +83,10 @@ msrv:
 licenses:
     cargo deny check licenses
 
+# Check ren's dependencies for security advisories, unmaintained and yanked crates (cargo-deny)
+advisories:
+    cargo deny check advisories
+
 # Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored
 check-secret-service:
     cargo run --release --locked --no-default-features --features renderer-software -- --check-secret-service
@@ -97,7 +101,7 @@ test-nextcloud *args:
 
 # Run the checks of CI's Servo job: the helper, ren-servo (a long build)
 check-servo: fmt-check clippy-servo test-servo
-    @if command -v cargo-deny >/dev/null; then {{just_executable()}} licenses-servo; else echo "cargo-deny not installed; CI checks the licenses"; fi
+    @if command -v cargo-deny >/dev/null; then {{just_executable()}} licenses-servo advisories-servo; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
 # Lint Servo's helper (builds Servo)
 clippy-servo:
@@ -110,6 +114,10 @@ test-servo:
 # Check the licences of the Servo helper's dependencies (cargo-deny)
 licenses-servo:
     cargo deny --manifest-path crates/ren-servo/Cargo.toml check licenses
+
+# Check the Servo helper's dependencies for security advisories, unmaintained and yanked crates (cargo-deny)
+advisories-servo:
+    cargo deny --manifest-path crates/ren-servo/Cargo.toml check advisories
 
 # Build ren and its Servo helper (ren-servo, next to ren in target/), for web pages in tabs
 build profile="release":

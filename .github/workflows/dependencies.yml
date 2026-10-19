@@ -3,8 +3,9 @@
 
 name: Dependencies
 
-# The dependencies' licences and the third-party notices: on every push,
-# and weekly.
+# The dependencies' licences, security advisories and the third-party
+# notices: on every push, and weekly, as RustSec's advisories come
+# without a commit.
 on:
   push:
   schedule:
@@ -41,6 +42,26 @@ jobs:
           tools: just,cargo-deny
       - run: just licenses
       - run: just licenses-servo
+
+  # RustSec's advisories: vulnerabilities, unmaintained and yanked crates
+  # (the policy is in deny.toml).
+  advisories:
+    name: Security advisories
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+        with:
+          system-libraries: false
+          cache: false
+          tools: just,cargo-deny
+      - run: just advisories
+      - run: just advisories-servo
 
   # THIRD-PARTY-NOTICES.html must match both Cargo.lock files: `just
   # notices` regenerates it.
