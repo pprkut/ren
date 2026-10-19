@@ -32,15 +32,20 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check: reuse validate-data fmt-check machete clippy-light test-light clippy test licenses advisories
+check: reuse typos validate-data fmt-check machete clippy-light test-light clippy test licenses advisories
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
 check-light: reuse fmt-check clippy-light test-light
+    @if command -v typos >/dev/null; then typos; else echo "typos not installed; CI checks the spelling"; fi
     @if command -v cargo-deny >/dev/null; then {{just_executable()}} licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
 # Check the REUSE compliance (licences and copyright of every file)
 reuse:
     reuse lint
+
+# Look for misspelt words in the code and the docs (typos-cli; typos.toml)
+typos:
+    typos
 
 # Validate the .desktop file and the AppStream metadata (desktop-file-utils, appstream)
 validate-data:

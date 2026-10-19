@@ -28,6 +28,18 @@ jobs:
           persist-credentials: false
       - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
 
+  # Misspelt words in the code and the docs (exceptions in typos.toml).
+  typos:
+    name: Spellcheck (typos)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: crate-ci/typos@7f9d0819ca1c008ade73f4b41fa9d258d48f605b # v1.51.1
+
   # The .desktop file and the AppStream metadata, as the desktops and
   # software centres read them.
   data:

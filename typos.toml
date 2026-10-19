@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+[files]
+extend-exclude = [
+    # Generated (`just notices`), from the crates' licences.
+    "THIRD-PARTY-NOTICES.html",
+    # Feed data, the articles' own words.
+    "crates/nextcloud-news/tests/fixtures/",
+]
+
+[default.extend-identifiers]
+PNGs = "PNGs"
+
+[default.extend-words]
+# Misspelt on purpose, in the settings' tests.
+swtich = "swtich"
+tru = "tru"
