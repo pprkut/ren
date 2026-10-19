@@ -32,34 +32,41 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check:
-    reuse lint
-    cargo fmt --all --check
-    cd crates/ren-servo && cargo fmt --check
-    cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-    cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
-    cargo test --locked --no-default-features --features renderer-software,servo
-    cargo clippy --all-targets --locked -- -D warnings
-    cargo test --locked
-    cargo deny check licenses
-
+check: reuse fmt-check clippy-light test-light clippy test licenses
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
-check-light:
+check-light: reuse fmt-check clippy-light test-light
+    @if command -v cargo-deny >/dev/null; then {{just_executable()}} licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
+
+# Check the REUSE compliance (licences and copyright of every file)
+reuse:
     reuse lint
+
+# Check the formatting of both workspaces
+fmt-check:
     cargo fmt --all --check
     cd crates/ren-servo && cargo fmt --check
+
+# Lint without Blitz and Servo: without and with the window's side of the tabs
+clippy-light:
     cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
     cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
-    cargo test --locked --no-default-features --features renderer-software,servo
-    @if command -v cargo-deny >/dev/null; then cargo deny check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
 
-# Measure test coverage without the rendering engines (cargo-llvm-cov); the report is in target/llvm-cov/html
-coverage *args:
-    cargo llvm-cov clean --workspace
-    cargo llvm-cov --no-report --locked --workspace --no-default-features --features renderer-software,servo {{args}}
-    cargo llvm-cov report --html
-    cargo llvm-cov report --summary-only
+# Test without Blitz and Servo
+test-light:
+    cargo test --locked --no-default-features --features renderer-software,servo
+
+# Lint with all default features, including the article view (builds Blitz)
+clippy:
+    cargo clippy --all-targets --locked -- -D warnings
+
+# Test with all default features, including the article view (builds Blitz)
+test:
+    cargo test --locked
+
+# Check the licences of ren's dependencies (cargo-deny)
+licenses:
+    cargo deny check licenses
 
 # Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored
 check-secret-service:
@@ -74,11 +81,20 @@ test-nextcloud *args:
     scripts/test-nextcloud.sh {{args}}
 
 # Run the checks of CI's Servo job: the helper, ren-servo (a long build)
-check-servo:
-    cd crates/ren-servo && cargo fmt --check
+check-servo: fmt-check clippy-servo test-servo
+    @if command -v cargo-deny >/dev/null; then {{just_executable()}} licenses-servo; else echo "cargo-deny not installed; CI checks the licenses"; fi
+
+# Lint Servo's helper (builds Servo)
+clippy-servo:
     cd crates/ren-servo && cargo clippy --all-targets --locked -- -D warnings
+
+# Test Servo's helper (builds Servo)
+test-servo:
     cd crates/ren-servo && cargo test --locked
-    @if command -v cargo-deny >/dev/null; then cargo deny --manifest-path crates/ren-servo/Cargo.toml check licenses; else echo "cargo-deny not installed; CI checks the licenses"; fi
+
+# Check the licences of the Servo helper's dependencies (cargo-deny)
+licenses-servo:
+    cargo deny --manifest-path crates/ren-servo/Cargo.toml check licenses
 
 # Build ren and its Servo helper (ren-servo, next to ren in target/), for web pages in tabs
 build profile="release":
