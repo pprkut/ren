@@ -3,8 +3,8 @@
 
 name: Dependencies
 
-# The dependencies' licences, security advisories and the third-party
-# notices: on every push, and weekly, as RustSec's advisories come
+# The dependencies' licences, security advisories, unused dependencies
+# and the third-party notices: on every push, and weekly, as RustSec's advisories come
 # without a commit.
 on:
   push:
@@ -62,6 +62,22 @@ jobs:
           tools: just,cargo-deny
       - run: just advisories
       - run: just advisories-servo
+
+  # Dependencies no crate uses any more, in both workspaces.
+  machete:
+    name: Unused dependencies (cargo-machete)
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: just,cargo-machete
+      - run: just machete
 
   # THIRD-PARTY-NOTICES.html must match both Cargo.lock files: `just
   # notices` regenerates it.
