@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Set up Rust
+description: >-
+  The system libraries, a Rust toolchain (rustup, preinstalled on the
+  runners), the build cache and the tools the job runs, just at least.
+
+inputs:
+  toolchain:
+    description: The toolchain, e.g. stable or 1.92
+    default: stable
+  components:
+    description: Comma separated rustup components, e.g. rustfmt, clippy
+    default: ""
+  system-libraries:
+    description: Install the system libraries ren links against
+    default: "true"
+  cache:
+    description: Restore the build cache
+    default: "true"
+  cache-workspaces:
+    description: rust-cache's workspaces, for a workspace outside the root
+    default: ". -> target"
+  cache-save:
+    description: Save the build cache at the end of the job
+    default: "true"
+  tools:
+    description: Comma separated tools for taiki-e/install-action, without spaces
+    default: just
+
+runs:
+  using: composite
+  steps:
+    # Slint links against fontconfig; everything else is loaded at runtime.
+    - name: Install system libraries
+      if: inputs.system-libraries == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libfontconfig-dev
+
+    - name: Install the Rust toolchain
+      shell: bash
+      env:
+        TOOLCHAIN: ${{ inputs.toolchain }}
+        COMPONENTS: ${{ inputs.components }}
+      run: |
+        args=(--profile minimal --no-self-update)
+        components=${COMPONENTS// /}
+        [[ -n "$components" ]] && args+=(--component "$components")
+        rustup toolchain install "$TOOLCHAIN" "${args[@]}"
+        rustup default "$TOOLCHAIN"
+        rustc --version
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      if: inputs.cache == 'true'
+      with:
+        workspaces: ${{ inputs.cache-workspaces }}
+        save-if: ${{ inputs.cache-save }}
+
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      with:
+        tool: ${{ inputs.tools }}
