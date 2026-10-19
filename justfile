@@ -69,6 +69,16 @@ clippy:
 test:
     cargo test --locked
 
+# Check that ren and its Servo helper build with their rust-version, the oldest Rust they support (needs rustup; builds Blitz and Servo)
+msrv:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in . crates/ren-servo; do
+        version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' "$dir/Cargo.toml")
+        echo "$dir: Rust $version"
+        (cd "$dir" && cargo "+$version" check --locked)
+    done
+
 # Check the licences of ren's dependencies (cargo-deny)
 licenses:
     cargo deny check licenses

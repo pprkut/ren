@@ -55,6 +55,29 @@ jobs:
           cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+  # ren and its helper with the oldest Rust they support: their
+  # rust-version, read from Cargo.toml.
+  msrv:
+    name: Build with the oldest supported Rust
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read rust-version
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: $/.github/actions/setup-rust
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+          cache-workspaces: |
+            . -> target
+            crates/ren-servo -> ../../target
+      - run: just msrv
+
   # Login, syncs and log out against Nextcloud with the News app in a
   # container (scripts/test-nextcloud.sh): the release on the desktop's
   # server and the newest.
