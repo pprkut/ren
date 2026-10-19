@@ -32,7 +32,7 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check: reuse typos validate-data fmt-check machete clippy-light test-light clippy test licenses advisories
+check: reuse typos editorconfig validate-data fmt-check machete clippy-light test-light clippy test licenses advisories
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
 check-light: reuse fmt-check clippy-light test-light
@@ -46,6 +46,10 @@ reuse:
 # Look for misspelt words in the code and the docs (typos-cli; typos.toml)
 typos:
     typos
+
+# Check the files against .editorconfig: line ends, final newlines, trailing whitespace, tabs (editorconfig-checker)
+editorconfig:
+    git ls-files --exclude-standard -z | xargs -0 "$(command -v editorconfig-checker || echo ec)"
 
 # Validate the .desktop file and the AppStream metadata (desktop-file-utils, appstream)
 validate-data:

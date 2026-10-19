@@ -3,8 +3,9 @@
 
 version = 1
 
+# Generated, and tool configuration in JSON, which can't carry a header.
 [[annotations]]
-path = ["Cargo.lock", "crates/ren-servo/Cargo.lock"]
+path = ["Cargo.lock", "crates/ren-servo/Cargo.lock", ".editorconfig-checker.json"]
 SPDX-FileCopyrightText = "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands"
 SPDX-License-Identifier = "CC0-1.0"
 
