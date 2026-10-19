@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Code Tests
+
+# Without the heavy engines (Blitz, Servo), so it stays fast: on every
+# push, so work on feature branches is checked before review, and weekly,
+# for the new stable toolchain's lints. The builds with the engines are in
+# full-tests.yml.
+on:
+  push:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+# A new push to a branch cancels the run for the one before; on master
+# every commit is checked to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The `servo` feature is only the window's side of the tabs; Servo
+  # itself is in the helper, crates/ren-servo.
+  rust:
+    name: Format, lint, test
+    # Not on a fork's schedule.
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt, clippy
+      - run: just fmt-check
+      - run: just clippy-light
+      - run: just test-light
+
+  # ren-settings' store in the Secret Service, against GNOME Keyring on a
+  # private session bus (scripts/test-secret-service.sh).
+  secret-service:
+    name: Secret Service store
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          system-libraries: false
+      - name: Install GNOME Keyring
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dbus-daemon gnome-keyring
+      - run: just test-secret-service

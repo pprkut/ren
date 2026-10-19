@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Full Tests
+
+# The builds with the rendering engines and the end-to-end test, which
+# downloads Nextcloud and News: for pull requests, master, weekly and on
+# demand. A branch without a pull request is only checked by
+# code-tests.yml.
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+# A new push to a branch cancels the run for the one before; on master
+# every commit is checked to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Everything with the default features, including the article view. The
+  # tests run with coverage (cargo-llvm-cov), which the job's summary
+  # shows.
+  full:
+    name: Lint and test with all default features
+    # Not on a fork's schedule.
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, llvm-tools-preview
+          tools: just,cargo-llvm-cov
+      - run: just clippy
+      # The tests, with their coverage in the job's summary.
+      - run: cargo llvm-cov --no-report --locked --workspace
+      - name: Coverage
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # Login, syncs and log out against Nextcloud with the News app in a
+  # container (scripts/test-nextcloud.sh): the release on the desktop's
+  # server and the newest.
+  nextcloud:
+    name: End to end with Nextcloud ${{ matrix.nextcloud }} and News ${{ matrix.news }}
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nextcloud: "32"
+            news: 28.7.0
+          - nextcloud: "33"
+            news: 29.0.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          system-libraries: false
+      - run: just test-nextcloud
+        env:
+          NEXTCLOUD_IMAGE: docker.io/library/nextcloud:${{ matrix.nextcloud }}-apache
+          NEWS_VERSION: ${{ matrix.news }}
+
+  # Servo's helper for web page tabs (crates/ren-servo, a workspace of its
+  # own): Servo is big (SpiderMonkey, WebRender, about 430 more crates).
+  # Without debug info the target directory fits the runner's disk; the
+  # cache is only saved on master, so pull requests don't push out the
+  # other caches.
+  servo:
+    name: Lint and test Servo's helper
+    if: github.event_name != 'schedule' || !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+          cache-workspaces: crates/ren-servo -> ../../target
+          cache-save: ${{ github.ref == 'refs/heads/master' }}
+      - run: just clippy-servo
+      - run: just test-servo
