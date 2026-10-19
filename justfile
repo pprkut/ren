@@ -32,7 +32,7 @@ default:
     @just --list
 
 # Run the checks CI runs, except for Servo's helper (check-servo)
-check: reuse fmt-check clippy-light test-light clippy test licenses
+check: reuse validate-data fmt-check clippy-light test-light clippy test licenses
 
 # Run the checks without Blitz and Servo (fast; CI's pull request jobs build them)
 check-light: reuse fmt-check clippy-light test-light
@@ -41,6 +41,11 @@ check-light: reuse fmt-check clippy-light test-light
 # Check the REUSE compliance (licences and copyright of every file)
 reuse:
     reuse lint
+
+# Validate the .desktop file and the AppStream metadata (desktop-file-utils, appstream)
+validate-data:
+    desktop-file-validate data/{{appid}}.desktop
+    appstreamcli validate --pedantic data/{{appid}}.metainfo.xml
 
 # Check the formatting of both workspaces
 fmt-check:
