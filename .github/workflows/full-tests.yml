@@ -86,9 +86,7 @@ jobs:
 
   # Servo's helper for web page tabs (crates/ren-servo, a workspace of its
   # own): Servo is big (SpiderMonkey, WebRender, about 430 more crates).
-  # Without debug info the target directory fits the runner's disk; the
-  # cache is only saved on master, so pull requests don't push out the
-  # other caches.
+  # Without debug info the target directory fits the runner's disk.
   servo:
     name: Lint and test Servo's helper
     if: github.event_name != 'schedule' || !github.event.repository.fork
@@ -106,6 +104,5 @@ jobs:
         with:
           components: clippy
           cache-workspaces: crates/ren-servo -> ../../target
-          cache-save: ${{ github.ref == 'refs/heads/master' }}
       - run: just clippy-servo
       - run: just test-servo
