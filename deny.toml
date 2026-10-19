@@ -2,11 +2,20 @@
 # SPDX-License-Identifier: CC0-1.0
 
 # License policy, see "Licensing" in docs/PLAN.md.
-# Run with `cargo deny check licenses`.
+# Run with `cargo deny check licenses advisories` (`just licenses
+# advisories`; the Servo helper's: `just licenses-servo advisories-servo`).
 
 [graph]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+# RustSec's advisories. Vulnerabilities count for every crate in the tree,
+# unmaintained crates only for the workspaces' own dependencies: the others
+# are for Slint, zbus and Servo to replace, there is no update to take. A
+# yanked crate is usually fixed by `cargo update`.
+[advisories]
+unmaintained = "workspace"
+yanked = "deny"
 
 [licenses]
 confidence-threshold = 0.93
