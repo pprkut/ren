@@ -60,7 +60,10 @@ sleep "$SETTLE"
 
 # The GPU's actual clock, the throttle reasons and the package
 # temperature, 4 times a second, if the GPU is i915's.
-gt=$(ls -d /sys/class/drm/card*/gt/gt0 2>/dev/null | head -n 1 || true)
+gt=
+for dir in /sys/class/drm/card*/gt/gt0; do
+    [[ -d $dir ]] && { gt=$dir; break; }
+done
 pkg=$(grep -l x86_pkg_temp /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -n 1 || true)
 samples=$OUT_DIR/gpu.txt
 sampler=
@@ -100,9 +103,7 @@ load() {
     echo "$phase $run $start $(date +%s.%N | cut -c1-14)" >>"$runs"
 }
 
-phases=(idle)
 if ((BUSY > 0)); then
-    phases=(busy idle)
     for _ in $(seq "$BUSY"); do
         yes >/dev/null &
         busy+=($!)
