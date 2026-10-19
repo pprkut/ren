@@ -46,14 +46,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+      - uses: ./.github/actions/setup-rust
         with:
-          command: check licenses
-      - name: Servo's helper
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
-        with:
-          manifest-path: crates/ren-servo/Cargo.toml
-          command: check licenses
+          system-libraries: false
+          cache: false
+          tools: just,cargo-deny
+      - run: just licenses
+      - run: just licenses-servo
 
   # THIRD-PARTY-NOTICES.html must match both Cargo.lock files: `just
   # notices` regenerates it.
@@ -66,13 +65,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      # The version that generated the file: another may word it
+      # The cargo-about that generated the file: another may word it
       # differently.
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+      - uses: ./.github/actions/setup-rust
         with:
-          tool: cargo-about@0.9.2
-      - run: scripts/notices.sh --check
+          system-libraries: false
+          cache: false
+          tools: just,cargo-about@0.9.2
+      - run: just notices --check
 
   # Without the heavy engines (Blitz, Servo), so it stays fast. The
   # `servo` feature is only the window's side of the tabs; Servo itself is
@@ -86,25 +86,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Slint links against fontconfig; everything else is loaded at runtime.
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libfontconfig-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo fmt --all --check
-      - run: cargo fmt --check
-        working-directory: crates/ren-servo
-      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software -- -D warnings
-      - run: cargo clippy --all-targets --locked --no-default-features --features renderer-software,servo -- -D warnings
-      - run: cargo test --locked --no-default-features --features renderer-software,servo
+      - run: just fmt-check
+      - run: just clippy-light
+      - run: just test-light
       - name: Test the Secret Service store
         run: |
           sudo apt-get install -y --no-install-recommends dbus-daemon gnome-keyring
-          scripts/test-secret-service.sh
+          just test-secret-service
 
   # Everything with the default features, including the article view: for
   # pull requests, master, weekly and on demand. The tests run with
@@ -119,18 +110,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libfontconfig-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy, llvm-tools-preview
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
-        with:
-          tool: cargo-llvm-cov
-      - run: cargo clippy --all-targets --locked -- -D warnings
+          tools: just,cargo-llvm-cov
+      - run: just clippy
       # The tests, with their coverage in the job's summary.
       - run: cargo llvm-cov --no-report --locked --workspace
       - name: Coverage
@@ -161,9 +145,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: scripts/test-nextcloud.sh
+      - uses: ./.github/actions/setup-rust
+        with:
+          system-libraries: false
+      - run: just test-nextcloud
         env:
           NEXTCLOUD_IMAGE: docker.io/library/nextcloud:${{ matrix.nextcloud }}-apache
           NEWS_VERSION: ${{ matrix.news }}
@@ -179,9 +164,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: crates/ren-servo
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
@@ -189,16 +171,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libfontconfig-dev
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: crates/ren-servo -> ../../target
-          save-if: ${{ github.ref == 'refs/heads/master' }}
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+          cache-workspaces: crates/ren-servo -> ../../target
+          cache-save: ${{ github.ref == 'refs/heads/master' }}
+      - run: just clippy-servo
+      - run: just test-servo
