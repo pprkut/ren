@@ -56,3 +56,8 @@ on-demand Servo tabs for full pages).
 - Never commit real feed data or credentials. Data dumped from the server
   stays outside the repository until it has been anonymised into test
   fixtures.
+- Commit messages and pull request descriptions must not contain links to
+  Claude Code sessions (no `Claude-Session:` trailer, no
+  `https://claude.ai/code/session_…` URLs): the repository is public and
+  the links are useless to anyone else. The `Co-Authored-By:` trailer
+  stays.
