@@ -1063,16 +1063,30 @@ Not planned into a milestone; picked up when articles or users need them.
 - `cargo fmt` and `cargo clippy --all-targets -- -D warnings` must pass
   before each commit, and `cargo test` too once tests exist (mandatory from
   phase 2 on).
-- CI (`.github/workflows/ci.yml`) runs `reuse lint`, `cargo fmt --check`,
-  `cargo clippy -D warnings` and `cargo test` on every push and pull request.
-  Keep it green. Default CI builds must stay fast: once Blitz and Servo
-  arrive (S3/S4), the default job builds without the `html-view`/`servo`
-  features and full builds get a separate, less frequent job, which runs
-  for pull requests; it also measures the coverage (M9). The end-to-end
-  test against Nextcloud runs for the same events. So that it also checks
-  work on feature branches,
-  each milestone is developed on a branch with a draft pull request,
-  opened with the first push and marked ready when the milestone is done. If
+- CI (`.github/workflows/`) is split by when the checks run, and its jobs
+  run the `justfile`'s recipes, so `just check` runs what CI runs (Servo's
+  helper: `just check-servo`):
+  - `general.yml`, on every push: REUSE, typos, EditorConfig,
+    shellcheck, zizmor (the workflows), the `.desktop` file and the
+    AppStream metadata.
+  - `dependencies.yml`, on every push and weekly: both workspaces'
+    licences and RustSec advisories (cargo-deny, policy in `deny.toml`),
+    unused dependencies (cargo-machete), the third-party notices.
+  - `code-tests.yml`, on every push and weekly: `cargo fmt`, clippy and
+    the tests without Blitz and Servo, the Secret Service test.
+  - `full-tests.yml`, for pull requests, `master`, weekly and on demand:
+    clippy and the tests with all default features (with coverage, M9),
+    Servo's helper, both workspaces with their `rust-version`, the
+    end-to-end test against Nextcloud.
+
+  Keep it green. Default CI builds must stay fast: the builds with the
+  engines are only in `full-tests.yml`. So that it also checks work on
+  feature branches, each milestone is developed on a branch with a draft
+  pull request, opened with the first push and marked ready when the
+  milestone is done. A new check gets a recipe of its own, which CI runs.
+  Actions are pinned by commit (dependabot updates them weekly), jobs ask
+  for their permissions, Rust jobs set up with `.github/actions/setup-rust`
+  (build caches are saved on `master` only), and zizmor must pass. If
   `-D warnings` gets in the way of rough spike code, it may be relaxed for
   phase 1 only.
 - Task automation, when needed, uses [`just`](https://just.systems/) with a
