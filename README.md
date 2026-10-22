@@ -65,8 +65,9 @@ downloaded either).
 `docs/PLAN.md` is the plan, `docs/decisions/` has what was decided and
 measured on the way, and `CLAUDE.md` the rules for working on it. `just`
 lists the tasks: `just check-light` runs the checks without the rendering
-engines, `just check` with them, `just test-nextcloud` the end-to-end
-test against Nextcloud in a container.
+engines, `just check` with them (CI runs the same recipes, in
+`.github/workflows/`), `just test-nextcloud` the end-to-end test against
+Nextcloud in a container.
 
 ## Licence
 
