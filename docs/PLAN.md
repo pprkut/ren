@@ -1075,8 +1075,8 @@ Not planned into a milestone; picked up when articles or users need them.
   - `code-tests.yml`, on every push and weekly: `cargo fmt`, clippy and
     the tests without Blitz and Servo, the Secret Service test.
   - `full-tests.yml`, for pull requests, `master`, weekly and on demand:
-    clippy and the tests with all default features (with coverage, M9),
-    Servo's helper, both workspaces with their `rust-version`, the
+    clippy and the tests with all default features (under cargo-nextest,
+    with coverage, M9; both uploaded to Codecov), Servo's helper, both workspaces with their `rust-version`, the
     end-to-end test against Nextcloud.
 
   Keep it green. Default CI builds must stay fast: the builds with the
