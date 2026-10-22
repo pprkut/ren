@@ -30,7 +30,7 @@ env:
 jobs:
   # Everything with the default features, including the article view. The
   # tests run with coverage (cargo-llvm-cov), which the job's summary
-  # shows.
+  # shows and the codecov job uploads.
   full:
     name: Lint and test with all default features
     # Not on a fork's schedule.
@@ -54,6 +54,44 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Coverage report for Codecov
+        run: cargo llvm-cov report --lcov --output-path target/lcov.info
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: target/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+
+  # The full job's coverage to Codecov, by OIDC, in a job of its own: the
+  # right to an OIDC token (id-token: write) never meets the job that
+  # builds and runs the crates' code. A failed upload shows, but doesn't
+  # fail the run.
+  codecov:
+    name: Upload to Codecov
+    needs: full
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      id-token: write # Codecov's upload by OIDC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage
+          path: target
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: target/lcov.info
+          disable_search: true
+          # Pull requests from forks can't get an OIDC token and fall
+          # back to tokenless uploads, which Codecov allows for public
+          # repositories.
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          fail_ci_if_error: true
 
   # ren and its helper with the oldest Rust they support: their
   # rust-version, read from Cargo.toml.
