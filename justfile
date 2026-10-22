@@ -111,6 +111,15 @@ coverage *args:
     cargo llvm-cov report --html
     cargo llvm-cov report --summary-only
 
+# Run the tests with all default features under cargo-nextest, with coverage, as CI's full tests do; JUnit results in target/nextest/ci (cargo-llvm-cov, cargo-nextest; builds Blitz)
+test-coverage:
+    NEXTEST_PROFILE=ci cargo llvm-cov nextest --no-report --locked --workspace
+
+# Report test-coverage's coverage: LCOV in target/lcov.info (for Codecov), the summary on the terminal
+coverage-report:
+    cargo llvm-cov report --lcov --output-path target/lcov.info
+    cargo llvm-cov report --summary-only
+
 # Check the desktop's Secret Service (e.g. KWallet on Plasma) with a test password, and whether the app password is stored
 check-secret-service:
     cargo run --release --locked --no-default-features --features renderer-software -- --check-secret-service
