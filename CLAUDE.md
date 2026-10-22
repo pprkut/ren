@@ -17,12 +17,14 @@ on-demand Servo tabs for full pages).
   the next milestone without the go-ahead.
 - Keep semantically different changes in separate commits.
 - Open a draft pull request for the milestone's branch with the first
-  push, so CI's full job (with `html-view`, later `servo`) runs on it, and
-  mark it ready for review when the milestone is done. The full job only
-  runs for pull requests, `master` and weekly; a branch without a pull
-  request is only checked without the rendering engines.
+  push, so CI's full tests (`full-tests.yml`: Blitz, Servo's helper, the
+  oldest supported Rust, the end-to-end test) run on it, and mark it ready
+  for review when the milestone is done. They only run for pull requests,
+  `master` and weekly; a branch without a pull request gets the other
+  workflows only (see "Conventions" in the plan).
 - Before committing: `just check-light` (`reuse lint`, `cargo fmt`, clippy
-  and tests without the rendering engines, `cargo deny` if installed).
+  and tests without the rendering engines; typos and `cargo deny` if
+  installed). `just check` runs everything CI runs but Servo's helper.
   Tests are optional in phase 1 (spikes), mandatory from phase 2 on — but
   follow "Designing for testability" in the plan from the start.
 - **Don't build Blitz or Servo unless the change needs it.** Build and test
@@ -32,7 +34,7 @@ on-demand Servo tabs for full pages).
   `ui/article.rs`) or to the `html-view` feature need the full build (`just
   check`), and only changes to Servo's helper (`crates/ren-servo`, a
   workspace of its own) need `just check-servo`; even then, prefer letting
-  CI's pull request jobs run them over building Servo locally (12–24
+  CI's full tests run them over building Servo locally (12–24
   minutes per build). Phase 2 (M1–M4) never needs them.
 - Task automation goes into a `justfile` (see "Conventions" in the plan);
   don't add Makefiles or `cargo xtask`.
@@ -51,8 +53,8 @@ on-demand Servo tabs for full pages).
   generated files) CC0-1.0; REUSE compliant. Every new file gets SPDX
   headers (`reuse annotate`, see "Licensing" in the plan) and `reuse lint`
   must pass before committing. New dependencies must be on the plan's list
-  of compatible licenses (checked by `cargo deny check licenses` once
-  `deny.toml` exists).
+  of compatible licenses (checked by `cargo deny check licenses`, `just
+  licenses`).
 - Never commit real feed data or credentials. Data dumped from the server
   stays outside the repository until it has been anonymised into test
   fixtures.
