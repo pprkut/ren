@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+# cargo-nextest, for CI's full tests: the results as JUnit XML for
+# Codecov. Locally `cargo test` stays the test runner.
+
+[store]
+# Also under cargo-llvm-cov, which moves the target directory.
+dir = "target/nextest"
+
+[profile.ci]
+# All of the results, not only up to the first failure.
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

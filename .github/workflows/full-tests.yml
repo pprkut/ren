@@ -29,8 +29,10 @@ env:
 
 jobs:
   # Everything with the default features, including the article view. The
-  # tests run with coverage (cargo-llvm-cov), which the job's summary
-  # shows and the codecov job uploads.
+  # tests run with coverage (cargo-llvm-cov) under cargo-nextest, for its
+  # JUnit results (.config/nextest.toml); the job's summary shows the
+  # coverage, the codecov job uploads both. The doc-tests (neither runs
+  # them) are in code-tests.yml.
   full:
     name: Lint and test with all default features
     # Not on a fork's schedule.
@@ -45,10 +47,20 @@ jobs:
       - uses: $/.github/actions/setup-rust
         with:
           components: clippy, llvm-tools-preview
-          tools: just,cargo-llvm-cov
+          tools: just,cargo-llvm-cov,cargo-nextest
       - run: just clippy
-      # The tests, with their coverage in the job's summary.
-      - run: cargo llvm-cov --no-report --locked --workspace
+      - name: Tests with coverage
+        run: cargo llvm-cov nextest --no-report --locked --workspace
+        env:
+          NEXTEST_PROFILE: ci
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # Also the results of failed tests.
+        if: ${{ !cancelled() }}
+        with:
+          name: junit
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: error
+          retention-days: 7
       - name: Coverage
         run: |
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -63,13 +75,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The full job's coverage to Codecov, by OIDC, in a job of its own: the
-  # right to an OIDC token (id-token: write) never meets the job that
-  # builds and runs the crates' code. A failed upload shows, but doesn't
-  # fail the run.
+  # The full job's test results and coverage to Codecov, by OIDC, in a
+  # job of its own: the right to an OIDC token (id-token: write) never
+  # meets the job that builds and runs the crates' code. The results also
+  # of failed tests, the coverage only of a passing job. A failed upload
+  # shows, but doesn't fail the run.
   codecov:
     name: Upload to Codecov
     needs: full
+    if: ${{ !cancelled() && needs.full.result != 'skipped' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -81,15 +95,30 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: coverage
-          path: target
-      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+          name: junit
+          path: target/nextest/ci
+      - name: Upload the test results
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: target/lcov.info
+          report_type: test_results
+          files: target/nextest/ci/junit.xml
           disable_search: true
           # Pull requests from forks can't get an OIDC token and fall
           # back to tokenless uploads, which Codecov allows for public
           # repositories.
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          fail_ci_if_error: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ needs.full.result == 'success' }}
+        with:
+          name: coverage
+          path: target
+      - name: Upload the coverage
+        if: ${{ needs.full.result == 'success' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: target/lcov.info
+          disable_search: true
           use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
           fail_ci_if_error: true
 
