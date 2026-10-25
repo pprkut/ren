@@ -1008,6 +1008,30 @@ From here on every milestone ships with tests for what it adds.
   build-vendored`: 141 MiB), a README, `rust-version` 1.92 (Slint's).
   Distributions' build files stay out of the repository; packagers
   build from the tag's source and `vendor.tar.xz`.
+- **Performance tracking in CI.** *(planned; see "Performance
+  tracking" in `docs/decisions/0019-ci.md`)* Side work, like the CI
+  rework. The measurements that are steady on GitHub's runners run for
+  every pull request (also from forks) and every push to `master`, and
+  their history is kept in [Bencher](https://bencher.dev), which
+  reports regressions on the pull request. Bencher's machines aren't
+  used; the results are uploaded from CI.
+  - The measurement scripts (and `measure-store`) write their results
+    as Bencher Metric Format JSON next to `summary.md`; `just
+    measure-all`'s are merged into one file, so the desktop's runs can
+    be uploaded too, as a testbed of their own.
+  - In CI, under Xvfb with the software renderer: the window's memory
+    at each stage of `measure-hidden` and `measure-settings`, the tabs'
+    with `pattern-helper` (no Servo), `measure-store`, and ren's release
+    binary's size, stripped and unstripped. Time, CPU and frames are
+    noise on shared runners: they stay on the desktop's testbed.
+  - Two workflows, so pull requests from forks are measured without
+    getting the Bencher token: `performance.yml` measures without
+    secrets and keeps the results as an artifact, `performance-upload.yml`
+    (`workflow_run`) uploads them and never runs the pull request's code.
+    Pull requests get a branch `pr-<number>` in Bencher, compared with
+    `master`; archived when the pull request closes.
+  - Reporting only at first: no alert fails CI until the thresholds have
+    settled on real data.
 
 ### Backlog
 
