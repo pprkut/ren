@@ -243,6 +243,10 @@ measure-page-loads dump url:
 measure-hidden dump *urls:
     scripts/measure-hidden.sh {{dump}} {{urls}}
 
+# Measure what is steady on CI's runners, for Bencher: binary size, the window's and the tabs' memory (pattern-helper, no Servo), the store; under Xvfb without a display
+measure-ci:
+    scripts/measure-ci.sh
+
 # Measure memory with the settings dialog and About ren open and after closing them (needs a display)
 measure-settings:
     scripts/measure-settings.sh

@@ -20,13 +20,18 @@
 #
 # Usage: scripts/measure-tabs.sh DUMP_DIR [URL...]
 #   DUMP_DIR: a `ren --dump-items` directory; the pages are the links of
-#             its first three items, unless URLs are given
+#             its first three items, unless URLs are given. Or - for
+#             generated items, with URLs.
 #
 # Environment:
 #   OUT_DIR   logs (default target/measure/tabs-<timestamp>)
 #   VARIANTS  the variants to run, comma-separated (default: all): blocking,
 #             no-blocking, one-frame, femtovg, skia, synthetic,
-#             synthetic-femtovg, synthetic-skia
+#             synthetic-femtovg, synthetic-skia. Servo's helper is only
+#             built (and the filter lists only downloaded) for the ones
+#             that aren't synthetic.
+#   REN       measure this ren binary (with the servo feature) instead of
+#             building one
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
 # results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
@@ -36,10 +41,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,33p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,38p' >&2
     exit 1
 fi
-DUMP=$1
+if [[ $1 == - ]]; then
+    data=()
+else
+    data=(--dump "$1")
+fi
 shift
 urls=()
 for url in "$@"; do
@@ -74,29 +83,49 @@ all_variants=(
     "synthetic-skia|synthetic page, Skia|$synthetic|ren-gpu|--renderer skia"
 )
 variants=()
+servo=false
 for variant in "${all_variants[@]}"; do
     if [[ -z ${VARIANTS:-} || ,$VARIANTS, == *,${variant%%|*},* ]]; then
         variants+=("$variant")
+        [[ $variant == *"|$synthetic|"* ]] || servo=true
     fi
 done
 
 log "== building"
-cargo build --release --locked --no-default-features --features renderer-software,html-view
-cp target/release/ren "$OUT_DIR/ren-without-tabs"
+if [[ -z ${REN:-} ]]; then
+    cargo build --release --locked --no-default-features --features renderer-software,html-view
+    cp target/release/ren "$OUT_DIR/ren-without-tabs"
+fi
 if [[ " ${variants[*]} " == *"|ren-gpu|"* ]]; then
     cargo build --release --locked --features renderer-femtovg,renderer-skia
     cp target/release/ren "$OUT_DIR/ren-gpu"
 fi
 cargo build --release --locked -p ren-tabs --example pattern-helper
 cp target/release/examples/pattern-helper "$OUT_DIR/"
-cargo build --release --locked
-(cd crates/ren-servo && cargo build --release --locked)
-cp target/release/ren target/release/ren-servo "$OUT_DIR/"
+if [[ -n ${REN:-} ]]; then
+    cp "$REN" "$OUT_DIR/ren"
+else
+    cargo build --release --locked
+    cp target/release/ren "$OUT_DIR/"
+fi
+if $servo; then
+    (cd crates/ren-servo && cargo build --release --locked)
+    cp target/release/ren-servo "$OUT_DIR/"
 
-log "== filter lists"
-"$OUT_DIR/ren" --update-filters >&2 || log "not all filter lists could be downloaded"
+    log "== filter lists"
+    "$OUT_DIR/ren" --update-filters >&2 || log "not all filter lists could be downloaded"
+fi
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
+
+# The size in MiB of binary $1 in $OUT_DIR, or "-" if it wasn't built.
+size() {
+    if [[ -e $OUT_DIR/$1 ]]; then
+        mib $(($(stat -c %s "$OUT_DIR/$1") / 1024))
+    else
+        echo "-"
+    fi
+}
 
 # KiB of field $3 (VmRSS, RssAnon) of the "<who> <when>:" line in log $1,
 # where $2 is "rss" for the UI process and "helper rss" for the helper.
@@ -166,7 +195,7 @@ summary=$OUT_DIR/summary.md
     else
         echo "- pages: the links of the first three items"
     fi
-    echo "- binary size: ren $(mib $(($(stat -c %s "$OUT_DIR/ren") / 1024))) MiB (without the tabs $(mib $(($(stat -c %s "$OUT_DIR/ren-without-tabs") / 1024))) MiB), ren-servo $(mib $(($(stat -c %s "$OUT_DIR/ren-servo") / 1024))) MiB"
+    echo "- binary size: ren $(size ren) MiB (without the tabs $(size ren-without-tabs) MiB), ren-servo $(size ren-servo) MiB"
     echo
     echo "| variant | before tabs | 1 tab | 3 tabs | after closing all | 1 tab again | after closing again | anon before / after closing | frame buffer (shmem) | scrolling frames in 3 s | CPU % while scrolling (window / helper) | window CPU ms per frame | frame to UI ms (mean / max) | Servo start / stop ms | requests blocked / checked |"
     echo "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
@@ -177,7 +206,7 @@ for variant in "${variants[@]}"; do
     log "== $name"
     vlog=$OUT_DIR/$key.log
     # shellcheck disable=SC2086
-    env REN_TAB_STATS=1 $environment "$OUT_DIR/$binary" $arguments --dump "$DUMP" --items 5000 \
+    env REN_TAB_STATS=1 $environment "$OUT_DIR/$binary" $arguments "${data[@]}" --items 5000 \
         --measure-tabs "${urls[@]}" 2>"$vlog" || {
         log "failed, see $vlog"
         continue

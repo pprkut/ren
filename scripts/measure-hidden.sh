@@ -3,17 +3,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Measures memory with the window hidden in the system tray (M8): the
-# first article of a dump shown (and then pages in tabs, if URLs are
+# first article shown (and then pages in tabs, if URLs are
 # given), then the window hidden, then shown again (and the article instead
 # of the page); twice, release builds with the default features. Needs a graphical session; don't touch the window
 # while it runs. With URLs, also network access.
 #
 # Usage: scripts/measure-hidden.sh DUMP_DIR [URL...]
-#   DUMP_DIR: a `ren --dump-items` directory
+#   DUMP_DIR: a `ren --dump-items` directory, or - for generated items
 #
 # Environment:
-#   OUT_DIR   logs (default target/measure/hidden-<timestamp>)
-#   RUNS      runs (default 2)
+#   OUT_DIR    logs (default target/measure/hidden-<timestamp>)
+#   RUNS       runs (default 2)
+#   REN        measure this ren binary instead of building one
+#   REN_SERVO  the helper for the pages instead of building Servo's, e.g.
+#              ren-tabs' pattern-helper (no network needed then)
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
 # results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
@@ -23,10 +26,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,20p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,23p' >&2
     exit 1
 fi
-DUMP=$1
+if [[ $1 == - ]]; then
+    data=()
+else
+    data=(--dump "$1")
+fi
 shift
 urls=()
 for url in "$@"; do
@@ -48,9 +55,16 @@ mkdir -p "$OUT_DIR"
 source scripts/bmf.sh
 bmf_init "$OUT_DIR/results.json"
 echo "== building" >&2
-cargo build --release --locked
-(cd crates/ren-servo && cargo build --release --locked)
-cp target/release/ren target/release/ren-servo "$OUT_DIR/"
+if [[ -n ${REN:-} ]]; then
+    cp "$REN" "$OUT_DIR/ren"
+else
+    cargo build --release --locked
+    cp target/release/ren "$OUT_DIR/"
+fi
+if [[ -z ${REN_SERVO:-} ]]; then
+    (cd crates/ren-servo && cargo build --release --locked)
+    cp target/release/ren-servo "$OUT_DIR/"
+fi
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
 
@@ -87,7 +101,7 @@ summary=$OUT_DIR/summary.md
 {
     echo "## ren with the window hidden, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
-    echo "- ren: $(git describe --always --dirty), release build, default features"
+    echo "- ren: $(git describe --always --dirty), release build, ${REN:-default features}"
     echo "- pages in tabs: $((${#urls[@]} / 2))"
     echo "- session: ${XDG_SESSION_TYPE:-unknown}, ${XDG_CURRENT_DESKTOP:-unknown}"
     echo
@@ -104,7 +118,7 @@ summary=$OUT_DIR/summary.md
 for run in $(seq 1 "$RUNS"); do
     echo "== run $run" >&2
     log=$OUT_DIR/run-$run.log
-    "$OUT_DIR/ren" --dump "$DUMP" --measure-hidden "${urls[@]}" 2>"$log" || true
+    "$OUT_DIR/ren" "${data[@]}" --measure-hidden "${urls[@]}" 2>"$log" || true
     if [[ ${#urls[@]} -gt 0 ]]; then
         echo "| $run | $(memory "$log" "at the start") | $(memory "$log" "article shown") | $(memory "$log" shown "pages opened") | $(memory "$log" hidden) | $(memory "$log" "shown again") | $(memory "$log" "article shown again") |" >>"$summary"
     else
