@@ -28,7 +28,8 @@
 #                 generated items; the copy goes to a temporary directory
 #   OUT_DIR       logs and samples (default target/measure/<timestamp>)
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -87,6 +88,9 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 # Each variant's binary is copied, as the builds overwrite each other.
 cargo build --release --locked --features "$features"
 cp target/release/ren "$OUT_DIR/ren"
@@ -271,6 +275,16 @@ for r in "${renderers[@]}"; do
         "$(mib "$rss")" "$(mib "$pss")" "$(mib "$anon")" "$(mib "$file")" "$(mib "$shmem")" \
         "$threads" "$idle_cpu" "$(mib "$peak")" "$scroll_cpu" "$fps_median" "$fps_min" \
         "$(mib "${scroll_rss:-0}")" >>"$summary"
+    bmf_ms "window, $r: window created" "$(median "${created[@]}")"
+    bmf_ms "window, $r: first frame" "$(median "${first[@]}")"
+    bmf_kib "window, $r: idle" rss "$rss"
+    bmf_kib "window, $r: idle" anonymous-memory "$anon"
+    bmf "window, $r: idle" cpu "$idle_cpu"
+    bmf_kib "window, $r: peak" rss "$peak"
+    bmf "window, $r: scrolling" cpu "$scroll_cpu"
+    bmf "window, $r: scrolling" frame-rate "$fps_median"
+    bmf "window, $r: scrolling, slowest second" frame-rate "$fps_min"
+    bmf_kib "window, $r: after scrolling" rss "${scroll_rss:-}"
 done
 
 {
@@ -283,4 +297,5 @@ done
     echo "Logs and per-second samples: \`$OUT_DIR\`"
 } >>"$summary"
 
+bmf_write
 cat "$summary"

@@ -15,14 +15,15 @@
 #   OUT_DIR   logs (default target/measure/hidden-<timestamp>)
 #   RUNS      runs (default 2)
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md. It
-# contains no URLs, titles or article content.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
+# contain no URLs, titles or article content.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,19p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,20p' >&2
     exit 1
 fi
 DUMP=$1
@@ -43,6 +44,9 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 echo "== building" >&2
 cargo build --release --locked
 (cd crates/ren-servo && cargo build --release --locked)
@@ -55,11 +59,21 @@ kib() {
     grep "^ren: $2 $3:" "$1" | tail -n 1 | sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p'
 }
 
-# "total (UI + helper)" in MiB at a step of log $1.
+# The anonymous memory in KiB of "<who> <step>:" in log $1.
+anon_kib() {
+    grep "^ren: $2 $3:" "$1" | tail -n 1 | sed -n 's/.*(anon \([0-9]*\),.*/\1/p'
+}
+
+# "total (UI + helper)" in MiB at step $2 of log $1; records the step's
+# memory for BMF, as benchmark "window hidden: <$3, or the step>".
 memory() {
     local ui helper
     ui=$(kib "$1" rss "$2")
     helper=$(kib "$1" "helper rss" "$2")
+    local name="window hidden: ${3:-$2}"
+    bmf_kib "$name" rss "$ui"
+    bmf_kib "$name" anonymous-memory "$(anon_kib "$1" rss "$2")"
+    bmf_kib "$name, helper" rss "$helper"
     if [[ -z $ui ]]; then
         echo "-"
     elif [[ -n $helper ]]; then
@@ -92,9 +106,10 @@ for run in $(seq 1 "$RUNS"); do
     log=$OUT_DIR/run-$run.log
     "$OUT_DIR/ren" --dump "$DUMP" --measure-hidden "${urls[@]}" 2>"$log" || true
     if [[ ${#urls[@]} -gt 0 ]]; then
-        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" "article shown") | $(memory "$log" shown) | $(memory "$log" hidden) | $(memory "$log" "shown again") | $(memory "$log" "article shown again") |" >>"$summary"
+        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" "article shown") | $(memory "$log" shown "pages opened") | $(memory "$log" hidden) | $(memory "$log" "shown again") | $(memory "$log" "article shown again") |" >>"$summary"
     else
-        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" shown) | $(memory "$log" hidden) | $(memory "$log" "shown again") |" >>"$summary"
+        echo "| $run | $(memory "$log" "at the start") | $(memory "$log" shown "article shown") | $(memory "$log" hidden) | $(memory "$log" "shown again") |" >>"$summary"
     fi
 done
+bmf_write
 cat "$summary"

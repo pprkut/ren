@@ -255,10 +255,12 @@ survey-articles dump:
 anonymise-dump dump *out:
     scripts/anonymise-dump.py {{dump}} {{out}}
 
-# Measure the store with a synthetic account: writing, list queries, purging
-measure-store items="63000":
-    mkdir -p target/measure
-    cargo run --release --locked -p ren-store --example measure -- {{items}} target/measure
+# Measure the store with a synthetic account: writing, list queries, purging; the summary and BMF results in `out`
+measure-store items="63000" out="target/measure/store":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p '{{out}}'
+    cargo run --release --locked -p ren-store --example measure -- '{{items}}' '{{out}}' '{{out}}/results.json' | tee '{{out}}/summary.md'
 
 # Measure syncing into a new database: initial, incremental, resync (needs the real server)
 measure-sync:
@@ -275,3 +277,7 @@ measure-fetch *batch_sizes:
 # Run all measurements one after another and collect them in one report (needs a display, network and the real server; about an hour)
 measure-all dump *urls:
     scripts/measure-all.sh {{dump}} {{urls}}
+
+# Upload a measure-all run's results to Bencher as the desktop's testbed (needs the bencher CLI and BENCHER_API_KEY)
+measure-upload dir:
+    scripts/measure-upload.sh {{dir}}

@@ -28,14 +28,15 @@
 #             no-blocking, one-frame, femtovg, skia, synthetic,
 #             synthetic-femtovg, synthetic-skia
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md. It contains
-# no URLs, titles or page content.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
+# contain no URLs, titles or page content.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,27p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,33p' >&2
     exit 1
 fi
 DUMP=$1
@@ -55,6 +56,9 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 log() { echo "$*" >&2; }
 
 # key|name|environment|binary|arguments
@@ -126,7 +130,8 @@ blocked() {
     sed -n 's/^ren: helper stats over .* blocked=\([0-9]*\).*/\1/p' "$1" | awk '{ n += $1 } END { printf "%d", n }'
 }
 
-# "total (UI + helper)" RSS in MiB, or "-" if the step is missing.
+# "total (UI + helper)" RSS in MiB, or "-" if the step is missing; records
+# the step's memory for BMF as benchmark "tabs, <variant $3>: <step>".
 memory() {
     if ! grep -q "^ren: rss $2:" "$1"; then
         echo "-"
@@ -137,7 +142,10 @@ memory() {
     helper=$(kib "$1" "helper rss" rss "$2")
     ui=${ui:-0}
     helper=${helper:-0}
+    bmf_kib "tabs, $3: $2" rss "$ui"
+    bmf_kib "tabs, $3: $2" anonymous-memory "$(kib "$1" rss anon "$2")"
     if [[ $helper -gt 0 ]]; then
+        bmf_kib "tabs, $3: $2, helper" rss "$helper"
         echo "$(mib $((ui + helper))) ($(mib "$ui") + $(mib "$helper"))"
     else
         mib "$ui"
@@ -182,10 +190,16 @@ for variant in "${variants[@]}"; do
     frame_ms=$(sed -n 's/^ren: page frames: [0-9]*, to the UI in \([0-9.]*\) ms on average, \([0-9.]*\) ms at most/\1 \/ \2/p' "$vlog" | head -n 1)
     start_ms=$(sed -n 's/^ren: Servo started in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
     stop_ms=$(sed -n 's/^ren: Servo stopped in \([0-9.]*\) ms/\1/p' "$vlog" | head -n 1)
+    bmf "tabs, $key: scrolling" frames "$frames"
+    bmf "tabs, $key: scrolling" cpu "${cpu%% *}"
+    bmf "tabs, $key: scrolling, helper" cpu "${cpu##* }"
+    bmf_ms "tabs, $key: frame to UI" "${frame_ms%% *}"
+    bmf_ms "tabs, $key: Servo start" "$start_ms"
+    bmf_ms "tabs, $key: Servo stop" "$stop_ms"
     printf '| %s | %s | %s | %s | %s | %s | %s | %s / %s | %s | %s | %s | %s | %s | %s / %s | %s / %s |\n' \
-        "$name" "$(memory "$vlog" "before tabs")" "$(memory "$vlog" "with 1 tab")" \
-        "$(memory "$vlog" "with 3 tabs")" "$(memory "$vlog" "after closing all tabs")" \
-        "$(memory "$vlog" "with 1 tab again")" "$(memory "$vlog" "after closing again")" \
+        "$name" "$(memory "$vlog" "before tabs" "$key")" "$(memory "$vlog" "with 1 tab" "$key")" \
+        "$(memory "$vlog" "with 3 tabs" "$key")" "$(memory "$vlog" "after closing all tabs" "$key")" \
+        "$(memory "$vlog" "with 1 tab again" "$key")" "$(memory "$vlog" "after closing again" "$key")" \
         "$(mib "$(kib "$vlog" rss anon "before tabs")")" \
         "$(mib "$(kib "$vlog" rss anon "after closing all tabs")")" \
         "$(helper_shmem "$vlog" "with 1 tab")" "${frames:--}" "${cpu:--}" "$per_frame" "${frame_ms:--}" "${start_ms:--}" "${stop_ms:--}" \
@@ -207,5 +221,6 @@ done
     echo
     echo "Logs: \`$OUT_DIR\`"
 } >>"$summary"
+bmf_write
 
 cat "$summary"

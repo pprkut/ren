@@ -23,8 +23,9 @@
 # prompts, let gpg-agent cache the passphrase, or log in in ren so the app
 # password is kept in the Secret Service.
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md. The server
-# URL is not part of the summary.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). The
+# server URL is not part of them.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -42,6 +43,9 @@ if [[ -n ${SETTINGS:-} ]]; then
     args+=(--settings "$SETTINGS")
 fi
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 
 if [[ -n ${DB_DIR:-} ]]; then
     mkdir -p "$DB_DIR"
@@ -101,9 +105,14 @@ summary=$OUT_DIR/summary.md
             "$(mib "$(field "$line" rss_before_kib)" 1024)" "$(mib "$(field "$line" peak_rss_kib)" 1024)" \
             "$(mib "$(field "$line" rss_after_kib)" 1024)" "$trimmed" \
             "$(mib "$(field "$line" db_bytes)" 1048576)"
+        bmf_ms "sync: ${steps[$i]}" "$(awk -v s="$(field "$line" seconds)" 'BEGIN { print s * 1000 }')"
+        bmf_kib "sync: ${steps[$i]}, peak" rss "$(field "$line" peak_rss_kib)"
+        bmf_kib "sync: ${steps[$i]}, after" rss "$(field "$line" rss_after_kib)"
+        bmf "sync: ${steps[$i]}, database" file-size "$(field "$line" db_bytes)"
     done
     echo
     echo "Raw output: \`$OUT_DIR\`"
 } >"$summary"
 
+bmf_write
 cat "$summary"

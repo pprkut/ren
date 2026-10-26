@@ -17,8 +17,9 @@
 #   SETTINGS  settings file (default: $XDG_CONFIG_HOME/ren/settings.toml)
 #   OUT_DIR   raw output (default target/measure/window-sync-<timestamp>)
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md. The
-# server URL is not part of it.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). The
+# server URL is not part of them.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -41,6 +42,9 @@ if [[ -n ${SETTINGS:-} ]]; then
     args+=(--settings "$SETTINGS")
 fi
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 # Real feed data stays outside the repository.
 db_dir=$(mktemp -d -t ren-measure-window-sync.XXXXXX)
 trap 'rm -rf "$db_dir"' EXIT
@@ -56,6 +60,21 @@ rss() {
 }
 
 took() { sed -n "s/^ren: sync $1 took \(.*\)$/\1/p" "$log"; }
+
+# KiB from the same line; $2 as for rss.
+rss_kib() { sed -n "s/^ren: rss $1: \([0-9]*\) KiB.*peak \([0-9]*\) KiB)$/\\$2/p" "$log"; }
+
+bmf_kib "window sync: before" rss "$(rss_kib "before the syncs" 1)"
+bmf_kib "window sync: after the full sync" rss "$(rss_kib "after sync 1" 1)"
+bmf_kib "window sync: after the incremental sync" rss "$(rss_kib "after sync 2" 1)"
+bmf_kib "window sync: idle afterwards" rss "$(rss_kib "idle after the syncs" 1)"
+bmf_kib "window sync: peak" rss "$(rss_kib "idle after the syncs" 2)"
+names=("" "full sync" "incremental sync")
+for i in 1 2; do
+    seconds=$(sed -n "s/^ren: sync $i took \([0-9.]*\) s,.*/\1/p" "$log")
+    [[ -z $seconds ]] || bmf_ms "window sync: ${names[$i]}" "$(awk -v s="$seconds" 'BEGIN { print s * 1000 }')"
+done
+bmf_write
 
 result() { sed -n 's/^ren: sync result: //p' "$log" | sed -n "${1}p"; }
 

@@ -17,7 +17,8 @@
 #   FEATURES  cargo features instead of the default ones, e.g.
 #             "renderer-software,servo" (built with --no-default-features)
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -34,6 +35,9 @@ if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 echo "== building" >&2
 if [[ -n ${FEATURES:-} ]]; then
     cargo build --release --locked --no-default-features --features "$FEATURES"
@@ -42,10 +46,13 @@ else
 fi
 cp target/release/ren "$OUT_DIR/"
 
-# The RSS in MiB at a step of log $1.
+# The RSS in MiB at a step of log $1; records the step's memory for BMF.
 rss() {
-    { grep "^ren: rss $2:" "$1" || true; } | tail -n 1 |
-        sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' |
+    local line
+    line=$({ grep "^ren: rss $2:" "$1" || true; } | tail -n 1)
+    bmf_kib "settings: $2" rss "$(sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line")"
+    bmf_kib "settings: $2" anonymous-memory "$(sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line")"
+    sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line" |
         awk '{ printf "%.1f", $1 / 1024 }'
 }
 
@@ -81,4 +88,5 @@ for run in $(seq 1 "$RUNS"); do
     done
     echo "$row |" >>"$summary"
 done
+bmf_write
 cat "$summary"

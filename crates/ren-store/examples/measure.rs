@@ -4,8 +4,10 @@
 //! Measures the store with a synthetic account: writing an initial sync,
 //! the size of the database, the list queries, an incremental sync, marking
 //! items read and purging. Run with `just measure-store [ITEMS]`, which
-//! puts the database into `target/measure` (on disk; the temporary
+//! puts the database into `target/measure/store` (on disk; the temporary
 //! directory, the default without a second argument, may be in memory).
+//! A third argument is a file for the results as Bencher Metric Format
+//! JSON (`scripts/bmf.sh` has the measures).
 //!
 //! The account looks like the one measured in S2: 49 feeds in 11 folders,
 //! about 2.4 KiB of body per item, unevenly spread over the feeds.
@@ -165,6 +167,42 @@ fn ms(d: Duration) -> String {
     format!("{:.2}", d.as_secs_f64() * 1000.0)
 }
 
+/// Results as Bencher Metric Format: benchmark, measure, value.
+#[derive(Default)]
+struct Bmf(Vec<(String, &'static str, f64)>);
+
+impl Bmf {
+    /// A time as latency (nanoseconds). The benchmark is `name` up to its
+    /// first parenthesis, so counts in the notes don't change it.
+    fn time(&mut self, name: &str, d: Duration) {
+        let name = name.split(" (").next().unwrap_or(name);
+        self.0
+            .push((format!("store: {name}"), "latency", d.as_nanos() as f64));
+    }
+
+    fn bytes(&mut self, name: &str, measure: &'static str, bytes: u64) {
+        self.0
+            .push((format!("store: {name}"), measure, bytes as f64));
+    }
+
+    fn write(&self, path: &Path) {
+        let quote = |s: &str| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""));
+        let mut json = String::from("{");
+        for (i, (benchmark, measure, value)) in self.0.iter().enumerate() {
+            if i > 0 {
+                json.push(',');
+            }
+            json.push_str(&format!(
+                "\n  {}: {{ {}: {{ \"value\": {value} }} }}",
+                quote(benchmark),
+                quote(measure)
+            ));
+        }
+        json.push_str("\n}\n");
+        std::fs::write(path, json).unwrap();
+    }
+}
+
 /// The median time of a query over a few runs.
 fn time<T>(mut f: impl FnMut() -> T) -> Duration {
     let mut times: Vec<Duration> = (0..RUNS)
@@ -188,6 +226,8 @@ fn main() {
         .next()
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
+    let bmf_path = args.next().map(PathBuf::from);
+    let mut bmf = Bmf::default();
     let path = dir.join(format!("ren-store-measure-{}.db", std::process::id()));
     let rss_start = status_kib("VmRSS:");
 
@@ -241,6 +281,7 @@ fn main() {
     let db_after_write = file_size(&path);
     let wal_after_write = file_size(&path.with_extension("db-wal"));
     let rss_after_write = status_kib("VmRSS:");
+    bmf.time("initial sync", write_time);
 
     println!("## Store with {count} items in {FEEDS} feeds\n");
     println!("Bodies: {:.1} MiB.\n", mib(body_bytes));
@@ -358,6 +399,7 @@ fn main() {
     ];
     for (name, t) in &queries {
         println!("| {name} | {} | median of {RUNS} |", ms(*t));
+        bmf.time(name, *t);
     }
 
     // Incremental sync: 1000 changed items (read on the server), 200 new.
@@ -376,6 +418,8 @@ fn main() {
     let start = Instant::now();
     let new_marked = store.clear_new().unwrap();
     let clear_time = start.elapsed();
+    bmf.time("incremental sync", incremental);
+    bmf.time("clear the new marker", clear_time);
     println!(
         "| incremental sync, 1200 items | {} | {added} new |",
         ms(incremental)
@@ -399,6 +443,8 @@ fn main() {
         .remove_pending(nextcloud_news::ItemAction::Read, &pending)
         .unwrap();
     let queue = start.elapsed();
+    bmf.time("mark 1000 items read", mark);
+    bmf.time("take and clear the queue", queue);
     println!(
         "| mark 1000 items read | {} | {changed} changed |",
         ms(mark)
@@ -423,6 +469,7 @@ fn main() {
     let start = Instant::now();
     let purged = store.purge(cutoff).unwrap();
     let purge = start.elapsed();
+    bmf.time("purge", purge);
     println!("| purge | {} | {purged} items deleted |", ms(purge));
 
     drop(ui);
@@ -442,6 +489,23 @@ fn main() {
         rss_after_write as f64 / 1024.0,
         status_kib("VmHWM:") as f64 / 1024.0
     );
+    if let Some(bmf_path) = bmf_path {
+        bmf.bytes(
+            "database after the initial sync",
+            "file-size",
+            db_after_write,
+        );
+        bmf.bytes(
+            "write-ahead log after the initial sync",
+            "file-size",
+            wal_after_write,
+        );
+        bmf.bytes("database after the purge", "file-size", db);
+        bmf.bytes("at the start", "rss", rss_start * 1024);
+        bmf.bytes("after the initial sync", "rss", rss_after_write * 1024);
+        bmf.bytes("peak", "rss", status_kib("VmHWM:") * 1024);
+        bmf.write(&bmf_path);
+    }
     for suffix in ["", "-wal", "-shm"] {
         let mut file = path.clone().into_os_string();
         file.push(suffix);

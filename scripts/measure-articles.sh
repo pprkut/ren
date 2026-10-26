@@ -17,14 +17,15 @@
 # Environment:
 #   OUT_DIR   logs (default target/measure/articles-<timestamp>)
 #
-# Prints a Markdown summary, also written to $OUT_DIR/summary.md. It contains
-# no article content, titles or URLs.
+# Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
+# results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
+# contain no article content, titles or URLs.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,19p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,22p' >&2
     exit 1
 fi
 DUMP=$1
@@ -42,6 +43,9 @@ fi
 mkdir -p "$OUT_DIR"
 # Absolute: ren ignores relative XDG directories, as the specification asks.
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
+# shellcheck source=scripts/bmf.sh
+source scripts/bmf.sh
+bmf_init "$OUT_DIR/results.json"
 log() { echo "$*" >&2; }
 
 log "== building"
@@ -77,6 +81,18 @@ rss() {
         anon) mib "$(sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line")" ;;
         file) mib "$(sed -n 's/.*, file \([0-9]*\),.*/\1/p' <<<"$line")" ;;
         peak) mib "$(sed -n 's/.*peak \([0-9]*\) KiB.*/\1/p' <<<"$line")" ;;
+    esac
+}
+
+# KiB of field $2 (rss, anon, peak) of the "rss <when>" line matching $3 in
+# log $1.
+kib() {
+    local line
+    line=$(grep "^ren: rss $3:" "$1" | tail -n 1) || return 0
+    case $2 in
+        rss) sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line" ;;
+        anon) sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line" ;;
+        peak) sed -n 's/.*peak \([0-9]*\) KiB.*/\1/p' <<<"$line" ;;
     esac
 }
 
@@ -142,6 +158,13 @@ for variant in "${variants[@]}"; do
         "$(rss "$vlog" anon "$after")" "$(rss "$vlog" file "$after")" \
         "$(timing "$vlog" total)" "$(timing "$vlog" parse)" "$(timing "$vlog" layout)" \
         "$(timing "$vlog" paint)" "$(trims "$vlog")" >>"$summary"
+    bmf_kib "articles, $name: before" rss "$(kib "$vlog" rss "before articles")"
+    bmf_kib "articles, $name: after the first" rss "$(kib "$vlog" rss "after 1 article")"
+    bmf_kib "articles, $name: after the last" rss "$(kib "$vlog" rss "$after")"
+    bmf_kib "articles, $name: after the last" anonymous-memory "$(kib "$vlog" anon "$after")"
+    bmf_kib "articles, $name: peak" rss "$(kib "$vlog" peak "$after")"
+    first_frame=$(timing "$vlog" total)
+    bmf_ms "articles, $name: first frame, median" "${first_frame%% *}"
     if stats=$(grep '^ren: images:' "$vlog" | tail -n 1); then
         images+=("- $name: ${stats#ren: images: }")
     fi
@@ -162,4 +185,5 @@ done
     echo "Logs: \`$OUT_DIR\`"
 } >>"$summary"
 
+bmf_write
 cat "$summary"
