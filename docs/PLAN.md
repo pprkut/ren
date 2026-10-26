@@ -1008,7 +1008,7 @@ From here on every milestone ships with tests for what it adds.
   build-vendored`: 141 MiB), a README, `rust-version` 1.92 (Slint's).
   Distributions' build files stay out of the repository; packagers
   build from the tag's source and `vendor.tar.xz`.
-- **Performance tracking in CI.** *(planned; see "Performance
+- **Performance tracking in CI.** *(built, for review; see "Performance
   tracking" in `docs/decisions/0019-ci.md`)* Side work, like the CI
   rework. The measurements that are steady on GitHub's runners run for
   every pull request (also from forks) and every push to `master`, and
@@ -1032,6 +1032,24 @@ From here on every milestone ships with tests for what it adds.
     `master`; archived when the pull request closes.
   - Reporting only at first: no alert fails CI until the thresholds have
     settled on real data.
+
+  *Result:* `scripts/bmf.sh` turns the scripts' values into BMF (runs
+  averaged, lowest and highest as bounds); `measure-all`'s scripts and
+  the store's example write `results.json`, `measure-all` (now with the
+  store) merges them, `just measure-upload` uploads them as the
+  `desktop` testbed. `just measure-ci` builds the default features
+  once, unstripped, strips a copy, and runs `measure-hidden`,
+  `measure-settings`, `measure-tabs` (synthetic) with generated items
+  and `pattern-helper`, and `measure-store`, under `xvfb-run` without a
+  display. `performance.yml` (on `ubuntu-24.04`, the testbed),
+  `performance-upload.yml` and `performance-closed.yml` as planned;
+  thresholds a share above `master`'s mean: anonymous memory 2 %, RSS
+  5 %, size 1 %. In the container (without Blitz) 3.5 minutes after the
+  build; anonymous memory agrees within 4–32 KiB over three runs but
+  after the window is shown again with a page (up to 1.1 MiB), RSS within
+  0.3–1.3 MiB. Open: Bencher's project, key and measures (set up
+  by the maintainer), the first runs on GitHub's runners, which only
+  start on `master` (`workflow_run`).
 
 ### Backlog
 
@@ -1102,9 +1120,13 @@ Not planned into a milestone; picked up when articles or users need them.
     clippy and the tests with all default features (under cargo-nextest,
     with coverage, M9; both uploaded to Codecov), Servo's helper, both workspaces with their `rust-version`, the
     end-to-end test against Nextcloud.
+  - `performance.yml`, for pull requests and `master`: the measurements
+    that are steady on GitHub's runners (`just measure-ci`), uploaded to
+    Bencher by `performance-upload.yml`; `performance-closed.yml`
+    archives a closed pull request's branch there (0019).
 
   Keep it green. Default CI builds must stay fast: the builds with the
-  engines are only in `full-tests.yml`. So that it also checks work on
+  engines are only in `full-tests.yml` and `performance.yml`. So that it also checks work on
   feature branches, each milestone is developed on a branch with a draft
   pull request, opened with the first push and marked ready when the
   milestone is done. A new check gets a recipe of its own, which CI runs.
