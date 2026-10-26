@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Performance archive
+
+# Archives a closed pull request's branch in Bencher (pr-<number>, see
+# performance-upload.yml). pull_request_target, for the Bencher key also
+# with pull requests from forks: it only uses the pull request's number
+# and checks out nothing.
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] checks out and runs nothing of the pull request's
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  archive:
+    name: Archive the branch in Bencher
+    # Not in forks of the repository, which have no Bencher key.
+    if: ${{ !github.event.repository.fork }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      # A pull request that was never measured has no branch.
+      - name: Archive
+        env:
+          BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT || 'ren' }}
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          bencher archive --branch "pr-$PR_NUMBER" ||
+              echo "::notice::no branch pr-$PR_NUMBER in Bencher"

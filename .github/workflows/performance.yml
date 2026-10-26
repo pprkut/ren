@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Performance
+
+# The measurements that are steady on GitHub's runners
+# (scripts/measure-ci.sh: memory under Xvfb, binary size, the store), for
+# pull requests, also from forks, and pushes to master. Without secrets:
+# the results and the event's payload go into an artifact, which
+# performance-upload.yml uploads to Bencher. A fork's code runs only
+# here (docs/decisions/0019-ci.md, "Performance tracking").
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions: {}
+
+# A new push to a branch cancels the run for the one before (which then
+# uploads nothing); on master every commit is measured.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  measure:
+    name: Measure
+    # A fixed image, as its libraries and fonts are part of the memory
+    # measured: the testbed in Bencher is named after it.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libxkbcommon-x11-0
+      - run: just measure-ci
+        env:
+          OUT_DIR: target/measure/ci
+      - name: Summary
+        run: cat target/measure/ci/summary.md >> "$GITHUB_STEP_SUMMARY"
+      # The pull request's number for the upload, which can't get it from
+      # GitHub for a fork's pull request.
+      - name: Keep the event
+        env:
+          EVENT: ${{ github.event_path }}
+        run: cp "$EVENT" target/measure/ci/event.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: performance
+          path: |
+            target/measure/ci/results.json
+            target/measure/ci/event.json
+          if-no-files-found: error
+          retention-days: 7

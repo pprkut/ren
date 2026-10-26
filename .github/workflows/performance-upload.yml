@@ -1,0 +1,140 @@
+# SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+# SPDX-License-Identifier: CC0-1.0
+
+name: Performance upload
+
+# Uploads the results of a successful performance.yml run to Bencher,
+# which reports on the pull request (docs/decisions/0019-ci.md,
+# "Performance tracking"). workflow_run runs master's copy of this
+# workflow with the Bencher key, also for pull requests from forks, so it
+# never runs their code: it checks out nothing, and the artifact is data.
+# Only the pull request's number is taken from it, checked against
+# GitHub's answer for the commit GitHub ran; master's history comes only
+# from pushes to it.
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] checks out and runs nothing of the pull request's
+    workflows: [Performance]
+    types: [completed]
+
+permissions: {}
+
+env:
+  BENCHER_PROJECT: ${{ vars.BENCHER_PROJECT || 'ren' }}
+  # performance.yml's runner image.
+  BENCHER_TESTBED: github-ubuntu-24.04
+
+jobs:
+  upload:
+    name: Upload to Bencher
+    # Not in forks of the repository, which have no Bencher key.
+    if: github.event.workflow_run.conclusion == 'success' && !github.event.repository.fork
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # the measuring run's artifact
+      checks: write # Bencher's check on the commit
+      pull-requests: write # Bencher's comment on the pull request
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: performance
+          path: performance
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      # The number from the artifact, the rest from GitHub: the pull
+      # request's head must be the commit the measuring run ran.
+      - name: Check the pull request
+        id: pr
+        if: github.event.workflow_run.event == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          number=$(jq -r '.pull_request.number' performance/event.json)
+          if [[ ! $number =~ ^[1-9][0-9]{0,9}$ ]]; then
+              echo "::error::not a pull request number"
+              exit 1
+          fi
+          gh api "repos/$REPOSITORY/pulls/$number" >pull-request.json
+          head=$(jq -r '.head.sha' pull-request.json)
+          if [[ $head != "$HEAD_SHA" ]]; then
+              # A newer push: its own run reports.
+              echo "::notice::pull request $number is at $head now, not at $HEAD_SHA; not uploaded"
+              echo "current=false" >>"$GITHUB_OUTPUT"
+              exit 0
+          fi
+          base=$(jq -r '.base.ref' pull-request.json)
+          base_sha=$(jq -r '.base.sha' pull-request.json)
+          {
+              echo "current=true"
+              echo "number=$number"
+              # Compared with master's at the pull request's base, if it
+              # is based on master; with master's latest otherwise.
+              if [[ $base == master && $base_sha =~ ^[0-9a-f]{40}$ ]]; then
+                  echo "base-sha=$base_sha"
+              fi
+          } >>"$GITHUB_OUTPUT"
+
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+
+      # Compared with master's results and thresholds (Bencher's
+      # start point); the branch starts anew from them on every run.
+      # Alerts don't fail the run until the thresholds have settled.
+      - name: Upload the pull request's results
+        if: steps.pr.outputs.current == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BASE_SHA: ${{ steps.pr.outputs.base-sha }}
+        run: |
+          base=(--start-point master)
+          if [[ -n $BASE_SHA ]]; then
+              base+=(--start-point-hash "$BASE_SHA")
+          fi
+          bencher run \
+              --branch "pr-$PR_NUMBER" \
+              --hash "$HEAD_SHA" \
+              "${base[@]}" \
+              --start-point-clone-thresholds \
+              --start-point-reset \
+              --adapter json \
+              --github-actions "$GITHUB_TOKEN" \
+              --ci-number "$PR_NUMBER" \
+              --file performance/results.json
+
+      # master's thresholds, which pull requests take over: a share above
+      # the mean of master's last 64 results. Anonymous memory is steady
+      # within a few KiB under Xvfb, RSS within about a MiB (file pages),
+      # the binary's size exact.
+      - name: Upload master's results
+        if: >-
+          github.event.workflow_run.event == 'push'
+          && github.event.workflow_run.head_branch == 'master'
+          && github.event.workflow_run.head_repository.full_name == github.repository
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          bencher run \
+              --branch master \
+              --hash "$HEAD_SHA" \
+              --threshold-measure anonymous-memory \
+              --threshold-test percentage \
+              --threshold-max-sample-size 64 \
+              --threshold-upper-boundary 0.02 \
+              --threshold-measure rss \
+              --threshold-test percentage \
+              --threshold-max-sample-size 64 \
+              --threshold-upper-boundary 0.05 \
+              --threshold-measure file-size \
+              --threshold-test percentage \
+              --threshold-max-sample-size 64 \
+              --threshold-upper-boundary 0.01 \
+              --thresholds-reset \
+              --adapter json \
+              --github-actions "$GITHUB_TOKEN" \
+              --file performance/results.json
