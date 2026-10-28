@@ -11,8 +11,8 @@
 # (`just measure-store`). The pages come from ren-tabs' pattern-helper, a
 # stand-in for Servo's helper, so neither Servo nor the network is
 # needed. Without a display it runs under Xvfb (xvfb-run), with the
-# software renderer. Time, CPU and frames vary too much on shared runners
-# and are left out, but for the store's.
+# software renderer. Time, CPU and frames vary too much on shared runners:
+# they are in the summary, not in the results.
 #
 # Usage: scripts/measure-ci.sh
 #
@@ -104,16 +104,13 @@ mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
     done
 } >"$OUT_DIR/summary.md"
 
-# Only what is steady on shared runners: memory and sizes, and the store's
-# timings, to see whether they are steady enough for thresholds. The
+# Only what is steady on shared runners: memory and sizes. The store's
+# timings varied by 22-178 % over the first three runs (0019). The
 # anonymous memory after the window is shown again with a page varies by
 # up to a MiB: a measure of its own, with a wider threshold.
 bmf_merge "$OUT_DIR/all.json" "$OUT_DIR/binary.json" \
     "$OUT_DIR"/{hidden,settings,tabs,store}/results.json
-jq 'with_entries(
-        if (.key | startswith("store: ")) then .
-        else .value |= with_entries(select(.key | IN("rss", "anonymous-memory", "file-size")))
-        end)
+jq 'map_values(with_entries(select(.key | IN("rss", "anonymous-memory", "file-size"))))
     | with_entries(select(.value != {}))
     | with_entries(
         if (.key | IN("window hidden: shown again", "window hidden: article shown again")) then

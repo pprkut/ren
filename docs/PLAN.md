@@ -1045,7 +1045,9 @@ From here on every milestone ships with tests for what it adds.
   `performance-upload.yml` and `performance-closed.yml` as planned;
   thresholds a share above `master`'s mean: anonymous memory 2 %, RSS
   5 %, size 1 %; 25 % for the anonymous memory of the two steps after
-  the window is shown again with a page, a measure of its own. In the container (without Blitz) 3.5 minutes after the
+  the window is shown again with a page, a measure of its own; the
+  store's timings vary by 22–178 % on GitHub's runners and stay out of
+  the results. In the container (without Blitz) 3.5 minutes after the
   build; anonymous memory agrees within 4–32 KiB over three runs but
   after the window is shown again with a page (up to 1.1 MiB), RSS within
   0.3–1.3 MiB. Open: Bencher's project, key and measures (set up
