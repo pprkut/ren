@@ -105,7 +105,10 @@ summary=$OUT_DIR/summary.md
             "$(mib "$(field "$line" rss_before_kib)" 1024)" "$(mib "$(field "$line" peak_rss_kib)" 1024)" \
             "$(mib "$(field "$line" rss_after_kib)" 1024)" "$trimmed" \
             "$(mib "$(field "$line" db_bytes)" 1048576)"
-        bmf_ms "sync: ${steps[$i]}" "$(awk -v s="$(field "$line" seconds)" 'BEGIN { print s * 1000 }')"
+        seconds=$(field "$line" seconds)
+        if [[ -n $seconds ]]; then
+            bmf_ms "sync: ${steps[$i]}" "$(awk -v s="$seconds" 'BEGIN { print s * 1000 }')"
+        fi
         bmf_kib "sync: ${steps[$i]}, peak" rss "$(field "$line" peak_rss_kib)"
         bmf_kib "sync: ${steps[$i]}, after" rss "$(field "$line" rss_after_kib)"
         bmf "sync: ${steps[$i]}, database" file-size "$(field "$line" db_bytes)"

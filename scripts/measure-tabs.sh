@@ -169,10 +169,12 @@ memory() {
     local ui helper
     ui=$(kib "$1" rss rss "$2")
     helper=$(kib "$1" "helper rss" rss "$2")
-    ui=${ui:-0}
-    helper=${helper:-0}
+    # Recorded before the defaults: a value that can't be read is left
+    # out, not recorded as 0.
     bmf_kib "tabs, $3: $2" rss "$ui"
     bmf_kib "tabs, $3: $2" anonymous-memory "$(kib "$1" rss anon "$2")"
+    ui=${ui:-0}
+    helper=${helper:-0}
     if [[ $helper -gt 0 ]]; then
         bmf_kib "tabs, $3: $2, helper" rss "$helper"
         echo "$(mib $((ui + helper))) ($(mib "$ui") + $(mib "$helper"))"

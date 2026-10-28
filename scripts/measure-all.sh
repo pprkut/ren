@@ -54,8 +54,8 @@ mkdir -p "$OUT_DIR"
 # shellcheck source=scripts/bmf.sh
 source scripts/bmf.sh
 # What measure-upload.sh uploads: the commit, unless there are changes
-# that aren't committed.
-if git diff --quiet HEAD; then
+# that aren't committed, new files among them.
+if [[ -z $(git status --porcelain) ]]; then
     git rev-parse HEAD >"$OUT_DIR/commit"
 else
     echo "not committed" >"$OUT_DIR/commit"

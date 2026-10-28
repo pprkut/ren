@@ -29,7 +29,8 @@ if [[ -z ${BENCHER_API_KEY:-} ]]; then
     echo "BENCHER_API_KEY is not set" >&2
     exit 1
 fi
-if [[ ! -s $dir/results.json ]]; then
+# A run whose measurements were all skipped or failed writes "{}".
+if ! jq -e 'length > 0' "$dir/results.json" >/dev/null 2>&1; then
     echo "$dir/results.json: no results" >&2
     exit 1
 fi
