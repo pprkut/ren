@@ -81,6 +81,9 @@ jobs:
       # Compared with master's results and thresholds (Bencher's
       # start point); the branch starts anew from them on every run.
       # Alerts don't fail the run until the thresholds have settled.
+      # Bencher's check is on every pull request, its comment only once
+      # there is an alert: with every result it is longer than GitHub
+      # allows.
       - name: Upload the pull request's results
         if: steps.pr.outputs.current == 'true'
         env:
@@ -102,6 +105,7 @@ jobs:
               --start-point-reset \
               --adapter json \
               --github-actions "$GITHUB_TOKEN" \
+              --ci-only-on-alert \
               --ci-number "$PR_NUMBER" \
               --file performance/results.json
 
