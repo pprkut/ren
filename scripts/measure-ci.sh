@@ -83,9 +83,7 @@ OUT_DIR=$OUT_DIR/settings scripts/measure-settings.sh >/dev/null
 log "== tabs"
 OUT_DIR=$OUT_DIR/tabs VARIANTS=synthetic scripts/measure-tabs.sh - "${pages[@]}" >/dev/null
 log "== store"
-mkdir -p "$OUT_DIR/store"
-cargo run --release --locked -p ren-store --example measure -- \
-    63000 "$OUT_DIR/store" "$OUT_DIR/store/results.json" >"$OUT_DIR/store/summary.md"
+just measure-store 63000 "$OUT_DIR/store" >/dev/null
 
 mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
 

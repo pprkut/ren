@@ -91,12 +91,10 @@ run() {
     echo >>"$report"
 }
 
-# The store's measurement, as `just measure-store` runs it. Not with
-# OUT_DIR: see above.
+# The store's measurement, into the step's directory. Not with OUT_DIR in
+# the environment: see above.
 measure_store() {
-    mkdir -p "$OUT_DIR"
-    env -u OUT_DIR cargo run --release --locked -p ren-store --example measure -- \
-        63000 "$OUT_DIR" "$OUT_DIR/results.json" >"$OUT_DIR/summary.md"
+    env -u OUT_DIR just measure-store 63000 "$OUT_DIR"
 }
 
 # The dump's items, so that every measurement shows the same data.
