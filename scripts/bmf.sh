@@ -9,8 +9,9 @@
 #   bmf_init FILE                  results go to FILE, the records first to
 #                                  FILE.tsv
 #   bmf BENCHMARK MEASURE VALUE    records a value; a value recorded again
-#                                  (another run) gives the mean, with the
-#                                  lowest and highest as bounds; empty or
+#                                  (another run) gives the median, with the
+#                                  lowest and highest as bounds, so one
+#                                  outlying run doesn't move it; empty or
 #                                  "-" values are left out
 #   bmf_kib BENCHMARK MEASURE KIB  a size in KiB, recorded in bytes
 #   bmf_ms BENCHMARK MS            a time in milliseconds, as latency
@@ -56,10 +57,16 @@ bmf_write() {
         [inputs | split("\t") | { benchmark: .[0], measure: .[1], value: (.[2] | tonumber) }]
         | group_by([.benchmark, .measure])
         | reduce .[] as $values ({};
-            ($values | map(.value)) as $v
+            ($values | map(.value) | sort) as $v
+            | ($v | length) as $n
             | .[$values[0].benchmark][$values[0].measure] =
-                if ($v | length) > 1 then
-                    { value: ($v | add / length), lower_value: ($v | min), upper_value: ($v | max) }
+                if $n > 1 then
+                    {
+                        value: (if $n % 2 == 1 then $v[$n / 2 | floor]
+                                else ($v[$n / 2 - 1] + $v[$n / 2]) / 2 end),
+                        lower_value: $v[0],
+                        upper_value: $v[-1]
+                    }
                 else
                     { value: $v[0] }
                 end)

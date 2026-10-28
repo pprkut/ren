@@ -1033,8 +1033,8 @@ From here on every milestone ships with tests for what it adds.
   - Reporting only at first: no alert fails CI until the thresholds have
     settled on real data.
 
-  *Result:* `scripts/bmf.sh` turns the scripts' values into BMF (runs
-  averaged, lowest and highest as bounds); `measure-all`'s scripts and
+  *Result:* `scripts/bmf.sh` turns the scripts' values into BMF (the
+  runs' median, lowest and highest as bounds); `measure-all`'s scripts and
   the store's example write `results.json`, `measure-all` (now with the
   store) merges them, `just measure-upload` uploads them as the
   `desktop` testbed. `just measure-ci` builds the default features
