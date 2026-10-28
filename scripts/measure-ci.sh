@@ -105,13 +105,15 @@ mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
 } >"$OUT_DIR/summary.md"
 
 # Only what is steady on shared runners: memory and sizes. The store's
-# timings varied by 22-178 % over the first three runs (0019). The
-# anonymous memory after the window is shown again with a page varies by
+# timings varied by 22-209 % over the first four runs (0019). Not
+# pattern-helper's memory (the stand-in, not ren's code) nor the store's
+# example at its start: they varied by 6-19 %. The anonymous memory after the window is shown again with a page varies by
 # up to a MiB: a measure of its own, with a wider threshold.
 bmf_merge "$OUT_DIR/all.json" "$OUT_DIR/binary.json" \
     "$OUT_DIR"/{hidden,settings,tabs,store}/results.json
 jq 'map_values(with_entries(select(.key | IN("rss", "anonymous-memory", "file-size"))))
     | with_entries(select(.value != {}))
+    | with_entries(select((.key | endswith(", helper")) or .key == "store: at the start" | not))
     | with_entries(
         if (.key | IN("window hidden: shown again", "window hidden: article shown again")) then
             .value |= with_entries(
