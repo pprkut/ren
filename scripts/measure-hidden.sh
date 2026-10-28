@@ -68,25 +68,25 @@ fi
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
 
-# The RSS in KiB of "<who> <step>:" in log $1, $2 "rss" or "helper rss".
-kib() {
-    grep "^ren: $2 $3:" "$1" | tail -n 1 | sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p'
+# The last "<who> <step>:" line in log $1, $2 "rss" or "helper rss".
+step_line() {
+    { grep "^ren: $2 $3:" "$1" || true; } | tail -n 1
 }
 
-# The anonymous memory in KiB of "<who> <step>:" in log $1.
-anon_kib() {
-    grep "^ren: $2 $3:" "$1" | tail -n 1 | sed -n 's/.*(anon \([0-9]*\),.*/\1/p'
-}
+# The RSS and the anonymous memory in KiB of such a line.
+rss_kib() { sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$1"; }
+anon_kib() { sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$1"; }
 
 # "total (UI + helper)" in MiB at step $2 of log $1; records the step's
 # memory for BMF, as benchmark "window hidden: <$3, or the step>".
 memory() {
-    local ui helper
-    ui=$(kib "$1" rss "$2")
-    helper=$(kib "$1" "helper rss" "$2")
+    local line ui helper
+    line=$(step_line "$1" rss "$2")
+    ui=$(rss_kib "$line")
+    helper=$(rss_kib "$(step_line "$1" "helper rss" "$2")")
     local name="window hidden: ${3:-$2}"
     bmf_kib "$name" rss "$ui"
-    bmf_kib "$name" anonymous-memory "$(anon_kib "$1" rss "$2")"
+    bmf_kib "$name" anonymous-memory "$(anon_kib "$line")"
     bmf_kib "$name, helper" rss "$helper"
     if [[ -z $ui ]]; then
         echo "-"

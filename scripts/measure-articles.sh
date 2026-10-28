@@ -69,31 +69,28 @@ variants=(
 
 mib() { awk -v k="$1" 'BEGIN { printf "%.1f", k / 1024 }'; }
 
-# Field $2 (rss, anon, file, peak) of the "rss <when>" line matching $3 in log $1, in MiB.
-rss() {
-    local line
-    line=$(grep "^ren: rss $3:" "$1" | tail -n 1) || {
-        echo "-"
-        return
-    }
-    case $2 in
-        rss) mib "$(sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line")" ;;
-        anon) mib "$(sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line")" ;;
-        file) mib "$(sed -n 's/.*, file \([0-9]*\),.*/\1/p' <<<"$line")" ;;
-        peak) mib "$(sed -n 's/.*peak \([0-9]*\) KiB.*/\1/p' <<<"$line")" ;;
-    esac
-}
-
-# KiB of field $2 (rss, anon, peak) of the "rss <when>" line matching $3 in
-# log $1.
+# KiB of field $2 (rss, anon, file, peak) of the "rss <when>" line matching
+# $3 in log $1.
 kib() {
     local line
     line=$(grep "^ren: rss $3:" "$1" | tail -n 1) || return 0
     case $2 in
         rss) sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line" ;;
         anon) sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line" ;;
+        file) sed -n 's/.*, file \([0-9]*\),.*/\1/p' <<<"$line" ;;
         peak) sed -n 's/.*peak \([0-9]*\) KiB.*/\1/p' <<<"$line" ;;
     esac
+}
+
+# The same in MiB, or "-" if the line is missing.
+rss() {
+    local k
+    k=$(kib "$@")
+    if [[ -n $k ]]; then
+        mib "$k"
+    else
+        echo "-"
+    fi
 }
 
 # "median / p90 / max" of field $2 (total, parse, layout, paint) of the

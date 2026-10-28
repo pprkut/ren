@@ -52,12 +52,14 @@ fi
 
 # The RSS in MiB at a step of log $1; records the step's memory for BMF.
 rss() {
-    local line
+    local line kib
     line=$({ grep "^ren: rss $2:" "$1" || true; } | tail -n 1)
-    bmf_kib "settings: $2" rss "$(sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line")"
+    kib=$(sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line")
+    bmf_kib "settings: $2" rss "$kib"
     bmf_kib "settings: $2" anonymous-memory "$(sed -n 's/.*(anon \([0-9]*\),.*/\1/p' <<<"$line")"
-    sed -n 's/.*: \([0-9]*\) KiB (anon.*/\1/p' <<<"$line" |
-        awk '{ printf "%.1f", $1 / 1024 }'
+    if [[ -n $kib ]]; then
+        awk -v k="$kib" 'BEGIN { printf "%.1f", k / 1024 }'
+    fi
 }
 
 steps=("at the start" "settings open" "web pages shown" "settings closed" "about open" "licenses shown" "about closed")
