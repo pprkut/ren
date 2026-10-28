@@ -108,7 +108,9 @@ jobs:
       # master's thresholds, which pull requests take over: a share above
       # the mean of master's last 64 results. Anonymous memory is steady
       # within a few KiB under Xvfb, RSS within about a MiB (file pages),
-      # the binary's size exact.
+      # the binary's size exact. The two steps after the window is shown
+      # again with a page vary by up to a MiB on about 5 MiB
+      # (anonymous-memory-unsteady).
       - name: Upload master's results
         if: >-
           github.event.workflow_run.event == 'push'
@@ -126,6 +128,10 @@ jobs:
               --threshold-test percentage \
               --threshold-max-sample-size 64 \
               --threshold-upper-boundary 0.02 \
+              --threshold-measure anonymous-memory-unsteady \
+              --threshold-test percentage \
+              --threshold-max-sample-size 64 \
+              --threshold-upper-boundary 0.25 \
               --threshold-measure rss \
               --threshold-test percentage \
               --threshold-max-sample-size 64 \

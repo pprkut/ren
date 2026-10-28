@@ -20,6 +20,9 @@
 # Measures (slugs; Bencher creates a measure when it first sees it):
 #   rss, anonymous-memory  bytes; their units are set to "bytes (B)" once
 #                          in Bencher, so it shows MiB
+#   anonymous-memory-unsteady
+#                          bytes, the same; measure-ci.sh's for the steps
+#                          whose anonymous memory varies on CI's runners
 #   file-size              bytes (Bencher's own)
 #   latency                nanoseconds (Bencher's own)
 #   cpu                    percent of one core

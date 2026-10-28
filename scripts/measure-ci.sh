@@ -105,13 +105,20 @@ mib() { awk -v b="$1" 'BEGIN { printf "%.2f", b / 1048576 }'; }
 } >"$OUT_DIR/summary.md"
 
 # Only what is steady on shared runners: memory and sizes, and the store's
-# timings, to see whether they are steady enough for thresholds.
+# timings, to see whether they are steady enough for thresholds. The
+# anonymous memory after the window is shown again with a page varies by
+# up to a MiB: a measure of its own, with a wider threshold.
 bmf_merge "$OUT_DIR/all.json" "$OUT_DIR/binary.json" \
     "$OUT_DIR"/{hidden,settings,tabs,store}/results.json
 jq 'with_entries(
         if (.key | startswith("store: ")) then .
         else .value |= with_entries(select(.key | IN("rss", "anonymous-memory", "file-size")))
         end)
-    | with_entries(select(.value != {}))' "$OUT_DIR/all.json" >"$OUT_DIR/results.json"
+    | with_entries(select(.value != {}))
+    | with_entries(
+        if (.key | IN("window hidden: shown again", "window hidden: article shown again")) then
+            .value |= with_entries(
+                if .key == "anonymous-memory" then .key = "anonymous-memory-unsteady" else . end)
+        else . end)' "$OUT_DIR/all.json" >"$OUT_DIR/results.json"
 
 cat "$OUT_DIR/summary.md"
