@@ -14,7 +14,8 @@
 # Environment:
 #   OUT_DIR    logs (default target/measure/hidden-<timestamp>)
 #   RUNS       runs (default 2)
-#   REN        measure this ren binary instead of building one
+#   REN        measure this ren binary instead of building one; FEATURES,
+#              if set, names its features in the summary
 #   REN_SERVO  the helper for the pages instead of building Servo's, e.g.
 #              ren-tabs' pattern-helper (no network needed then)
 #
@@ -26,7 +27,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [[ $# -lt 1 ]]; then
-    sed -n 's/^# \?//p' "$0" | sed -n '4,23p' >&2
+    sed -n 's/^# \?//p' "$0" | sed -n '4,24p' >&2
     exit 1
 fi
 if [[ $1 == - ]]; then
@@ -101,7 +102,11 @@ summary=$OUT_DIR/summary.md
 {
     echo "## ren with the window hidden, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
-    echo "- ren: $(git describe --always --dirty), release build, ${REN:-default features}"
+    if [[ -n ${REN:-} ]]; then
+        echo "- ren: $(git describe --always --dirty), release build from \$REN, features: ${FEATURES:-default}"
+    else
+        echo "- ren: $(git describe --always --dirty), release build, default features"
+    fi
     echo "- pages in tabs: $((${#urls[@]} / 2))"
     echo "- session: ${XDG_SESSION_TYPE:-unknown}, ${XDG_CURRENT_DESKTOP:-unknown}"
     echo

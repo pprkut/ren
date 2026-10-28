@@ -16,7 +16,8 @@
 #   RUNS      runs (default 2)
 #   FEATURES  cargo features instead of the default ones, e.g.
 #             "renderer-software,servo" (built with --no-default-features)
-#   REN       measure this ren binary instead of building one
+#   REN       measure this ren binary instead of building one (FEATURES
+#             then only names its features in the summary)
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
 # results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh).
@@ -67,7 +68,7 @@ summary=$OUT_DIR/summary.md
 {
     echo "## The settings dialog, $(date -u +'%Y-%m-%d %H:%M UTC')"
     echo
-    echo "- ren: $(git describe --always --dirty), release build, ${REN:-features: ${FEATURES:-default}}"
+    echo "- ren: $(git describe --always --dirty), release build${REN:+ from \$REN}, features: ${FEATURES:-default}"
     echo "- session: ${XDG_SESSION_TYPE:-unknown}, ${XDG_CURRENT_DESKTOP:-unknown}"
     echo
     echo "RSS in MiB:"

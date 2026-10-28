@@ -53,8 +53,10 @@ bmf_init "$OUT_DIR/binary.json"
 log() { echo "$*" >&2; }
 
 log "== building"
+# For the scripts' summaries, which measure the binary built here.
+export FEATURES=${FEATURES:-}
 features=()
-if [[ -n ${FEATURES:-} ]]; then
+if [[ -n $FEATURES ]]; then
     features=(--no-default-features --features "$FEATURES")
 fi
 cargo build --release --locked "${features[@]}"
