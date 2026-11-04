@@ -39,6 +39,9 @@ allow = [
     "Unicode-3.0",
     "Zlib",
 ]
+# Both workspaces share this file, and each exception is for a crate of
+# only one of them: the other would always warn.
+unused-license-exception = "allow"
 exceptions = [
     # Mozilla's CA certificates as data, pulled in by Servo's networking
     # (servo-net enables async-tungstenite's webpki-roots unconditionally).
