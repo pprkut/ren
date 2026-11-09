@@ -70,12 +70,15 @@ connection; the UI and the sync thread each open their own.
 
 ### Choices and findings
 
-- **rusqlite is pinned to 0.38.** Servo 0.5 (`servo-storage`) depends on
+- **rusqlite was pinned to 0.38.** Servo 0.5 (`servo-storage`) depends on
   rusqlite 0.38 with the bundled SQLite, and only one crate in a build may
-  link `sqlite3` (`libsqlite3-sys` 0.36). Servo 0.6 and 0.7 are still on
-  0.38, so the pin doesn't hold back the Servo upgrade planned for M7;
-  if a later Servo moves, ren-store moves with it. The SQLite is the same
-  one Servo builds, so the full build compiles it only once.
+  link `sqlite3` (`libsqlite3-sys` 0.36), so ren-store had to use Servo's.
+  *Superseded:* since Servo moved into a helper with a workspace of its
+  own (0011), ren-store's rusqlite is no longer tied to Servo's. It moved
+  to rusqlite 0.41 (`libsqlite3-sys` 0.39) for RUSTSEC-2026-0459, the
+  bundled SQLite before 3.54.0; the helper stays on 0.38 until Servo
+  moves (Servo 0.8 hasn't), with the advisory ignored for it in
+  `deny.toml`.
 - **No foreign key from items to feeds.** The server can send an item
   before its feed (a feed added between `GET /feeds` and
   `GET /items/updated`); with a foreign key the item would be rejected,
