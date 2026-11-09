@@ -433,7 +433,7 @@ pub enum Event {
     /// A drop-down (`<select>`) of the page shown was opened: the window
     /// shows its options below `area` and answers with
     /// [`Command::Select`]. `selected` are the ids of the options
-    /// selected. `area` is as Servo 0.7 reports it: CSS pixels relative
+    /// selected. `area` is as Servo (0.7, 0.8) reports it: CSS pixels relative
     /// to the document, not the view.
     Select {
         tab: TabId,
@@ -445,7 +445,7 @@ pub enum Event {
     },
     /// A context menu was asked for in the page shown, at `area`: the
     /// window shows it and answers with [`Command::ContextMenu`]. `area`
-    /// is as Servo 0.7 reports it: the click's point in CSS pixels. `link`
+    /// is as Servo (0.7, 0.8) reports it: the click's point in CSS pixels. `link`
     /// and `image` are the URLs of the link and image under the pointer.
     ContextMenu {
         tab: TabId,

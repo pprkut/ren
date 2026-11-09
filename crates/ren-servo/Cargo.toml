@@ -20,10 +20,10 @@ license = "GPL-3.0-or-later"
 ren-tabs = { path = "../ren-tabs" }
 # Without its `multiprocess` feature: content runs in the helper's own
 # threads, and the helper is the process boundary.
-servo = { version = "0.7", default-features = false, features = ["bundled", "clipboard", "js_jit"] }
+servo = { version = "0.8", default-features = false, features = ["bundled", "clipboard", "js_jit"] }
 # Types in Servo's RenderingContext API, at the versions it uses.
 # servo-base: the callback for Servo's memory reports (not re-exported).
-servo-base = "0.7"
+servo-base = "0.8"
 dpi = "0.1"
 euclid = "0.22"
 gleam = "0.15"

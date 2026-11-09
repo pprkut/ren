@@ -187,8 +187,12 @@ impl WebViewDelegate for Delegate {
             let url = webview.url().map(|url| url.to_string()).unwrap_or_default();
             log.line(self.tab(&webview), format_args!("load\t{status:?}\t{url}"));
         }
-        let loading = status != LoadStatus::Complete;
-        if !loading && let Some(reports) = &self.memory_reports {
+        // A load ends complete, or stopped (by the reader, or by the page's
+        // `window.stop()`).
+        let loading = !matches!(status, LoadStatus::Complete | LoadStatus::Stopped);
+        if status == LoadStatus::Complete
+            && let Some(reports) = &self.memory_reports
+        {
             reports.load_complete(self.tab(&webview));
         }
         self.push(&webview, |tab| Event::Loading { tab, loading });
@@ -267,8 +271,8 @@ impl WebViewDelegate for Delegate {
         // sends one, is the document that asked.
         let tab = webview.url();
         let verdict = self.blocker.borrow_mut().check(
-            &request.url,
-            request.referrer_url.as_ref(),
+            request.url.as_url(),
+            request.referrer_url.as_ref().map(|url| url.as_url()),
             tab.as_ref(),
             request.destination.as_str(),
         );
@@ -281,7 +285,7 @@ impl WebViewDelegate for Delegate {
             // Dropping the load lets it go on.
             Verdict::Allow => {}
             Verdict::Block => {
-                let response = WebResourceResponse::new(request.url.clone());
+                let response = WebResourceResponse::new(request.url.as_url().clone());
                 load.intercept(response).cancel();
             }
             Verdict::Wait => self.waiting.borrow_mut().push((webview, load)),
