@@ -243,6 +243,10 @@ measure-page-loads dump url:
 measure-hidden dump *urls:
     scripts/measure-hidden.sh {{dump}} {{urls}}
 
+# Run one measurement script on two commits, taking turns ROUNDS times, and compare the results, e.g. `just measure-compare master servo-0.8 measure-tabs.sh DUMP` (needs what the script needs)
+measure-compare base head script *args:
+    scripts/measure-compare.sh {{base}} {{head}} {{script}} {{args}}
+
 # Measure what is steady on CI's runners, for Bencher: binary size, the window's and the tabs' memory (pattern-helper, no Servo), the store; under Xvfb without a display
 measure-ci:
     scripts/measure-ci.sh
