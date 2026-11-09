@@ -16,6 +16,20 @@ targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 [advisories]
 unmaintained = "workspace"
 yanked = "deny"
+# Both workspaces share this file, and each ignore is for a crate of only
+# one of them: the other would always warn.
+unused-ignored-advisory = "allow"
+ignore = [
+    # SQLite before 3.54.0, bundled by libsqlite3-sys before 0.39, with a
+    # -wal file of another page size. Only in the Servo helper's tree:
+    # Servo (0.7.0, 0.8.0 as well) and sea-query-rusqlite 0.8 require
+    # rusqlite 0.38, there is no update to take. Servo opens only the
+    # files in the profile directory ren gives it (or temporary storage);
+    # crafting a pair there takes write access to the user's data, and
+    # web content can't write database files. Remove once Servo moves to
+    # rusqlite 0.41 (ren's own store did, 010dca9).
+    { id = "RUSTSEC-2026-0459", reason = "Servo's helper: no update, files only in ren's profile directory" },
+]
 
 [licenses]
 confidence-threshold = 0.93
