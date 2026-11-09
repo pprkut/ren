@@ -97,7 +97,7 @@ impl Select {
 }
 
 /// Where a drop-down's element is, in physical pixels relative to the
-/// page area. Servo 0.7 reports it in CSS pixels relative to the document
+/// page area. Servo (0.7, 0.8) reports it in CSS pixels relative to the document
 /// (a FIXME in its script crate), so it is off by the page's scroll and the
 /// scale factor. The element is under the click that opened it: where the
 /// reported box doesn't contain the click, the box is moved there, centred
@@ -126,7 +126,7 @@ pub fn select_area(css: Area, click: Option<(f32, f32)>, scale: f32) -> Area {
 }
 
 /// Where a context menu opens, in physical pixels relative to the page
-/// area: at the click that asked for it. Servo 0.7 reports the click's
+/// area: at the click that asked for it. Servo (0.7, 0.8) reports the click's
 /// point in CSS pixels as if they were device pixels (and relative to its
 /// frame), so it is used, scaled, only without a click (the menu key).
 pub fn menu_point(css: Area, click: Option<(f32, f32)>, scale: f32) -> (f32, f32) {
