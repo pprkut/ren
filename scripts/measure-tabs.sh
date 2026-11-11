@@ -32,6 +32,11 @@
 #             that aren't synthetic.
 #   REN       measure this ren binary (with the servo feature) instead of
 #             building one
+#   MEMORY_REPORTS
+#             1: Servo's memory reports too, in $OUT_DIR/<variant>-memory/
+#             (REN_SERVO_MEMORY_REPORT, 2 s after each load: what
+#             about:memory shows); off by default, as making them takes
+#             memory in the helper while it is measured
 #
 # Prints a Markdown summary, also written to $OUT_DIR/summary.md, and the
 # results as BMF JSON in $OUT_DIR/results.json (scripts/bmf.sh). They
@@ -207,8 +212,12 @@ for variant in "${variants[@]}"; do
     IFS='|' read -r key name environment binary arguments <<<"$variant"
     log "== $name"
     vlog=$OUT_DIR/$key.log
+    reports=()
+    if [[ ${MEMORY_REPORTS:-} == 1 ]]; then
+        reports=("REN_SERVO_MEMORY_REPORT=$OUT_DIR/$key-memory")
+    fi
     # shellcheck disable=SC2086
-    env REN_TAB_STATS=1 $environment "$OUT_DIR/$binary" $arguments "${data[@]}" --items 5000 \
+    env REN_TAB_STATS=1 "${reports[@]}" $environment "$OUT_DIR/$binary" $arguments "${data[@]}" --items 5000 \
         --measure-tabs "${urls[@]}" 2>"$vlog" || {
         log "failed, see $vlog"
         continue
