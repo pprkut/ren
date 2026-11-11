@@ -15,6 +15,7 @@ mod controls;
 mod find;
 mod headless;
 mod input;
+mod memory;
 
 use std::io;
 use std::os::fd::{AsFd, OwnedFd};
@@ -283,12 +284,13 @@ fn run() -> Result<(), String> {
     let mut stats = StageStats::new("helper");
 
     'run: loop {
-        // Wait for ren or Servo, or until the readback or the next part of
-        // a wheel step is due.
+        // Wait for ren or Servo, or until the readback, the next part of
+        // a wheel step or a memory report is due.
         let idle = Instant::now();
         let wait = [
             frames.reading_back().then_some(idle + READBACK_POLL),
             scroll.next_tick(),
+            browser.next_memory_report(),
         ]
         .into_iter()
         .flatten()

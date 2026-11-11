@@ -22,6 +22,8 @@ ren-tabs = { path = "../ren-tabs" }
 # threads, and the helper is the process boundary.
 servo = { version = "0.7", default-features = false, features = ["bundled", "clipboard", "js_jit"] }
 # Types in Servo's RenderingContext API, at the versions it uses.
+# servo-base: the callback for Servo's memory reports (not re-exported).
+servo-base = "0.7"
 dpi = "0.1"
 euclid = "0.22"
 gleam = "0.15"

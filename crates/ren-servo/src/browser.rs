@@ -29,6 +29,7 @@ use crate::blocking::{Blocker, Verdict};
 use crate::controls;
 use crate::find;
 use crate::input::{self, Gesture, Navigation};
+use crate::memory::MemoryReports;
 
 /// The most tabs; pages can't open more.
 const MAX_TABS: usize = 50;
@@ -98,6 +99,8 @@ struct Delegate {
     next_control: Cell<u32>,
     /// Every request and load, for measurements (`REN_SERVO_REQUEST_LOG`).
     request_log: Option<RequestLog>,
+    /// Servo's memory reports, for measurements (`REN_SERVO_MEMORY_REPORT`).
+    memory_reports: Option<MemoryReports>,
 }
 
 /// A line per request and per change of a tab's load status, with the
@@ -185,6 +188,9 @@ impl WebViewDelegate for Delegate {
             log.line(self.tab(&webview), format_args!("load\t{status:?}\t{url}"));
         }
         let loading = status != LoadStatus::Complete;
+        if !loading && let Some(reports) = &self.memory_reports {
+            reports.load_complete(self.tab(&webview));
+        }
         self.push(&webview, |tab| Event::Loading { tab, loading });
     }
 
@@ -484,6 +490,7 @@ impl Browser {
             found: RefCell::default(),
             next_control: Cell::new(0),
             request_log: RequestLog::from_env(),
+            memory_reports: MemoryReports::from_env(),
         });
         Self {
             servo,
@@ -785,10 +792,18 @@ impl Browser {
         }
     }
 
+    /// When the next memory report is due (`REN_SERVO_MEMORY_REPORT`).
+    pub fn next_memory_report(&self) -> Option<Instant> {
+        self.delegate.memory_reports.as_ref()?.next_due()
+    }
+
     /// Lets Servo handle its messages; returns what happened.
     pub fn spin(&mut self) -> Vec<Event> {
         self.servo.spin_event_loop();
         self.check_waiting();
+        if let Some(reports) = &self.delegate.memory_reports {
+            reports.request_due(&self.servo, self.tabs.len());
+        }
         self.tabs.append(&mut self.delegate.opened.borrow_mut());
         for id in self.delegate.closed.take() {
             let tab = self.delegate.tab_ids.borrow().get(&id).copied();
