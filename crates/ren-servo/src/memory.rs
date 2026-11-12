@@ -6,7 +6,9 @@
 //! load completes, to compare where the memory goes from one Servo (or
 //! page) to the next.
 //!
-//! Each report is a file `memory-NNN.tsv`: comment lines (`#`) with the
+//! Each report is a file `memory-PID-NNN.tsv` (the helper's process id:
+//! ren starts a new helper after the last tab closes, which numbers its
+//! reports from 1 again): comment lines (`#`) with the
 //! milliseconds since the helper started, the tab whose load completed
 //! and the number of tabs open, then a line per measurement, sorted by
 //! path: the process id, the kind (`ExplicitJemallocHeapSize`, …), the
@@ -73,7 +75,8 @@ impl MemoryReports {
         };
         for (_, tab) in due {
             let number = self.next.replace(self.next.get() + 1);
-            let path = self.dir.join(format!("memory-{number:03}.tsv"));
+            let pid = std::process::id();
+            let path = self.dir.join(format!("memory-{pid}-{number:03}.tsv"));
             let mut header = String::new();
             let _ = writeln!(header, "# ms\t{}", self.started.elapsed().as_millis());
             let tab = tab.map_or_else(|| "-".to_owned(), |tab| tab.to_string());
