@@ -48,22 +48,22 @@ renderer-software = ["slint/renderer-software"]
 style-qt = ["slint/backend-qt"]
 
 [dependencies]
-anyrender_vello_cpu = { version = "0.17", optional = true }
+anyrender_vello_cpu = { version = "0.18", optional = true }
 arboard = { version = "3.6", optional = true, default-features = false, features = ["wayland-data-control"] }
 # Pre-release: document text selection is only in 0.3 (see
 # docs/decisions/0004-article-view.md).
-blitz-dom = { version = "=0.3.0-beta.2", optional = true, default-features = false, features = ["floats", "svg", "system-fonts", "complex-scripts"] }
-blitz-html = { version = "=0.3.0-beta.2", optional = true }
-blitz-paint = { version = "=0.3.0-beta.2", optional = true, default-features = false, features = ["svg"] }
-blitz-traits = { version = "=0.3.0-beta.2", optional = true }
+blitz-dom = { version = "=0.3.0-beta.4", optional = true, default-features = false, features = ["floats", "svg", "system-fonts", "complex-scripts"] }
+blitz-html = { version = "=0.3.0-beta.4", optional = true }
+blitz-paint = { version = "=0.3.0-beta.4", optional = true, default-features = false, features = ["svg"] }
+blitz-traits = { version = "=0.3.0-beta.4", optional = true }
 # Types in Blitz's API, at the versions it uses.
-anyrender = { version = "0.13", optional = true }
+anyrender = { version = "0.14", optional = true }
 atomic_refcell = { version = "0.1", optional = true }
 base64 = { version = "0.23", optional = true }
 cursor-icon = { version = "1", optional = true }
-keyboard-types = { version = "0.7", optional = true }
+keyboard-types = { version = "0.8", optional = true }
 kurbo = { version = "0.13", optional = true }
-parley = { version = "0.11", optional = true, default-features = false, features = ["std"] }
+parley = { version = "0.12", optional = true, default-features = false, features = ["std"] }
 peniko = { version = "0.6", optional = true }
 percent-encoding = { version = "2", optional = true }
 url = { version = "2.5", optional = true }

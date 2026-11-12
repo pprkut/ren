@@ -33,6 +33,7 @@ impl<P: PaintScene> PaintScene for SelectionPainter<'_, P> {
 
     fn push_layer(
         &mut self,
+        fill: Fill,
         blend: impl Into<BlendMode>,
         alpha: f32,
         transform: Affine,
@@ -41,11 +42,11 @@ impl<P: PaintScene> PaintScene for SelectionPainter<'_, P> {
         backdrop_filter: Option<Arc<Filter>>,
     ) {
         self.inner
-            .push_layer(blend, alpha, transform, clip, filter, backdrop_filter);
+            .push_layer(fill, blend, alpha, transform, clip, filter, backdrop_filter);
     }
 
-    fn push_clip_layer(&mut self, transform: Affine, clip: &impl Shape) {
-        self.inner.push_clip_layer(transform, clip);
+    fn push_clip_layer(&mut self, fill: Fill, transform: Affine, clip: &impl Shape) {
+        self.inner.push_clip_layer(fill, transform, clip);
     }
 
     fn pop_layer(&mut self) {
