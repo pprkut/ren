@@ -286,6 +286,37 @@ with `BUSY=n` first with n cores kept busy.
   code, the fonts: 8.6 MiB here), thread stacks and the workers' heaps.
   Nothing large to cut.
 
+### Servo 0.8 (2026-11-12)
+
+The upgrade from Servo 0.7 was measured on its own on the desktop, with
+`just measure-compare master servo-0.8 measure-tabs.sh` (0019), three
+rounds each:
+
+- **On the dump's pages**, the helper took 20–24 % more memory with
+  three tabs (+40–48 MiB RSS), all of it heap; with one tab 1 % less.
+  Scrolling CPU and frames were unchanged, the frame to the UI the
+  same or a little faster (−13 to +2 % over the runs), the window's
+  memory the same.
+- **One page per run** showed it is one page: Phoronix's news article,
+  with a heap of 23 MiB with one tab and 35 with three on 0.7, against
+  152 and 393 MiB on 0.8. On Jenkins' blog, LWN and simple pages, 0.8
+  took 1–3 % less than 0.7; Servo's cost per tab didn't change (about
+  5.5 MiB of heap).
+- **Servo's memory reports** (`REN_SERVO_MEMORY_REPORT`,
+  `MEMORY_REPORTS=1` for `measure-tabs.sh`) showed why: on 0.8 the page
+  has Cloudflare Turnstile's challenge frames
+  (`challenges.cloudflare.com`), from the first tab on, with JS heaps of
+  195 and 165 MiB, and Phoronix's own JS heap grows from 17 to 482 MiB.
+  0.7 gets no challenge. The user agent is the same but for the version
+  (`Servo/0.8.0`); what makes Cloudflare challenge 0.8 isn't visible
+  from ren's side.
+
+So 0.8 doesn't take more memory for the same page; the site serves it
+another one. Cloudflare's decision can change for either version at any
+time, and the rest of 0.8 is the same or better, so the upgrade wasn't
+held back. The same reports give the page's `Blob` objects sizes of
+10¹³ MiB, Servo's measurement, not memory.
+
 ### Builds of the measurements
 
 The measurement scripts take `OUT_DIR` from the environment and left it
@@ -415,6 +446,10 @@ above).
 
 ## Open
 
+- **Phoronix on Servo 0.8** (above): Cloudflare's Turnstile challenge,
+  which 0.7 doesn't get; to report to Servo with servoshell 0.7 and 0.8
+  on the same page, together with the `Blob` sizes in its memory
+  report.
 - **Ars Technica's images look corrupted** in the tab (as in 0011);
   the slow loads turned out to be the GPU's clock (above), so this is a
   question of its own: servoshell 0.7 on the same page tells whether
