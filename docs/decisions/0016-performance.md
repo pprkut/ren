@@ -317,6 +317,26 @@ time, and the rest of 0.8 is the same or better, so the upgrade wasn't
 held back. The same reports give the page's `Blob` objects sizes of
 10¹³ MiB, Servo's measurement, not memory.
 
+### Blitz 0.3.0-beta.4 (2026-11-13)
+
+The upgrade from beta.3 was measured on its own on the desktop, with
+`just measure-compare master blitz-beta.4 measure-articles.sh` on the
+dump, three rounds each:
+
+- **The first frame of an article is faster:** the median drops by
+  13–22 % in every Blitz variant (12.3–17.4 ms to 10.4–13.5 ms), the
+  rounds' ranges apart.
+- **Memory is the same:** 0.1–0.6 MiB more RSS before and after the
+  first article, 0.4–0.8 MiB after the last, about 0.1 MiB of it
+  anonymous; the rest is the larger binary (41.4 to 41.8 MiB in CI):
+  Blitz now uses Parley 0.12 while Slint stays on 0.11, so the build
+  has two Parleys and fontiques. The variant with the dynamic mmap
+  threshold varies more between rounds (anonymous memory 31.8–37.5 MiB
+  against 31.7–34.1). The peak is the same or lower (−0.4 to −4 %,
+  within the rounds' spread).
+- The build without `html-view` is unchanged; plain text in the build
+  with Blitz takes 0.3 MiB more, the binary again.
+
 ### Builds of the measurements
 
 The measurement scripts take `OUT_DIR` from the environment and left it
@@ -450,6 +470,8 @@ above).
   which 0.7 doesn't get; to report to Servo with servoshell 0.7 and 0.8
   on the same page, together with the `Blob` sizes in its memory
   report.
+- **Two Parleys** since Blitz 0.3.0-beta.4 (above), until Slint moves
+  to Parley 0.12.
 - **Ars Technica's images look corrupted** in the tab (as in 0011);
   the slow loads turned out to be the GPU's clock (above), so this is a
   question of its own: servoshell 0.7 on the same page tells whether
