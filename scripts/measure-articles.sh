@@ -103,7 +103,9 @@ timing() {
         layout) pattern='s/.*style+layout \([0-9.]*\) ms.*/\1/p' ;;
         paint) pattern='s/.*paint \([0-9.]*\) ms.*/\1/p' ;;
     esac
-    grep '^ren: article rendered:' "$1" | sed -n "$pattern" | sort -g | awk '
+    # No timings (the build without html-view) are "-", not a failed
+    # pipeline that ends the script (set -e, pipefail).
+    { grep '^ren: article rendered:' "$1" || true; } | sed -n "$pattern" | sort -g | awk '
         { v[NR] = $1 }
         END {
             if (NR == 0) { print "-"; exit }
