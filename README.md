@@ -21,9 +21,10 @@ the browser (an app password of its own, which your Nextcloud lists under
 Security; two-factor authentication and single sign-on work), or to enter
 an app password you made yourself. Settings → Configure Ren… has the rest,
 which is kept in `~/.config/ren/settings.toml`, a file you may also edit
-by hand. The app password is kept in the desktop's Secret Service (KWallet,
-GNOME Keyring), or comes from a command (`password-command`, e.g.
-`pass show nextcloud/ren`).
+by hand ([`docs/settings.md`](docs/settings.md) lists the settings). The
+app password is kept in the desktop's Secret Service (KWallet, GNOME
+Keyring), or comes from a command (`password-command`, e.g. `pass show
+nextcloud/ren`).
 
 The menus list the shortcuts; for reading, J and K go to the next
 and previous article, Space scrolls, M marks it read or unread, S stars
@@ -62,12 +63,13 @@ downloaded either).
 
 ## Developing
 
-`docs/PLAN.md` is the plan, `docs/decisions/` has what was decided and
-measured on the way, and `CLAUDE.md` the rules for working on it. `just`
-lists the tasks: `just check-light` runs the checks without the rendering
-engines, `just check` with them (CI runs the same recipes, in
-`.github/workflows/`), `just test-nextcloud` the end-to-end test against
-Nextcloud in a container.
+`CONTRIBUTING.md` has the rules for working on Ren, `docs/ARCHITECTURE.md`
+how it is built, `docs/decisions/` what was decided and measured on the
+way, and `docs/performance.md` how it is measured and what it costs.
+`AGENTS.md` is for coding agents. `just` lists the tasks: `just
+check-light` runs the checks without the rendering engines, `just check`
+with them (CI runs the same recipes, in `.github/workflows/`), `just
+test-nextcloud` the end-to-end test against Nextcloud in a container.
 
 ## Licence
 

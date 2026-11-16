@@ -172,6 +172,7 @@ install:
         install -Dm0644 data/icons/$size/{{appid}}.png {{icons-dst}}/$size/apps/{{appid}}.png; \
     done
     install -Dm0644 README.md {{doc-dst}}/README.md
+    install -Dm0644 docs/settings.md {{doc-dst}}/docs/settings.md
     install -Dm0644 THIRD-PARTY-NOTICES.html {{doc-dst}}/THIRD-PARTY-NOTICES.html
     install -Dm0644 LICENSES/GPL-3.0-or-later.txt {{doc-dst}}/COPYING
 
@@ -179,8 +180,8 @@ install:
 uninstall:
     rm -f {{bin-dst}} {{helper-dst}} {{desktop-dst}} {{metainfo-dst}}
     rm -f {{icons-dst}}/scalable/apps/{{appid}}.svg {{icons-dst}}/*/apps/{{appid}}.png
-    rm -f {{doc-dst}}/README.md {{doc-dst}}/THIRD-PARTY-NOTICES.html {{doc-dst}}/COPYING
-    -rmdir {{doc-dst}} {{base-dir}}/libexec/{{name}}
+    rm -f {{doc-dst}}/README.md {{doc-dst}}/docs/settings.md {{doc-dst}}/THIRD-PARTY-NOTICES.html {{doc-dst}}/COPYING
+    -rmdir {{doc-dst}}/docs {{doc-dst}} {{base-dir}}/libexec/{{name}}
 
 # Vendor both workspaces' crates into vendor.tar.xz, for building without the network (packages; see build-vendored)
 vendor:
