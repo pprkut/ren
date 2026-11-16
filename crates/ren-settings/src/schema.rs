@@ -741,6 +741,19 @@ mod tests {
         }
     }
 
+    /// `docs/settings.md` documents every setting, and only those.
+    #[test]
+    fn documented() {
+        let docs = include_str!("../../../docs/settings.md");
+        let documented: Vec<&str> = docs
+            .lines()
+            .filter_map(|line| line.strip_prefix("| `")?.split_once('`'))
+            .map(|(key, _)| key)
+            .collect();
+        let keys: Vec<&str> = SETTINGS.iter().map(|setting| setting.key).collect();
+        assert_eq!(documented, keys, "docs/settings.md, in the dialog's order");
+    }
+
     #[test]
     fn defaults_are_valid() {
         for setting in SETTINGS {
