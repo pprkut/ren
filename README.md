@@ -63,12 +63,13 @@ downloaded either).
 
 ## Developing
 
-`docs/PLAN.md` is the plan, `docs/decisions/` has what was decided and
-measured on the way, and `CLAUDE.md` the rules for working on it. `just`
-lists the tasks: `just check-light` runs the checks without the rendering
-engines, `just check` with them (CI runs the same recipes, in
-`.github/workflows/`), `just test-nextcloud` the end-to-end test against
-Nextcloud in a container.
+`CONTRIBUTING.md` has the rules for working on Ren, `docs/ARCHITECTURE.md`
+how it is built, `docs/decisions/` what was decided and measured on the
+way, and `docs/performance.md` how it is measured and what it costs.
+`AGENTS.md` is for coding agents. `just` lists the tasks: `just
+check-light` runs the checks without the rendering engines, `just check`
+with them (CI runs the same recipes, in `.github/workflows/`), `just
+test-nextcloud` the end-to-end test against Nextcloud in a container.
 
 ## Licence
 
