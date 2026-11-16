@@ -29,6 +29,12 @@
 //!    A full sync records its progress after each page and resumes there
 //!    if it was interrupted.
 //! 4. **Purge:** read, unstarred items older than [`Options::purge_after`].
+//!
+//! A sync must not cause CPU or memory spikes: responses are decoded while
+//! they are received, and the bodies of articles are stored as they come,
+//! not processed; the article view does that when one is shown. Ren runs
+//! one sync at a time, at `nice` 10, at the start, every
+//! `sync.interval-minutes` and on request, and trims the heap after it.
 
 mod api;
 mod clock;
