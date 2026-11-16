@@ -4,7 +4,7 @@
 # The third-party notices (THIRD-PARTY-NOTICES.html), generated with
 # cargo-about by `just notices` for ren's and the Servo helper's
 # workspaces (crates/ren-servo uses this file too). The licences are
-# deny.toml's, the policy of "Licensing" in docs/PLAN.md.
+# deny.toml's, the policy of "Licensing" in CONTRIBUTING.md.
 
 accepted = [
     "Apache-2.0",
