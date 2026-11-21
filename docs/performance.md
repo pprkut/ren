@@ -90,9 +90,13 @@ the software renderer, from 0016's run (at bd641b9; Servo 0.7, Blitz
 
 ## Open
 
-What is known and not yet done, from 0016's "Open": the article peak
-above 100 MiB with images, WebRender's GPU memory on heavy pages
-(121 MB on Ars Technica, bounded neither for background tabs nor in
-general), a fast path in Slint for unscaled opaque images (a quarter of
-the window's CPU while a page scrolls), and the two Parley versions
-since Blitz 0.3.0-beta.4, until Slint moves to Parley 0.12.
+What is known and not yet done is in GitHub issues: the article peak
+above 100 MiB with images
+([#71](https://github.com/pprkut/ren/issues/71)), WebRender's GPU
+memory on heavy pages, bounded neither for background tabs nor in
+general ([#70](https://github.com/pprkut/ren/issues/70)), a fast path in
+Slint for unscaled opaque images, a quarter of the window's CPU while a
+page scrolls ([#72](https://github.com/pprkut/ren/issues/72)), the two
+Parley versions since Blitz 0.3.0-beta.4
+([#69](https://github.com/pprkut/ren/issues/69)), and the store's purge
+on every sync ([#48](https://github.com/pprkut/ren/issues/48)).
