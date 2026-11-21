@@ -5,10 +5,16 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0014 — Settings dialog and account setup (M8b)
 
-**Status:** done (2026-10-12), for review; checked in the container
-under Xvfb against a mock Nextcloud, not yet on the desktop (see "On the
-desktop"). Changed after three reviews (see "After the review");
-measured on the desktop.
+**Status:** accepted (2026-11-21); done (2026-10-12); checked in the
+container under Xvfb against a mock Nextcloud, not yet on the desktop
+(see "On the desktop"). Changed after three reviews (see "After the
+review"); measured on the desktop. Its open points are GitHub issues:
+[#45](https://github.com/pprkut/ren/issues/45),
+[#51](https://github.com/pprkut/ren/issues/51),
+[#61](https://github.com/pprkut/ren/issues/61),
+[#62](https://github.com/pprkut/ren/issues/62),
+[#63](https://github.com/pprkut/ren/issues/63),
+[#64](https://github.com/pprkut/ren/issues/64).
 
 ## Context
 

@@ -5,7 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0006 — Local store: SQLite through rusqlite (M2)
 
-**Status:** done (2026-10-07), for review.
+**Status:** accepted (2026-11-21); done (2026-10-07). Its open points
+are GitHub issues: [#46](https://github.com/pprkut/ren/issues/46),
+[#48](https://github.com/pprkut/ren/issues/48).
 
 ## Context
 

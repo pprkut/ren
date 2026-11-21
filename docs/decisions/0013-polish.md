@@ -5,9 +5,13 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0013 — Polish (M8)
 
-**Status:** done (2026-10-11), for review; measured and checked on the
-desktop on 2026-10-11, which found two bugs, fixed (see "On the
-desktop").
+**Status:** accepted (2026-11-21); done (2026-10-11); measured and
+checked on the desktop on 2026-10-11, which found two bugs, fixed (see
+"On the desktop"). Its open points are GitHub issues:
+[#45](https://github.com/pprkut/ren/issues/45),
+[#58](https://github.com/pprkut/ren/issues/58),
+[#59](https://github.com/pprkut/ren/issues/59),
+[#60](https://github.com/pprkut/ren/issues/60).
 
 ## Context
 

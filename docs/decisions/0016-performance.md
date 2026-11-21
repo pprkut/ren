@@ -5,10 +5,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0016 — Performance (M10)
 
-**Status:** for review (2026-10-14). Checked and measured in the
-container; measured on the desktop by the user at bd641b9 (`just
-measure-all` and Ars Technica with WebRender's profiler, see "On the
-desktop" and "Ars Technica").
+**Status:** accepted (2026-11-21); done (2026-10-14). Checked and
+measured in the container; measured on the desktop by the user at
+bd641b9 (`just measure-all` and Ars Technica with WebRender's profiler,
+see "On the desktop" and "Ars Technica"). Its open points are GitHub
+issues: [#54](https://github.com/pprkut/ren/issues/54),
+[#68](https://github.com/pprkut/ren/issues/68),
+[#69](https://github.com/pprkut/ren/issues/69),
+[#70](https://github.com/pprkut/ren/issues/70),
+[#71](https://github.com/pprkut/ren/issues/71),
+[#72](https://github.com/pprkut/ren/issues/72),
+[#73](https://github.com/pprkut/ren/issues/73).
 
 ## Context
 

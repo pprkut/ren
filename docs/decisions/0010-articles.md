@@ -5,8 +5,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0010 — The article view (M6)
 
-**Status:** done (2026-10-10), for review; measured on the desktop with
-real articles on 2026-10-10.
+**Status:** accepted (2026-11-21); done (2026-10-10); measured on the
+desktop with real articles on 2026-10-10. Its open points are GitHub
+issues: [#42](https://github.com/pprkut/ren/issues/42),
+[#43](https://github.com/pprkut/ren/issues/43).
 
 ## Context
 

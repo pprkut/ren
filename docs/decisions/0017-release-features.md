@@ -5,9 +5,14 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0017 — Features for the first release (M10b)
 
-**Status:** done (2026-10-14), for review. Checked in the container
-under Xvfb, the feed changes also against Nextcloud 32/News 28.7.0 and
-33/29.0.0 in containers; not yet on the desktop (see "On the desktop").
+**Status:** accepted (2026-11-21); done (2026-10-14). Checked in the
+container under Xvfb, the feed changes also against Nextcloud 32/News
+28.7.0 and 33/29.0.0 in containers; not yet on the desktop (see "On the
+desktop", and [#45](https://github.com/pprkut/ren/issues/45)). Its open
+points are GitHub issues:
+[#38](https://github.com/pprkut/ren/issues/38),
+[#45](https://github.com/pprkut/ren/issues/45),
+[#74](https://github.com/pprkut/ren/issues/74).
 
 ## Context
 

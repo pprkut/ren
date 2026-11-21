@@ -5,9 +5,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0018 — Release and packaging (M11)
 
-**Status:** done (2026-10-15), for review. Checked in the container: the
-notices, the metadata's validation, the install layout and the release
-tarballs; not yet on the desktop.
+**Status:** accepted (2026-11-21); done (2026-10-15). Checked in the
+container: the notices, the metadata's validation, the install layout
+and the release tarballs; not yet on the desktop. Its open points are
+GitHub issues: [#45](https://github.com/pprkut/ren/issues/45),
+[#75](https://github.com/pprkut/ren/issues/75),
+[#76](https://github.com/pprkut/ren/issues/76).
 
 ## Context
 

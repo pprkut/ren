@@ -5,8 +5,9 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0008 — Settings, UI state and the app password (M4)
 
-**Status:** done (2026-10-07), for review; checked with KWallet on
-Plasma.
+**Status:** accepted (2026-11-21); done (2026-10-07); checked with
+KWallet on Plasma. Its open points are GitHub issues:
+[#50](https://github.com/pprkut/ren/issues/50).
 
 ## Context
 

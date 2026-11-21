@@ -5,8 +5,11 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0015 — Test coverage (M9)
 
-**Status:** done (2026-10-13), for review. Measured in the container and
-in CI; nothing here needs the desktop.
+**Status:** accepted (2026-11-21); done (2026-10-13). Measured in the
+container and in CI; nothing here needs the desktop. Its open points are
+GitHub issues: [#65](https://github.com/pprkut/ren/issues/65),
+[#66](https://github.com/pprkut/ren/issues/66),
+[#67](https://github.com/pprkut/ren/issues/67).
 
 ## Context
 

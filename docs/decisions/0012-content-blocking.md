@@ -5,8 +5,12 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # 0012 — Content blocking in the tabs (M7b)
 
-**Status:** done (2026-10-11), for review; measured on the desktop on
-2026-10-11.
+**Status:** accepted (2026-11-21); done (2026-10-11); measured on the
+desktop on 2026-10-11. Its open points are GitHub issues:
+[#39](https://github.com/pprkut/ren/issues/39),
+[#55](https://github.com/pprkut/ren/issues/55),
+[#56](https://github.com/pprkut/ren/issues/56),
+[#57](https://github.com/pprkut/ren/issues/57).
 
 ## Context
 
