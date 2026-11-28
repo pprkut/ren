@@ -29,6 +29,14 @@ ignore = [
     # web content can't write database files. Remove once Servo moves to
     # rusqlite 0.41 (ren's own store did, 010dca9).
     { id = "RUSTSEC-2026-0459", reason = "Servo's helper: no update, files only in ren's profile directory" },
+    # cookie's private (encrypted) cookies can reuse nonces in a process
+    # that forks. Fixed in 0.18.3, which the Servo helper uses; webdriver
+    # 0.54 (Servo 0.8's) still requires 0.16, which has no fixed release.
+    # Not reachable: private cookies are behind cookie's `private`
+    # feature, which nothing in the tree enables (`cargo tree -e features
+    # -i cookie@0.16.2`). Remove once Servo moves to a webdriver with
+    # cookie 0.18.3 or later.
+    { id = "RUSTSEC-2026-0594", reason = "Servo's helper: cookie 0.16 via webdriver, private feature not enabled" },
 ]
 
 [licenses]
