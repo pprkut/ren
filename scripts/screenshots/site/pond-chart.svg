@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320" font-family="DejaVu Sans, sans-serif" font-size="12">
+<line x1="48" y1="280.0" x2="624" y2="280.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="284.0" text-anchor="end" fill="#555555">0 °C</text>
+<line x1="48" y1="228.0" x2="624" y2="228.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="232.0" text-anchor="end" fill="#555555">5 °C</text>
+<line x1="48" y1="176.0" x2="624" y2="176.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="180.0" text-anchor="end" fill="#555555">10 °C</text>
+<line x1="48" y1="124.0" x2="624" y2="124.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="128.0" text-anchor="end" fill="#555555">15 °C</text>
+<line x1="48" y1="72.0" x2="624" y2="72.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="76.0" text-anchor="end" fill="#555555">20 °C</text>
+<line x1="48" y1="20.0" x2="624" y2="20.0" stroke="#000000" stroke-opacity="0.12"/>
+<text x="40" y="24.0" text-anchor="end" fill="#555555">25 °C</text>
+<rect x="56.6" y="237.4" width="30.7" height="42.6" rx="3" fill="#7181cb"/>
+<text x="72.0" y="298" text-anchor="middle" fill="#555555">Dec</text>
+<rect x="104.6" y="253.0" width="30.7" height="27.0" rx="3" fill="#6986cf"/>
+<text x="120.0" y="298" text-anchor="middle" fill="#555555">Jan</text>
+<rect x="152.6" y="244.6" width="30.7" height="35.4" rx="3" fill="#6d83cd"/>
+<text x="168.0" y="298" text-anchor="middle" fill="#555555">Feb</text>
+<rect x="200.6" y="198.9" width="30.7" height="81.1" rx="3" fill="#8578c1"/>
+<text x="216.0" y="298" text-anchor="middle" fill="#555555">Mar</text>
+<rect x="248.6" y="145.8" width="30.7" height="134.2" rx="3" fill="#a16ab4"/>
+<text x="264.0" y="298" text-anchor="middle" fill="#555555">Apr</text>
+<rect x="296.6" y="97.0" width="30.7" height="183.0" rx="3" fill="#bb5da8"/>
+<text x="312.0" y="298" text-anchor="middle" fill="#555555">May</text>
+<rect x="344.6" y="47.0" width="30.7" height="233.0" rx="3" fill="#d5509b"/>
+<text x="360.0" y="298" text-anchor="middle" fill="#555555">Jun</text>
+<rect x="392.6" y="39.8" width="30.7" height="240.2" rx="3" fill="#d94f9a"/>
+<text x="408.0" y="298" text-anchor="middle" fill="#555555">Jul</text>
+<rect x="440.6" y="77.2" width="30.7" height="202.8" rx="3" fill="#c558a3"/>
+<text x="456.0" y="298" text-anchor="middle" fill="#555555">Aug</text>
+<rect x="488.6" y="136.5" width="30.7" height="143.5" rx="3" fill="#a667b2"/>
+<text x="504.0" y="298" text-anchor="middle" fill="#555555">Sep</text>
+<rect x="536.6" y="189.5" width="30.7" height="90.5" rx="3" fill="#8a75bf"/>
+<text x="552.0" y="298" text-anchor="middle" fill="#555555">Oct</text>
+<rect x="584.6" y="225.9" width="30.7" height="54.1" rx="3" fill="#777fc8"/>
+<text x="600.0" y="298" text-anchor="middle" fill="#555555">Nov</text>
+</svg>

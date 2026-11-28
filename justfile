@@ -224,6 +224,10 @@ icons:
         rsvg-convert -w $size -h $size crates/ren/icons/$svg -o data/icons/${size}x$size/{{appid}}.png
     done
 
+# Take the README's screenshots of what `just build` built, with a made-up account on a display of its own (Xvfb), into docs/screenshots
+screenshots:
+    scripts/screenshots.sh
+
 # Measure startup, memory, idle and scrolling CPU per variant (needs a display)
 measure *variants:
     scripts/measure.sh {{variants}}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!-- The made-up blog behind the screenshots' article (scripts/screenshots.sh). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A year at the lotus pond · Field Notes</title>
+<style>
+  :root { --green: #3a7d44; --ink: #1f2a1f; --muted: #5d6b5d; --paper: #f6f4ec; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 17px/1.6 Georgia, "DejaVu Serif", serif; }
+  header { background: var(--green); color: #fff; }
+  .bar { max-width: 980px; margin: 0 auto; padding: 18px 24px;
+         display: flex; align-items: baseline; justify-content: space-between; }
+  .brand { font: bold 26px/1 "DejaVu Sans", sans-serif; letter-spacing: 0.5px; }
+  .brand small { display: block; font: 14px/1.6 "DejaVu Sans", sans-serif; opacity: 0.85; letter-spacing: 0; }
+  nav a { color: #fff; text-decoration: none; margin-left: 22px;
+          font: 15px "DejaVu Sans", sans-serif; opacity: 0.9; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 24px;
+         display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 40px; }
+  h1 { font-size: 38px; line-height: 1.15; margin: 0 0 8px; }
+  .meta { color: var(--muted); font: 14px "DejaVu Sans", sans-serif; margin-bottom: 24px; }
+  figure { margin: 24px 0; background: #fff; padding: 12px; border-radius: 6px;
+           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { color: var(--muted); font: 13px "DejaVu Sans", sans-serif; margin-top: 8px; }
+  h2 { font-size: 24px; margin: 32px 0 8px; }
+  blockquote { margin: 24px 0; padding: 4px 20px; border-left: 4px solid var(--green);
+               color: var(--muted); font-style: italic; }
+  aside section { background: #fff; border-radius: 6px; padding: 16px 18px; margin-bottom: 20px;
+                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+                  font: 14px/1.6 "DejaVu Sans", sans-serif; }
+  aside h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase;
+             letter-spacing: 1px; color: var(--green); }
+  aside ul { margin: 0; padding-left: 18px; }
+  aside a { color: var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">Field Notes<small>from the station at the fen</small></div>
+    <nav><a href="#">Journal</a><a href="#">Species</a><a href="#">Maps</a><a href="#">About</a></nav>
+  </div>
+</header>
+<main>
+  <article>
+    <h1>A year at the lotus pond</h1>
+    <div class="meta">Marta Visser · 27 November 2026 · 4 min read</div>
+    <p>A year ago we sank a thermometer on a string into the lotus pond behind
+    the field station and promised ourselves to read it every week. We missed
+    three weeks in February, when the pond was more ice than water, and one in
+    July, when all of us were away at once. The rest is below.</p>
+    <figure>
+      <img src="pond-chart.png" alt="Water temperature by month" width="640" height="320">
+      <figcaption>Water temperature at 30 cm, the mean of each month.</figcaption>
+    </figure>
+    <h2>When the leaves rise</h2>
+    <p>The first leaves broke the surface in the second week of May, when the
+    water had stayed above 15 °C for ten days in a row. They floated flat at
+    first; the tall leaves, held high above the water on their stalks, came a
+    month later. By the end of June the eastern half of the pond was covered,
+    and the moorhens had moved to the western half.</p>
+    <blockquote>The flowers open in the morning and close again in the
+    afternoon, for three days. On the third day they don't close any more,
+    and the petals fall.</blockquote>
+    <p>We counted 41 flowers over the summer, against 26 the year before.
+    Whether that is the warm June or the mud we cleared in March, a single
+    year can't tell.</p>
+  </article>
+  <aside>
+    <section>
+      <h3>About</h3>
+      A small field station at the edge of the fen, run by volunteers. We
+      count, measure and write it down.
+    </section>
+    <section>
+      <h3>Recent</h3>
+      <ul>
+        <li><a href="#">Dragonflies of the reed beds</a></li>
+        <li><a href="#">Mapping the pond with a rowing boat and a stick</a></li>
+        <li><a href="#">The heron that stayed</a></li>
+        <li><a href="#">Willow, cut back</a></li>
+      </ul>
+    </section>
+    <section>
+      <h3>Visit</h3>
+      Open on Saturdays from April to October, 10:00 to 16:00.
+    </section>
+  </aside>
+</main>
+</body>
+</html>
