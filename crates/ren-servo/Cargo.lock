@@ -873,9 +873,9 @@ dependencies = [
 
 [[package]]
 name = "cookie"
-version = "0.18.2"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a373e3602691c3cdea496d2f0ee5935151e6168fe87739483c463db1b2f2f87"
+checksum = "d55f2d6c30eeec7d5c6f98bd4395d4abb1895629eab97ee6522d340623615f8a"
 dependencies = [
  "time",
  "version_check",
@@ -5069,7 +5069,7 @@ dependencies = [
  "accesskit",
  "arboard",
  "bitflags 2.13.2",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "dpi",
  "env_logger",
@@ -5383,7 +5383,7 @@ dependencies = [
  "accesskit",
  "bitflags 2.13.2",
  "content-security-policy",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "euclid",
  "http",
@@ -5515,7 +5515,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1788ecb0b411de12a053a0c4f3f0a08b9d2f119f3f86b457f515e86065acf79e"
 dependencies = [
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "headers",
  "http",
  "hyper",
@@ -5645,7 +5645,7 @@ dependencies = [
  "atomic_refcell",
  "bytes",
  "content-security-policy",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "data-url",
  "encoding_rs",
@@ -5876,7 +5876,7 @@ dependencies = [
  "bytes",
  "chrono",
  "content-security-policy",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "data-url",
  "fst",
@@ -5947,7 +5947,7 @@ checksum = "80e6ac24573425319af0ac9dbc3ec7eec925b9da656902a15815506fd5e3e417"
 dependencies = [
  "bytes",
  "content-security-policy",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "data-url",
  "headers",
@@ -6126,7 +6126,7 @@ dependencies = [
  "chardetng",
  "chrono",
  "content-security-policy",
- "cookie 0.18.2",
+ "cookie 0.18.3",
  "crossbeam-channel",
  "cssparser",
  "data-url",
