@@ -76,6 +76,17 @@ SPDX-FileCopyrightText = [
 ]
 SPDX-License-Identifier = "GPL-3.0-or-later AND ISC AND MIT"
 
+# The README's screenshots (`just screenshots`), with the bundled icons
+# (Lucide, see above).
+[[annotations]]
+path = "docs/screenshots/*.webp"
+SPDX-FileCopyrightText = [
+    "Copyright 2026  Heinz Wiesinger, Amsterdam, The Netherlands",
+    "Copyright 2026 Lucide Icons and Contributors",
+    "Copyright 2013-present Cole Bemis",
+]
+SPDX-License-Identifier = "GPL-3.0-or-later AND ISC AND MIT"
+
 # Screenshots of ren; they show Breeze icons (KDE, LGPL-3.0-or-later).
 [[annotations]]
 path = "docs/decisions/*/*.webp"
